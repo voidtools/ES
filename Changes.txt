@@ -1,0 +1,137 @@
+Saturday 30 March 2024: Version 1.1.0.29 
+	added CSV/TSV -double-quote
+	added -search 
+	added -search*
+	
+Saturday 16 March 2024: Version 1.1.0.28 
+	treat single - and double -- as literal (not as a switch)
+	
+Wednesday 10 January 2024: Version 1.1.0.27 
+	improved WriteFile performance. (added es_buf_t) -added /cp 65001
+	
+Monday 26 September 2022: Version 1.1.0.26 
+	fixed an issue with exporting UTF-16 surrogate pairs.
+	
+Monday 26 September 2022: Version 1.1.0.25 
+	added -exit
+	added -reindex 
+	added -utf8-bom
+	
+Thursday 11 August 2022: Version 1.1.0.24 
+	fixed an issue with converting ini utf-8 to wchar text.
+	
+Wednesday 12 January 2022: Version 1.1.0.23 
+	fixed an issue with instance name not being initialized.
+	
+Wednesday 12 January 2022: Version 1.1.0.22 
+	fixed an issue with WideCharToMultiByte using the wrong buffer size.
+	
+Tueday 30 November 2021: Version 1.1.0.21 
+	added TSV support.
+	
+Tueday 12 October 2021: Version 1.1.0.20 
+	fix ALT in pause mode causing page down.
+	
+Monday 4 May 2020: Version 1.1.0.19 
+	added -inc-run-count
+	added -set-run-count 
+	added -instance
+	
+Wednesday 22 January 2020: Version 1.1.0.18 
+	added -get-total-size
+	
+Wednesday 22 January 2020: Version 1.1.0.17 
+	added -no-result-error
+	
+Wednesday 22 January 2020: Version 1.1.0.16 
+	added -no-header
+	added -double-quote
+	added -version
+	added -get-everything-version
+	
+Wednesday 22 January 2020: Version 1.1.0.15 
+	updated help (thanks to NotNull) 
+	
+Wednesday 22 January 2020: Version 1.1.0.14 
+	updated help (thanks to NotNull)
+	fixed -? -h -help errors
+	
+Wednesday 22 January 2020: Version 1.1.0.13 
+	added -ipc1 -ipc2 
+	added output errors to std_error
+	
+Friday 21 June 2019: Version 1.1.0.12 
+	added -get-result-count
+
+Version 1.1.0.11 
+	added -date-format
+	
+Version 1.1.0.10 
+	-r now takes a parameter
+	Everything handles escaping quotes.
+	
+Version 1.1.0.9 
+	fixed an issue with checking if the database is loaded
+	exporting as efu only exports indexed information now
+	use -size, -date-modified, -date-created or -attributes to override
+	folder size is also exported now.
+	
+Version 1.1.0.8 
+	removed -highligh-name, -highligh-path and -highligh-full-path-name. 
+	fixed date widths, switched to ini settings.
+	
+Version 1.1.0.7 
+	Everything 1.4 release.
+	
+Version 1.1.0.6a 
+	added -csv, -efu, -txt, -m3u and -m3u8 to set the display format (no exporting)
+	added -export-m3u 
+	anded -export-m3u8
+	
+Version 1.1.0.5a 
+	/a[RASH] attributes added
+	added -more/-pause ignored for no results
+	added -sort-size
+	added -sort-size-ascending
+	added -sort-size-descending
+
+Version 1.1.0.4a 
+	-pause improvements
+	added -set-run-count, -inc-run-count, -get-run-count
+	allow -name -size -date to re-order columns even when they are specified in settings
+	added -more ENTER=show one line, Q=Quit, ESC=Escape., column alignment improvements.
+	
+Version 1.1.0.3a 
+	added error levels
+	added -timeout
+	
+Version 1.1.0.2a 
+	added -pause
+	added -more
+	added -hide-empty-search-results
+	added -empty-search-help
+	added -save-settings
+	added -clear-settings
+	added -path
+	added -parent-path
+	added -parent
+	added -no-*switches*
+	added localized dates
+	
+Version 1.1.0.1a 
+	Everything 1.4.1 support for size, dates etc.
+	
+Version 1.0.0.4 
+	added ChangeWindowMessageFilterEx (if available) for admin/user support.
+	
+Version 1.0.0.3 
+	removed es_write console because it has no support for piping.
+	
+Version 1.0.0.2 
+	convert unicode to same code page as console.
+	
+Version 1.0.0.1 
+	fixed command line interpreting '-' as a switch inside text.
+	
+Version 1.0.0.0 
+	initial release
