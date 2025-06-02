@@ -11,7 +11,7 @@ The Command Line Interface for Everything.
 [General Options](#General-Options)<br/>
 [Search Syntax](#Search-Syntax)<br/>
 [Notes](#Notes)<br/>
-[Error Levels](#Error Levels)<br/>
+[Error Levels](#Error-Levels)<br/>
 [See Also](#See-Also)<br/>
 <br/><br/><br/>
 
@@ -292,9 +292,9 @@ Search Syntax
 <table>
 <tr><td><i>space</i></td><td>AND</td></tr>
 <tr><td><code>|</code></td><td>OR</td></tr>
-<tr><td>!</td><td>NOT</td></tr>
-<tr><td>< ></td><td>Grouping</td></tr>
-<tr><td>" "</td><td>Escape operator characters.</td></tr>
+<tr><td><code>!</td><td>NOT</td></tr>
+<tr><td><code>< ></code></td><td>Grouping</td></tr>
+<tr><td><code>" "</code></td><td>Escape operator characters.</td></tr>
 </table>
 <br/><br/><br/>
 
