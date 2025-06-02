@@ -58,7 +58,7 @@ Search Options
 --------------
 
 <dl>
-<dt>-r &lt;search&gt;, -regex &lt;search&gt;</dt>
+<dt>-r, -regex</dt>
 <dd>Search using regular expressions.</dd>
 <dt>-i, -case</dt>
 <dd>Match case.</dd>
