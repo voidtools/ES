@@ -131,7 +131,7 @@ Display Options
 <dt>-highlight</dt>
 <dd>Highlight results.</dd>
 <dt>-highlight-color &lt;color&gt;</dt>
-<dd>Highlight color 0x00-0xFF.<br/>
+<dd>Highlight color 0x00-0xFF:<br/>
 <img src="https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f"></dd>
 <br/>
 <dt>-csv<br/>
@@ -160,7 +160,7 @@ Display Options
 -run-count-color &lt;color&gt;<br/>
 -date-run-color &lt;color&gt;<br/>
 -date-recently-changed-color &lt;color&gt;, -rc-color &lt;color&gt;</dt>
-<dd>Set the column color 0x00-0xFF.<br/>
+<dd>Set the column color 0x00-0xFF:<br/>
 <img src="https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f"></dd>
 <br/>
 <dt>-filename-width &lt;width&gt;<br/>
@@ -185,6 +185,79 @@ Display Options
 <dd>Format the number with leading zeros, use with -no-digit-grouping.</dd>
 <dt>-double-quote</dt>
 <dd>Wrap paths and filenames with double quotes.</dd>
+</dl>
+<br/><br/><br/>
+
+
+
+Export Options
+--------------
+
+<dl>
+<dt>-export-csv &lt;out.csv&gt;<br/>
+-export-efu &lt;out.efu&gt;<br/>
+-export-txt &lt;out.txt&gt;<br/>
+-export-m3u &lt;out.m3u&gt;<br/>
+-export-m3u8 &lt;out.m3u8&gt;<br/>
+-export-tsv &lt;out.txt&gt;</dt>
+<dd>Export to a file using the specified layout.</dd>
+<dt>-no-header</dt>
+<dd>Do not output a column header for CSV, EFU and TSV files.</dd>
+<dt>-utf8-bom</dt>
+<dd>Store a UTF-8 byte order mark at the start of the exported file.</dd>
+</dl>
+<br/><br/><br/>
+
+
+
+General Options
+---------------
+
+<dl>
+<dt>-h, -help</dl>
+<dd>Display this help.</dd>
+<br/>
+<dt>-instance &lt;name&gt;</dt>
+<dd>Connect to the unique Everything instance name.</dd>
+<dt>-ipc1, -ipc2</dt>
+<dd>Use IPC version 1 or 2.</dd>
+<dt>-pause, -more</dt>
+<dd>Pause after each page of output.</dd>
+<dt>-hide-empty-search-results</dt>
+<dd>Don't show any results when there is no search.</dd>
+<dt>-empty-search-help</dt>
+<dd>Show help when no search is specified.</dd>
+<dt>-timeout &lt;milliseconds&gt;</dt>
+<dd>Timeout after the specified number of milliseconds to wait for<br/>
+the Everything database to load before sending a query.</dd>
+<br/>
+<dt>-set-run-count &lt;filename&gt; &lt;count&gt;</dt>
+<dd>Set the run count for the specified filename.</dd>
+<dt>-inc-run-count &lt;filename&gt;</dt>
+<dd>Increment the run count for the specified filename by one.</dd>
+<dt>-get-run-count &lt;filename&gt;</dt>
+<dd>Display the run count for the specified filename.</dd>
+<dt>-get-result-count</dt>
+<dd>Display the result count for the specified search.</dd>
+<dt>-get-total-size</dt>
+<dd>Display the total result size for the specified search.</dd>
+<dt>-save-settings, -clear-settings</dt>
+<dd>Save or clear settings.</dd>
+<dt>-version</dt>
+<dd>Display ES major.minor.revision.build version and exit.</dd>
+<dt>-get-everything-version</dt>
+<dd>Display Everything major.minor.revision.build version and exit.</dd>
+<dt>-exit</dt>
+<dd>Exit Everything.<br/>
+Returns after Everything process closes.</dd>
+<dt>-save-db</dt>
+<dd>Save the Everything database to disk.<br/>
+Returns after saving completes.</dd>
+<dt>-reindex</dt>
+<dd>Force Everything to reindex.<br/>
+Returns after indexing completes.</dd>
+<dt>-no-result-error</dt>
+<dd>Set the error level if no results are found.</dd>
 </dl>
 <br/><br/><br/>
 
