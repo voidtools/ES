@@ -11,6 +11,7 @@ The Command Line Interface for Everything.
 [General Options](#General-Options)<br/>
 [Search Syntax](#Search-Syntax)<br/>
 [Notes](#Notes)<br/>
+[Error Levels](#Error Levels)<br/>
 [See Also](#See-Also)<br/>
 <br/><br/><br/>
 
@@ -285,6 +286,40 @@ Returns after indexing completes.</dd>
 
 
 
+Search Syntax
+-------------
+
+<table>
+<tr><td><i>space</i></td><td>AND</td></tr>
+<tr><td><code>|</code></td><td>OR</td></tr>
+<tr><td>!</td><td>NOT</td></tr>
+<tr><td>< ></td><td>Grouping</td></tr>
+<tr><td>" "</td><td>Escape operator characters.</td></tr>
+</table>
+<br/><br/><br/>
+
+
+
+Error Levels
+------------
+
+Return codes from ES:
+<table>
+<tr><td>0</td><td>No known error, search successful.</td></tr>
+<tr><td>1</td><td>Failed to register window class</td></tr>
+<tr><td>2</td><td>Failed to create listening window.</td></tr>
+<tr><td>3</td><td>Out of memory</td></tr>
+<tr><td>4</td><td>Expected an additional command line option with the specified switch</td></tr>
+<tr><td>5</td><td>Failed to create export output file</td></tr>
+<tr><td>6</td><td>Unknown switch.</td></tr>
+<tr><td>7</td><td>Failed to send Everything IPC a query.</td></tr>
+<tr><td>8</td><td>No Everything IPC window - make sure the Everything search client is running.</td></tr>
+<tr><td>9</td><td>No results found.</td></tr>
+</table>
+<br/><br/><br/>
+
+
+
 Notes
 -----
 
@@ -297,6 +332,7 @@ Use double quotes to escape spaces and switches.
 Switches can be disabled by prefixing them with <code>no-</code>, eg: <code>-no-size</code>
 
 Use a <code>^</code> prefix or wrap with double quotes (<code>"</code>) to escape <code>\ & | > < ^</code>
+<br/><br/><br/>
 
 
 
