@@ -1639,11 +1639,11 @@
 			Name="res"
 			>
 			<File
-				RelativePath=".\cli.rc"
+				RelativePath=".\res\cli.rc"
 				>
 			</File>
 			<File
-				RelativePath=".\resource.h"
+				RelativePath=".\res\resource.h"
 				>
 			</File>
 		</Filter>
