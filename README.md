@@ -333,7 +333,7 @@ Use double quotes to escape spaces and switches.
 
 Switches can be disabled by prefixing them with <code>no-</code>, eg: <code>-no-size</code>
 
-Use a <code>^</code> prefix or wrap with double quotes (<code>"</code>) to escape <code>\ & | > < ^</code>
+Use a <code>^</code> prefix or wrap with double quotes (<code>"</code>) to escape <code>\ & | > < ^</code> in a command prompt.
 <br/><br/><br/>
 
 
