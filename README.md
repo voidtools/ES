@@ -23,9 +23,8 @@ Install Guide
 -------------
 
 To install ES:
-*   In Windows Explorer, type in the following address and press ENTER:<br>
+*   [Download](#download) ES and extract ES.exe to:<br>
     <code>%LOCALAPPDATA%\Microsoft\WindowsApps</code>
-*   [Download](#download) ES and extract ES.exe to this folder.
 <br/><br/><br/>
 
 
