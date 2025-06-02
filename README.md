@@ -10,8 +10,8 @@ The Command Line Interface for Everything.
 [Export Options](#Export-Options)<br/>
 [General Options](#General-Options)<br/>
 [Search Syntax](#Search-Syntax)<br/>
-[Notes](#Notes)<br/>
 [Error Levels](#Error-Levels)<br/>
+[Notes](#Notes)<br/>
 [See Also](#See-Also)<br/>
 <br/><br/><br/>
 
