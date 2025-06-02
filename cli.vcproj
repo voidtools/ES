@@ -367,6 +367,7 @@
 			/>
 			<Tool
 				Name="VCManifestTool"
+				EmbedManifest="false"
 				SuppressStartupBanner="false"
 				VerboseOutput="false"
 			/>
@@ -1642,15 +1643,7 @@
 				>
 			</File>
 			<File
-				RelativePath=".\res\resource.h"
-				>
-			</File>
-		</Filter>
-		<Filter
-			Name="ipc"
-			>
-			<File
-				RelativePath=".\ipc\everything_ipc.h"
+				RelativePath=".\resource.h"
 				>
 			</File>
 		</Filter>
