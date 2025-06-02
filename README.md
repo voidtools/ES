@@ -132,7 +132,7 @@ Display Options
 <dd>Highlight results.</dd>
 <dt>-highlight-color &lt;color&gt;</dt>
 <dd>Highlight color 0x00-0xff.</dd>
-![image](https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f)
+<img src="https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f">
 <br/>
 <dt>-csv<br/>
 -efu<br/>
