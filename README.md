@@ -89,7 +89,7 @@ Sort Options
 
 <dl>
 <dt>-s</dt>
-<dd>sort by full path.</dl>dd>
+<dd>sort by full path.</dd>
 <dt>-sort <name[-ascending|-descending]>, -sort-<name>[-ascending|-descending]</dt>
 <dd>Set sort<br/>
 name=name|path|size|extension|date-created|date-modified|date-accessed|<br>
