@@ -131,22 +131,22 @@ Display Options
 <dt>-highlight</dt>
 <dd>Highlight results.</dd>
 <dt>-highlight-color &lt;color&gt;</dt>
-<dd>Highlight color 0-255.</dd>
+<dd>Highlight color 0x00-0xff.</dd>
+![image](https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f)
 <br/>
-
-   -csv
-   -efu
-   -txt
-   -m3u
-   -m3u8
-   -tsv
-        Change display format.
-
-   -size-format <format>
-        0=auto, 1=Bytes, 2=KB, 3=MB.
-   -date-format <format>
-        0=auto, 1=ISO-8601, 2=FILETIME, 3=ISO-8601(UTC)
-
+<dt>-csv<br/>
+-efu<br/>
+-txt<br/>
+-m3u<br/>
+-m3u8<br/>
+-tsv</dt>
+<dd>Change display format.</dd>
+<br/>
+<dt>-size-format &lt;format&gt;</dt>
+<dd>0=auto, 1=Bytes, 2=KB, 3=MB.</dd>
+<dt>-date-format &lt;format&gt;</dt>
+<dd>0=auto, 1=ISO-8601, 2=FILETIME, 3=ISO-8601(UTC)</dd>
+<br/>
    -filename-color <color>
    -name-color <color>
    -path-color <color>
@@ -186,3 +186,12 @@ Display Options
         Wrap paths and filenames with double quotes.
 </dl>
 <br/><br/><br/>
+
+
+
+See also
+--------
+
+*   https://www.voidtools.com/support/everything/command_line_interface/
+*   https://www.voidtools.com/downloads#cli
+*   https://www.voidtools.com/forum/viewtopic.php?t=5762
