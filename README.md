@@ -99,11 +99,11 @@ attributes|file-list-file-name|run-count|date-recently-changed|date-run</dd>
 <br/>
 <dt>/on, /o-n, /os, /o-s, /oe, /o-e, /od, /o-d</dt>
 <dd>DIR style sorts.<br/>
-        N = Name.<br/>
-        S = Size.<br/>
-        E = Extension.<br/>
-        D = Date modified.<br/>
-        - = Sort in descending order.</dd>
+N = Name.<br/>
+S = Size.<br/>
+E = Extension.<br/>
+D = Date modified.<br/>
+- = Sort in descending order.</dd>
 </dl>
 <br/><br/><br/>
 
@@ -160,7 +160,8 @@ Display Options
 -run-count-color &lt;color&gt;<br/>
 -date-run-color &lt;color&gt;<br/>
 -date-recently-changed-color &lt;color&gt;, -rc-color &lt;color&gt;</dt>
-<dd>Set the column color 0-255.</dd>
+<dd>Set the column color 0x00-0xFF.<br/>
+<img src="https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f"></dd>
 <br/>
 <dt>-filename-width &lt;width&gt;<br/>
 -name-width &lt;width&gt;<br/>
