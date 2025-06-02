@@ -147,34 +147,34 @@ Display Options
 <dt>-date-format &lt;format&gt;</dt>
 <dd>0=auto, 1=ISO-8601, 2=FILETIME, 3=ISO-8601(UTC)</dd>
 <br/>
-   -filename-color <color>
-   -name-color <color>
-   -path-color <color>
-   -extension-color <color>
-   -size-color <color>
-   -date-created-color <color>, -dc-color <color>
-   -date-modified-color <color>, -dm-color <color>
-   -date-accessed-color <color>, -da-color <color>
-   -attributes-color <color>
-   -file-list-filename-color <color>
-   -run-count-color <color>
-   -date-run-color <color>
-   -date-recently-changed-color <color>, -rc-color <color>
+<dt>-filename-color &lt;color&gt;<br/>
+   -name-color &lt;color&gt;<br/>
+   -path-color &lt;color&gt;<br/>
+   -extension-color &lt;color&gt;<br/>
+   -size-color &lt;color&gt;<br/>
+   -date-created-color &lt;color&gt;, -dc-color &lt;color&gt;<br/>
+   -date-modified-color &lt;color&gt;, -dm-color &lt;color&gt;<br/>
+   -date-accessed-color &lt;color&gt;, -da-color &lt;color&gt;<br/>
+   -attributes-color &lt;color&gt;<br/>
+   -file-list-filename-color &lt;color&gt;<br/>
+   -run-count-color &lt;color&gt;<br/>
+   -date-run-color &lt;color&gt;<br/>
+   -date-recently-changed-color &lt;color&gt;, -rc-color &lt;color&gt;<br/>
         Set the column color 0-255.
 
-   -filename-width <width>
-   -name-width <width>
-   -path-width <width>
-   -extension-width <width>
-   -size-width <width>
-   -date-created-width <width>, -dc-width <width>
-   -date-modified-width <width>, -dm-width <width>
-   -date-accessed-width <width>, -da-width <width>
-   -attributes-width <width>
-   -file-list-filename-width <width>
-   -run-count-width <width>
-   -date-run-width <width>
-   -date-recently-changed-width <width>, -rc-width <width>
+   -filename-width &lt;width&gt;
+   -name-width &lt;width&gt;
+   -path-width &lt;width&gt;
+   -extension-width &lt;width&gt;
+   -size-width &lt;width&gt;
+   -date-created-width &lt;width&gt;, -dc-width &lt;width&gt;
+   -date-modified-width &lt;width&gt;, -dm-width &lt;width&gt;
+   -date-accessed-width &lt;width&gt;, -da-width &lt;width&gt;
+   -attributes-width &lt;width&gt;
+   -file-list-filename-width &lt;width&gt;
+   -run-count-width &lt;width&gt;
+   -date-run-width &lt;width&gt;
+   -date-recently-changed-width &lt;width&gt;, -rc-width &lt;width&gt;
         Set the column width 0-200.
 
    -no-digit-grouping
