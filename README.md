@@ -20,6 +20,8 @@ The Command Line Interface for Everything.
 Download
 --------
 
+https://github.com/voidtools/ES/releases
+
 https://www.voidtools.com/downloads#cli
 <br/><br/><br/>
 
