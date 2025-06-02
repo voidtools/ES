@@ -1,3 +1,6 @@
+Monday 2 June 2025: Version 1.1.0.30
+	added new code signing certificate: voidtools PTY LTD
+	
 Saturday 30 March 2024: Version 1.1.0.29 
 	added CSV/TSV -double-quote
 	added -search 
