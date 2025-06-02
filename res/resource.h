@@ -1,18 +1,14 @@
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
-// Used by everything.rc
-//
-#define VS_VERSION_INFO                 1
+// Used by cli.rc
 
-#define IDI_EVERYTHING                  101
-#define IDB_BITMAP1                     102
-#define IDI_ICON1                       103
-
-#define IDR_ICON_PNG                    104
-#define IDR_MAIN_CSS                    105
-#define IDR_DRIVE_PNG                   106
-#define IDR_EVERYTHING_PNG              107
-#define IDR_FILE_PNG                    108
-#define IDR_FOLDER_PNG                  109
-#define IDR_FAVICON_ICO                 110
-
+// Next default values for new objects
+// 
+#ifdef APSTUDIO_INVOKED
+#ifndef APSTUDIO_READONLY_SYMBOLS
+#define _APS_NEXT_RESOURCE_VALUE        101
+#define _APS_NEXT_COMMAND_VALUE         40001
+#define _APS_NEXT_CONTROL_VALUE         1001
+#define _APS_NEXT_SYMED_VALUE           101
+#endif
+#endif
