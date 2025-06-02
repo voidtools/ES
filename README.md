@@ -131,8 +131,8 @@ Display Options
 <dt>-highlight</dt>
 <dd>Highlight results.</dd>
 <dt>-highlight-color &lt;color&gt;</dt>
-<dd>Highlight color 0x00-0xff.</dd>
-<img src="https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f">
+<dd>Highlight color 0x00-0xff.<br/>
+<img src="https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f"></dd>
 <br/>
 <dt>-csv<br/>
 -efu<br/>
