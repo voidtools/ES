@@ -10,8 +10,8 @@ The Command Line Interface for Everything.
 [Export Options](#Export-Options)<br/>
 [General Options](#General-Options)<br/>
 [Search Syntax](#Search-Syntax)<br/>
-[Error Levels](#Error-Levels)<br/>
 [Notes](#Notes)<br/>
+[Error Levels](#Error-Levels)<br/>
 [See Also](#See-Also)<br/>
 <br/><br/><br/>
 
@@ -302,6 +302,22 @@ Search Syntax
 
 
 
+Notes
+-----
+
+Internal -'s in options can be omitted, eg: <code>-nodigitgrouping</code>
+
+Switches can also start with a <code>/</code>
+
+Use double quotes to escape spaces and switches.
+
+Switches can be disabled by prefixing them with <code>no-</code>, eg: <code>-no-size</code>
+
+Use a <code>^</code> prefix or wrap with double quotes (<code>"</code>) to escape <code>\ & | > < ^</code> in a command prompt.
+<br/><br/><br/>
+
+
+
 Error Levels
 ------------
 
@@ -318,22 +334,6 @@ Return codes from ES:
 <tr><td>8</td><td>No Everything IPC window - make sure the Everything search client is running.</td></tr>
 <tr><td>9</td><td>No results found when used with <code>-no-result-error</code</td></tr>
 </table>
-<br/><br/><br/>
-
-
-
-Notes
------
-
-Internal -'s in options can be omitted, eg: <code>-nodigitgrouping</code>
-
-Switches can also start with a <code>/</code>
-
-Use double quotes to escape spaces and switches.
-
-Switches can be disabled by prefixing them with <code>no-</code>, eg: <code>-no-size</code>
-
-Use a <code>^</code> prefix or wrap with double quotes (<code>"</code>) to escape <code>\ & | > < ^</code> in a command prompt.
 <br/><br/><br/>
 
 
