@@ -90,7 +90,7 @@ Sort Options
 <dl>
 <dt>-s</dt>
 <dd>sort by full path.</dd>
-<dt>-sort <name[-ascending|-descending]>, -sort-<name>[-ascending|-descending]</dt>
+<dt>-sort &lt;name[-ascending|-descending]&gt;, -sort-&lt;name&gt;[-ascending|-descending]</dt>
 <dd>Set sort<br/>
 name=name|path|size|extension|date-created|date-modified|date-accessed|<br>
 attributes|file-list-file-name|run-count|date-recently-changed|date-run</dd>
@@ -104,5 +104,85 @@ attributes|file-list-file-name|run-count|date-recently-changed|date-run</dd>
         E = Extension.<br/>
         D = Date modified.<br/>
         - = Sort in descending order.</dd>
+</dl>
+<br/><br/><br/>
+
+
+
+Display Options
+---------------
+
+<dl>
+<dt>-name<br/>
+-path-column<br/>
+-full-path-and-name, -filename-column<br/>
+-extension, -ext<br/>
+-size<br/>
+-date-created, -dc<br/>
+-date-modified, -dm<br/>
+-date-accessed, -da<br/>
+-attributes, -attribs, -attrib<br/>
+-file-list-file-name<br/>
+-run-count<br/>
+-date-run<br/>
+-date-recently-changed, -rc</dt>
+<dd>Show the specified column.</dd>
+<br/>
+<dt>-highlight</dt>
+<dd>Highlight results.</dd>
+<dt>-highlight-color &lt;color&gt;</dt>
+<dd>Highlight color 0-255.</dd>
+<br/>
+
+   -csv
+   -efu
+   -txt
+   -m3u
+   -m3u8
+   -tsv
+        Change display format.
+
+   -size-format <format>
+        0=auto, 1=Bytes, 2=KB, 3=MB.
+   -date-format <format>
+        0=auto, 1=ISO-8601, 2=FILETIME, 3=ISO-8601(UTC)
+
+   -filename-color <color>
+   -name-color <color>
+   -path-color <color>
+   -extension-color <color>
+   -size-color <color>
+   -date-created-color <color>, -dc-color <color>
+   -date-modified-color <color>, -dm-color <color>
+   -date-accessed-color <color>, -da-color <color>
+   -attributes-color <color>
+   -file-list-filename-color <color>
+   -run-count-color <color>
+   -date-run-color <color>
+   -date-recently-changed-color <color>, -rc-color <color>
+        Set the column color 0-255.
+
+   -filename-width <width>
+   -name-width <width>
+   -path-width <width>
+   -extension-width <width>
+   -size-width <width>
+   -date-created-width <width>, -dc-width <width>
+   -date-modified-width <width>, -dm-width <width>
+   -date-accessed-width <width>, -da-width <width>
+   -attributes-width <width>
+   -file-list-filename-width <width>
+   -run-count-width <width>
+   -date-run-width <width>
+   -date-recently-changed-width <width>, -rc-width <width>
+        Set the column width 0-200.
+
+   -no-digit-grouping
+        Don't group numbers with commas.
+   -size-leading-zero
+   -run-count-leading-zero
+        Format the number with leading zeros, use with -no-digit-grouping.
+   -double-quote
+        Wrap paths and filenames with double quotes.
 </dl>
 <br/><br/><br/>
