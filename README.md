@@ -36,7 +36,7 @@ To install ES:
 *   [Download](#download) ES and extract ES.exe to:<br>
     <code>%LOCALAPPDATA%\Microsoft\WindowsApps</code>
 
-This location is set in the PATH environment variable, allowing es to be called from any directory in a command prompt.
+This location is set in the PATH environment variable and allows es to be called from any directory in a command prompt or powershell.
 <br/><br/><br/>
 
 
