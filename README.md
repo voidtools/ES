@@ -285,7 +285,22 @@ Returns after indexing completes.</dd>
 
 
 
-See also
+Notes
+-----
+
+Internal -'s in options can be omitted, eg: <code>-nodigitgrouping</code>
+
+Switches can also start with a <code>/</code>
+
+Use double quotes to escape spaces and switches.
+
+Switches can be disabled by prefixing them with <code>no-</code>, eg: <code>-no-size</code>
+
+Use a <code>^</code> prefix or wrap with double quotes (<code>"</code>) to escape <code>\ & | > < ^</code>
+
+
+
+See Also
 --------
 
 *   https://www.voidtools.com/support/everything/command_line_interface/
