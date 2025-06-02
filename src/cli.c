@@ -107,6 +107,7 @@
 //#define ES_VERSION L"1.1.0.27" // improved WriteFile performance. (added es_buf_t) -added /cp 65001
 //#define ES_VERSION L"1.1.0.28" // treat single - and double -- as literal (not as a switch)
 //#define ES_VERSION L"1.1.0.29" // CSV/TSV -double quote, -search and -search*
+//#define ES_VERSION L"1.1.0.30" // new code signing certificate
 
 // *** YOU MUST MANUALLY UPDATE THE RESOURCE FILE WITH THE NEW VERSION ***
 // *** YOU MUST MANUALLY UPDATE THE RESOURCE FILE WITH THE NEW VERSION ***
@@ -115,7 +116,7 @@
 // *** YOU MUST MANUALLY UPDATE THE RESOURCE FILE WITH THE NEW VERSION ***
 // *** YOU MUST MANUALLY UPDATE THE RESOURCE FILE WITH THE NEW VERSION ***
 // *** YOU MUST MANUALLY UPDATE THE RESOURCE FILE WITH THE NEW VERSION ***
-#define ES_VERSION L"1.1.0.29" 
+#define ES_VERSION L"1.1.0.30" 
 // *** YOU MUST MANUALLY UPDATE THE RESOURCE FILE WITH THE NEW VERSION ***
 // *** YOU MUST MANUALLY UPDATE THE RESOURCE FILE WITH THE NEW VERSION ***
 // *** YOU MUST MANUALLY UPDATE THE RESOURCE FILE WITH THE NEW VERSION ***
@@ -142,11 +143,13 @@
 
 #ifdef _DEBUG
 #include <assert.h>	// assert()
+#define ES_ASSERT(exp) assert(exp)
 #else
-#define assert(exp)
+#define ES_ASSERT(exp)
 #endif
 
 DEBUG_FIXME("___UPDATE YEAR IN RESOURCE___")
+DEBUG_FIXME("___UPDATE VERSION IN RESOURCE___")
 
 // compiler options
 #pragma warning(disable : 4996) // deprecation
@@ -183,6 +186,10 @@ DEBUG_FIXME("___UPDATE YEAR IN RESOURCE___")
 
 #define ES_DWORD_MAX		0xffffffff
 #define ES_UINT64_MAX		0xffffffffffffffffUI64
+
+#define ES_IPC_VERSION_FLAG_IPC1	0x00000001
+#define ES_IPC_VERSION_FLAG_IPC2	0x00000002
+#define ES_IPC_VERSION_FLAG_IPC3	0x00000004
 
 // IPC pipe commands.
 #define _EVERYTHING3_COMMAND_GET_IPC_PIPE_VERSION			0
@@ -665,7 +672,7 @@ void *es_run_history_data = 0; // run count command
 DWORD es_run_history_count = 0; // run count command
 int es_run_history_command = 0;
 int es_run_history_size = 0;
-DWORD es_ipc_version = 0xffffffff;
+DWORD es_ipc_version = 0xffffffff; // allow all ipc versions
 int es_header = 1;
 int es_double_quote = 0; // always use double quotes for filenames.
 int es_csv_double_quote = 1; // always use double quotes for CSV for consistancy.
@@ -1058,7 +1065,7 @@ int es_sendquery3(void)
 				}
 			}
 */
-			assert((packet_d - packet_data) == packet_size);
+			ES_ASSERT((packet_d - packet_data) == packet_size);
 			
 			if (es_write_pipe_message(pipe_handle,_EVERYTHING3_COMMAND_SEARCH,packet_data,packet_size))
 			{
@@ -1138,7 +1145,7 @@ int es_sendquery3(void)
 					
 					property_request_size = property_request_count;
 					
-					assert(sizeof(_everything3_result_list_property_request_t) <= 12);
+					ES_ASSERT(sizeof(_everything3_result_list_property_request_t) <= 12);
 
 					property_request_size = es_safe_size_add(property_request_size,property_request_size); // x2
 					property_request_size = es_safe_size_add(property_request_size,property_request_size); // x4
@@ -4293,17 +4300,17 @@ int main(int argc,char **argv)
 				else
 				if (es_check_param(es_argv,L"ipc1"))
 				{	
-					es_ipc_version = 0x01; 
+					es_ipc_version = ES_IPC_VERSION_FLAG_IPC1; 
 				}
 				else
 				if (es_check_param(es_argv,L"ipc2"))
 				{	
-					es_ipc_version = 0x02; 
+					es_ipc_version = ES_IPC_VERSION_FLAG_IPC2; 
 				}
 				else
 				if (es_check_param(es_argv,L"ipc3"))
 				{	
-					es_ipc_version = 0x04; 
+					es_ipc_version = ES_IPC_VERSION_FLAG_IPC3; 
 				}
 				else
 				if (es_check_param(es_argv,L"header"))
@@ -5167,8 +5174,9 @@ int main(int argc,char **argv)
 					got_indexed_file_info = 1;
 				}
 		
-				if (es_ipc_version & 4)
+				if (es_ipc_version & ES_IPC_VERSION_FLAG_IPC3)
 				{
+/*
 					if (es_sendquery3()) 
 					{
 						// success
@@ -5176,9 +5184,10 @@ int main(int argc,char **argv)
 						// we dont need a message loop, exit..
 						goto exit;
 					}
+					*/
 				}
 
-				if (es_ipc_version & 2)
+				if (es_ipc_version & ES_IPC_VERSION_FLAG_IPC2)
 				{
 					if (es_sendquery2(hwnd)) 
 					{
@@ -5188,7 +5197,7 @@ int main(int argc,char **argv)
 					}
 				}
 
-				if (es_ipc_version & 1)
+				if (es_ipc_version & ES_IPC_VERSION_FLAG_IPC1)
 				{
 					if (es_sendquery(hwnd)) 
 					{
@@ -7864,8 +7873,8 @@ static SIZE_T _everything3_stream_read_len_vlq(_everything3_stream_t *stream)
 	
 #elif SIZE_MAX == 0xffffffffui32
 		
-	stream->error_code = EVERYTHING3_ERROR_OUT_OF_MEMORY;
-	return EVERYTHING3_DWORD_MAX;
+	stream->is_error = 1;
+	return ES_DWORD_MAX;
 
 #else
 
