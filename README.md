@@ -131,7 +131,7 @@ Display Options
 <dt>-highlight</dt>
 <dd>Highlight results.</dd>
 <dt>-highlight-color &lt;color&gt;</dt>
-<dd>Highlight color 0x00-0xff.<br/>
+<dd>Highlight color 0x00-0xFF.<br/>
 <img src="https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f"></dd>
 <br/>
 <dt>-csv<br/>
@@ -148,42 +148,42 @@ Display Options
 <dd>0=auto, 1=ISO-8601, 2=FILETIME, 3=ISO-8601(UTC)</dd>
 <br/>
 <dt>-filename-color &lt;color&gt;<br/>
-   -name-color &lt;color&gt;<br/>
-   -path-color &lt;color&gt;<br/>
-   -extension-color &lt;color&gt;<br/>
-   -size-color &lt;color&gt;<br/>
-   -date-created-color &lt;color&gt;, -dc-color &lt;color&gt;<br/>
-   -date-modified-color &lt;color&gt;, -dm-color &lt;color&gt;<br/>
-   -date-accessed-color &lt;color&gt;, -da-color &lt;color&gt;<br/>
-   -attributes-color &lt;color&gt;<br/>
-   -file-list-filename-color &lt;color&gt;<br/>
-   -run-count-color &lt;color&gt;<br/>
-   -date-run-color &lt;color&gt;<br/>
-   -date-recently-changed-color &lt;color&gt;, -rc-color &lt;color&gt;<br/>
-        Set the column color 0-255.
-
-   -filename-width &lt;width&gt;
-   -name-width &lt;width&gt;
-   -path-width &lt;width&gt;
-   -extension-width &lt;width&gt;
-   -size-width &lt;width&gt;
-   -date-created-width &lt;width&gt;, -dc-width &lt;width&gt;
-   -date-modified-width &lt;width&gt;, -dm-width &lt;width&gt;
-   -date-accessed-width &lt;width&gt;, -da-width &lt;width&gt;
-   -attributes-width &lt;width&gt;
-   -file-list-filename-width &lt;width&gt;
-   -run-count-width &lt;width&gt;
-   -date-run-width &lt;width&gt;
-   -date-recently-changed-width &lt;width&gt;, -rc-width &lt;width&gt;
-        Set the column width 0-200.
-
-   -no-digit-grouping
-        Don't group numbers with commas.
-   -size-leading-zero
-   -run-count-leading-zero
-        Format the number with leading zeros, use with -no-digit-grouping.
-   -double-quote
-        Wrap paths and filenames with double quotes.
+-name-color &lt;color&gt;<br/>
+-path-color &lt;color&gt;<br/>
+-extension-color &lt;color&gt;<br/>
+-size-color &lt;color&gt;<br/>
+-date-created-color &lt;color&gt;, -dc-color &lt;color&gt;<br/>
+-date-modified-color &lt;color&gt;, -dm-color &lt;color&gt;<br/>
+-date-accessed-color &lt;color&gt;, -da-color &lt;color&gt;<br/>
+-attributes-color &lt;color&gt;<br/>
+-file-list-filename-color &lt;color&gt;<br/>
+-run-count-color &lt;color&gt;<br/>
+-date-run-color &lt;color&gt;<br/>
+-date-recently-changed-color &lt;color&gt;, -rc-color &lt;color&gt;</dt>
+<dd>Set the column color 0-255.</dd>
+<br/>
+<dt>-filename-width &lt;width&gt;<br/>
+-name-width &lt;width&gt;<br/>
+-path-width &lt;width&gt;<br/>
+-extension-width &lt;width&gt;<br/>
+-size-width &lt;width&gt;<br/>
+-date-created-width &lt;width&gt;, -dc-width &lt;width&gt;<br/>
+-date-modified-width &lt;width&gt;, -dm-width &lt;width&gt;<br/>
+-date-accessed-width &lt;width&gt;, -da-width &lt;width&gt;<br/>
+-attributes-width &lt;width&gt;<br/>
+-file-list-filename-width &lt;width&gt;<br/>
+-run-count-width &lt;width&gt;<br/>
+-date-run-width &lt;width&gt;<br/>
+-date-recently-changed-width &lt;width&gt;, -rc-width &lt;width&gt;</dt>
+<dd>Set the column width 0-200.</dd>
+<br/>
+<dt>-no-digit-grouping</dt>
+<dd>Don't group numbers with commas.</dd>
+<dt>-size-leading-zero<br/>
+-run-count-leading-zero</dt>
+<dd>Format the number with leading zeros, use with -no-digit-grouping.</dd>
+<dt>-double-quote</dt>
+<dd>Wrap paths and filenames with double quotes.</dd>
 </dl>
 <br/><br/><br/>
 
