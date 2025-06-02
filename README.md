@@ -5,6 +5,13 @@ The Command Line Interface for Everything.
 [Install Guide](#Install-Guide)<br/>
 [Usage](#Usage)<br/>
 [Search Options](#Search-Options)<br/>
+[Sort Options](#Sort-Options)<br/>
+[Display Options](#Display-Options)<br/>
+[Export Options](#Export-Options)<br/>
+[General Options](#General-Options)<br/>
+[Search Syntax](#Search-Syntax)<br/>
+[Notes](#Notes)<br/>
+[See Also](#See-Also)<br/>
 <br/><br/><br/>
 
 
@@ -34,6 +41,16 @@ This location is set in the PATH environment variable, allowing es to be called 
 
 
 
+Usage
+-----
+
+<code>es.exe [options] search text</code>
+
+For example:
+
+<code>es everything ext:exe;ini</code>
+<br/><br/><br/>
+
 
 
 Search Options
@@ -50,12 +67,12 @@ Search Options
 <dd>Match full path and file name.</dd>
 <dt>-a, -diacritics</dt>
 <dd>Match diacritical marks.</dd>
-<br/><br/>
+<br/>
 <dt>-o &lt;offset&gt;, -offset &lt;offset&gt;</dt>
 <dd>Show results starting from offset.</dd>
 <dt>-n &lt;num&gt;, -max-results &lt;num&gt;</dt>
 <dd>Limit the number of results shown to &lt;num&gt;.</dd>
-<br/><br/>
+<br/>
 <dt>-path &lt;path&gt;</dt>
 <dd>Search for subfolders and files in path.</dd>
 <dt>-parent-path &lt;path&gt;</dt>
@@ -67,11 +84,25 @@ Search Options
 
 
 
-Usage
------
+Sort Options
+------------
 
-<code>es.exe [options] search text</code>
-
-For example:
-
-<code>es everything ext:exe;ini</code>
+<dl>
+<dt>-s</dt>
+<dd>sort by full path.</dl>dd>
+<dt>-sort <name[-ascending|-descending]>, -sort-<name>[-ascending|-descending]</dt>
+<dd>Set sort<br/>
+name=name|path|size|extension|date-created|date-modified|date-accessed|<br>
+attributes|file-list-file-name|run-count|date-recently-changed|date-run</dd>
+<dt>-sort-ascending, -sort-descending</dt>
+<dd>Set sort order</dd>
+<br/>
+<dt>/on, /o-n, /os, /o-s, /oe, /o-e, /od, /o-d</dt>
+<dd>DIR style sorts.<br/>
+        N = Name.<br/>
+        S = Size.<br/>
+        E = Extension.<br/>
+        D = Date modified.<br/>
+        - = Sort in descending order.</dd>
+</dl>
+<br/><br/><br/>
