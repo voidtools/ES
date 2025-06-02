@@ -79,6 +79,28 @@ Search Options
 <dd>Search for subfolders and files in the parent of path.</dd>
 <dt>-parent &lt;path&gt;</dt></dd>
 <dd>Search for files with the specified parent path.</dd>
+<br/>
+<dt>/ad</dt>
+<dd>Folders only.</dd>
+<dt>/a-d</dt>
+<dd>Files only.</dd>
+<dt>/a[RHSDAVNTPLCOIE]</dt>
+<dd>DIR style attributes search.<br/>
+R = Read only.<br/>
+H = Hidden.<br/>
+S = System.<br/>
+D = Directory.<br/>
+A = Archive.<br/>
+V = Device.<br/>
+N = Normal.<br/>
+T = Temporary.<br/>
+P = Sparse file.<br/>
+L = Reparse point.<br/>
+C = Compressed.<br/>
+O = Offline.<br/>
+I = Not content indexed.<br/>
+E = Encrypted.<br/>
+- = Prefix a flag with - to exclude.</dd>
 </dl>
 <br/><br/><br/>
 
@@ -214,7 +236,7 @@ General Options
 ---------------
 
 <dl>
-<dt>-h, -help</dl>
+<dt>-h, -help</dt>
 <dd>Display this help.</dd>
 <br/>
 <dt>-instance &lt;name&gt;</dt>
