@@ -314,7 +314,7 @@ Return codes from ES:
 <tr><td>6</td><td>Unknown switch.</td></tr>
 <tr><td>7</td><td>Failed to send Everything IPC a query.</td></tr>
 <tr><td>8</td><td>No Everything IPC window - make sure the Everything search client is running.</td></tr>
-<tr><td>9</td><td>No results found.</td></tr>
+<tr><td>9</td><td>No results found when used with <code>-no-result-error</code</td></tr>
 </table>
 <br/><br/><br/>
 
