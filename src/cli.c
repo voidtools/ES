@@ -374,13 +374,13 @@ const DWORD es_sort_names_to_ids[] =
 	EVERYTHING_IPC_SORT_DATE_RUN_DESCENDING,
 };
 
-#define MSGFLT_ALLOW		1
+#define _ES_MSGFLT_ALLOW		1
 
-typedef struct tagCHANGEFILTERSTRUCT 
+typedef struct _es_tagCHANGEFILTERSTRUCT 
 {
 	DWORD cbSize;
 	DWORD ExtStatus;
-}CHANGEFILTERSTRUCT, *PCHANGEFILTERSTRUCT;
+}_ES_CHANGEFILTERSTRUCT;
 
 typedef unsigned __int64 ES_UINT64;
 typedef BYTE ES_UTF8;
@@ -609,7 +609,7 @@ int es_sort_ascending = 0; // 0 = default, >0 = ascending, <0 = descending
 EVERYTHING_IPC_LIST *es_sort_list;
 HMODULE es_user32_hdll = 0;
 wchar_t *es_instance = 0;
-BOOL (WINAPI *es_pChangeWindowMessageFilterEx)(HWND hWnd,UINT message,DWORD action,PCHANGEFILTERSTRUCT pChangeFilterStruct) = 0;
+BOOL (WINAPI *es_pChangeWindowMessageFilterEx)(HWND hWnd,UINT message,DWORD action,_ES_CHANGEFILTERSTRUCT *pChangeFilterStruct) = 0;
 int es_highlight_color = FOREGROUND_GREEN|FOREGROUND_INTENSITY;
 int es_highlight = 0;
 int es_match_whole_word = 0;
@@ -3304,11 +3304,11 @@ int main(int argc,char **argv)
 	
 	if (es_user32_hdll)
 	{
-		es_pChangeWindowMessageFilterEx = (BOOL (WINAPI *)(HWND hWnd,UINT message,DWORD action,PCHANGEFILTERSTRUCT pChangeFilterStruct))GetProcAddress(es_user32_hdll,"ChangeWindowMessageFilterEx");
+		es_pChangeWindowMessageFilterEx = (BOOL (WINAPI *)(HWND hWnd,UINT message,DWORD action,_ES_CHANGEFILTERSTRUCT *pChangeFilterStruct))GetProcAddress(es_user32_hdll,"ChangeWindowMessageFilterEx");
 
 		if (es_pChangeWindowMessageFilterEx)
 		{
-			es_pChangeWindowMessageFilterEx(hwnd,WM_COPYDATA,MSGFLT_ALLOW,0);
+			es_pChangeWindowMessageFilterEx(hwnd,WM_COPYDATA,_ES_MSGFLT_ALLOW,0);
 		}
 	}
 	
