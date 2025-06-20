@@ -8,6 +8,7 @@
 // Generated from the TEXTINCLUDE 2 resource.
 //
 #include "afxres.h"
+#include "..\src\version.h"
 
 /////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS
@@ -71,12 +72,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "voidtools"
             VALUE "FileDescription", "Everything Command Line Interface"
-            VALUE "FileVersion", "1.1.0.30"
+            VALUE "FileVersion", VERSION_TEXT
             VALUE "InternalName", "es"
-            VALUE "LegalCopyright", "Copyright © 2025 voidtools"
+            VALUE "LegalCopyright", "Copyright © " VERSION_YEAR_TEXT " voidtools"
             VALUE "OriginalFilename", "es.exe"
             VALUE "ProductName", "es"
-            VALUE "ProductVersion", "1.1.0.30"
+            VALUE "ProductVersion", VERSION_TEXT
         END
     END
     BLOCK "VarFileInfo"
