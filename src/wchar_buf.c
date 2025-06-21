@@ -99,7 +99,7 @@ void wchar_buf_cat_wchar_string_n(wchar_buf_t *wcbuf,const wchar_t *s,SIZE_T sle
 		SIZE_T new_size_in_wchars;
 		wchar_t *new_buf;
 
-		new_size_in_wchars = wcbuf->size_in_wchars * 2;
+		new_size_in_wchars = safe_size_mul_2(wcbuf->size_in_wchars);
 		if (new_size_in_wchars < WCHAR_BUF_CAT_MIN_ALLOC_SIZE)
 		{
 			new_size_in_wchars = WCHAR_BUF_CAT_MIN_ALLOC_SIZE;
@@ -215,19 +215,22 @@ void wchar_buf_printf(wchar_buf_t *wcbuf,const ES_UTF8 *format,...)
 		
 	va_start(argptr,format);
 	
-	{
-		utf8_buf_t cbuf;
-		
-		utf8_buf_init(&cbuf);
-	
-		utf8_buf_vprintf(&cbuf,format,argptr);
-		
-		wchar_buf_copy_utf8_string(wcbuf,cbuf.buf);
-
-		utf8_buf_kill(&cbuf);
-	}
+	wchar_buf_vprintf(wcbuf,format,argptr);
 	
 	va_end(argptr);
+}
+
+void wchar_buf_vprintf(wchar_buf_t *wcbuf,const ES_UTF8 *format,va_list argptr)
+{
+	utf8_buf_t cbuf;
+	
+	utf8_buf_init(&cbuf);
+
+	utf8_buf_vprintf(&cbuf,format,argptr);
+	
+	wchar_buf_copy_utf8_string(wcbuf,cbuf.buf);
+
+	utf8_buf_kill(&cbuf);
 }
 
 void wchar_buf_print_UINT64(wchar_buf_t *wcbuf,ES_UINT64 value)
@@ -259,4 +262,28 @@ void wchar_buf_cat_printf(wchar_buf_t *wcbuf,const ES_UTF8 *format,...)
 void wchar_buf_cat_print_UINT64(wchar_buf_t *wcbuf,ES_UINT64 value)
 {
 	wchar_buf_cat_printf(wcbuf,"%I64u",value);
+}
+
+void wchar_buf_path_cat_filename(const wchar_t *path,const wchar_t *name,wchar_buf_t *wcbuf)
+{
+	wchar_buf_copy_wchar_string(wcbuf,path);
+
+	wchar_buf_cat_path_separator(wcbuf);
+	
+	wchar_buf_cat_wchar_string(wcbuf,name);
+}
+
+void wchar_buf_cat_path_separator(wchar_buf_t *wcbuf)
+{
+	if (wcbuf->length_in_wchars)
+	{
+		if (!wchar_string_is_trailing_path_separator_n(wcbuf->buf,wcbuf->length_in_wchars))
+		{
+			int path_separator;
+			
+			path_separator = wchar_string_get_path_separator_from_root(wcbuf->buf);
+
+			wchar_buf_cat_wchar(wcbuf,path_separator);
+		}
+	}
 }

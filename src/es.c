@@ -81,23 +81,16 @@
 
 #include "es.h"
 
-#ifdef _DEBUG
-#include <assert.h>	// assert()
-#define ES_ASSERT(exp) assert(exp)
-#else
-#define ES_ASSERT(exp)
-#endif
-
 #define ES_COPYDATA_IPCTEST_QUERYCOMPLETEW		0
 #define ES_COPYDATA_IPCTEST_QUERYCOMPLETE2W		1
 
-#define ES_EXPORT_NONE		0
-#define ES_EXPORT_CSV		1
-#define ES_EXPORT_EFU		2
-#define ES_EXPORT_TXT		3
-#define ES_EXPORT_M3U		4
-#define ES_EXPORT_M3U8		5
-#define ES_EXPORT_TSV		6
+#define ES_EXPORT_TYPE_NONE			0
+#define ES_EXPORT_TYPE_CSV			1
+#define ES_EXPORT_TYPE_EFU			2
+#define ES_EXPORT_TYPE_TXT			3
+#define ES_EXPORT_TYPE_M3U			4
+#define ES_EXPORT_TYPE_M3U8			5
+#define ES_EXPORT_TYPE_TSV			6
 
 #define ES_EXPORT_BUF_SIZE			65536
 
@@ -196,60 +189,6 @@
 #define	EVERYTHING3_PROPERTY_VALUE_TYPE_BYTE_GET_TEXT		20 // Everything3_GetResultPropertyBYTE
 #define	EVERYTHING3_PROPERTY_VALUE_TYPE_PROPVARIANT			21 // Everything3_GetResultPropertyPropVariant
 
-#define ES_COLUMN_FLAG_HIGHLIGHT							0x00000001
-
-enum 
-{
-	ES_PROPERTY_FORMAT_NONE,
-	ES_PROPERTY_FORMAT_TEXT30, // 30 characters
-	ES_PROPERTY_FORMAT_TEXT47, // 47 characters
-	ES_PROPERTY_FORMAT_SIZE, // 123456789
-	ES_PROPERTY_FORMAT_EXTENSION, // 4 characters
-	ES_PROPERTY_FORMAT_DATE, // 2025-06-16 21:22:23
-	ES_PROPERTY_FORMAT_ATTRIBUTES, // RASH
-	ES_PROPERTY_FORMAT_NUMBER, // 12345678	
-	ES_PROPERTY_FORMAT_HEX_NUMBER, // 0xdeadbeef
-	ES_PROPERTY_FORMAT_DIMENSIONS, // 123x456
-	ES_PROPERTY_FORMAT_FIXED_Q1K, // 0.123
-	ES_PROPERTY_FORMAT_FIXED_Q1M, // 0.123456
-	ES_PROPERTY_FORMAT_DURATION, // 1:23:45
-	ES_PROPERTY_FORMAT_DATA1, // data
-	ES_PROPERTY_FORMAT_DATA2, // data
-	ES_PROPERTY_FORMAT_DATA4, // crc
-	ES_PROPERTY_FORMAT_DATA8, // crc64
-	ES_PROPERTY_FORMAT_DATA16, // md5
-	ES_PROPERTY_FORMAT_DATA20, // sha1
-	ES_PROPERTY_FORMAT_DATA32, // sha256
-	ES_PROPERTY_FORMAT_DATA48, // sha384
-	ES_PROPERTY_FORMAT_DATA64, // sha512
-	ES_PROPERTY_FORMAT_DATA128, // data
-	ES_PROPERTY_FORMAT_DATA256, // data
-	ES_PROPERTY_FORMAT_DATA512, // data
-	ES_PROPERTY_FORMAT_YESNO, // 30 characters
-	ES_PROPERTY_FORMAT_COUNT,
-};
-
-typedef struct es_basic_property_name_to_id_s
-{
-	const char *name;
-	WORD id;
-	
-}es_basic_property_name_to_id_t;
-
-typedef struct es_property_name_to_id_s
-{
-	const char *name;
-	WORD id;
-	
-}es_property_name_to_id_t;
-
-typedef struct es_color_argv_to_property_id_s
-{
-	const char *name;
-	WORD id;
-	
-}es_color_argv_to_property_id_t;
-
 #define _ES_MSGFLT_ALLOW		1
 
 typedef struct _es_tagCHANGEFILTERSTRUCT 
@@ -257,40 +196,6 @@ typedef struct _es_tagCHANGEFILTERSTRUCT
 	DWORD cbSize;
 	DWORD ExtStatus;
 }_ES_CHANGEFILTERSTRUCT;
-
-typedef struct es_column_color_s
-{
-	// EVERYTHING3_PROPERTY_ID_*
-	DWORD property_id;
-	
-	// the SetConsoleTextAttribute color
-	WORD color;
-	
-}es_column_color_t;
-
-typedef struct es_column_width_s
-{
-	// EVERYTHING3_PROPERTY_ID_*
-	DWORD property_id;
-	
-	// the SetConsoleTextAttribute color
-	int width;
-	
-}es_column_width_t;
-
-typedef struct es_column_s
-{
-	// order list.
-	struct es_column_s *order_next;
-	struct es_column_s *order_prev;
-	
-	// EVERYTHING3_PROPERTY_ID_*
-	DWORD property_id;
-	
-	// zero or more ES_COLUMN_FLAG_*
-	DWORD flags;
-	
-}es_column_t;
 
 // IPC pipe message
 typedef struct _everything3_message_s
@@ -325,6 +230,7 @@ typedef struct _everything3_result_list_property_request_s
 	
 }_everything3_result_list_property_request_t;
 
+static int _es_main(void);
 static void es_write_wchar_string(const wchar_t *text);
 static void es_write_utf8_string(const ES_UTF8 *text);
 void es_fwrite_utf8_string(const ES_UTF8 *text);
@@ -335,11 +241,15 @@ void es_write_highlighted(const wchar_t *text);
 void es_write_UINT64(ES_UINT64 value);
 void es_write_dword(DWORD value);
 void es_format_number(ES_UINT64 number,wchar_buf_t *wcbuf);
-int es_sendquery(void);
-int es_sendquery2(void);
-int es_sendquery3(void);
-int es_compare_list_items(const void *a,const void *b);
-void es_write_result_count(DWORD result_count);
+static BOOL es_sendquery(void);
+static BOOL es_sendquery2(void);
+static BOOL es_sendquery3(void);
+int es_compare_list_items(const EVERYTHING_IPC_ITEM *a,const EVERYTHING_IPC_ITEM *b);
+static void es_write_result_count(DWORD result_count);
+static void es_output_text_property(const wchar_t *value);
+static void es_output_attributes(DWORD file_attributes);
+static void es_output_separator(void);
+static void es_output_newline(void);
 void es_listresultsW(EVERYTHING_IPC_LIST *list);
 void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count);
 void es_write_total_size(EVERYTHING_IPC_LIST2 *list,int count);
@@ -348,11 +258,6 @@ void es_help(void);
 HWND es_find_ipc_window(void);
 int es_check_option_utf8_string(const wchar_t *param,const ES_UTF8 *s);
 int es_check_option_wchar_string(const wchar_t *param,const wchar_t *s);
-static int es_column_compare(const es_column_t *a,const void *property_id);
-static es_column_t *es_column_find(DWORD property_id);
-static void es_column_insert_order(es_column_t *column);
-static void es_column_remove_order(es_column_t *column);
-static es_column_t *es_column_add(DWORD property_id);
 void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,DWORD property_highlight);
 void es_format_dir(wchar_buf_t *wcbuf);
 void es_format_size(ES_UINT64 size,wchar_buf_t *wcbuf);
@@ -371,23 +276,15 @@ void es_get_command_argv(wchar_buf_t *wcbuf);
 void es_expect_command_argv(wchar_buf_t *wcbuf);
 void es_get_argv(wchar_buf_t *wcbuf);
 void es_expect_argv(wchar_buf_t *wcbuf);
-int unicode_is_ws(const wchar_t c);
-static int es_column_color_compare(const es_column_color_t *a,const void *property_id);
-static void es_set_color(DWORD property_id,WORD color);
-static int es_column_width_compare(const es_column_width_t *a,const void *property_id);
-static void es_set_column_wide(DWORD property_id,int width);
 void es_fill(int count,int utf8ch);
 int es_is_valid_key(INPUT_RECORD *ir);
-void config_write_int(HANDLE file_handle,const char *name,int value);
-void config_write_string(HANDLE file_handle,const char *name,const wchar_t *value);
-static int _es_save_settings(void);
-int config_read_int(const char *filename,const char *name,int default_value);
-int config_read_string(const char *name,const char *filename,wchar_buf_t *wcbuf);
+static BOOL _es_save_settings_with_filename(const wchar_t *filename);
+static BOOL _es_save_settings_with_appdata(int is_appdata);
+static BOOL _es_save_settings(void);
 static void _es_load_settings(void);
-static void es_column_remove(DWORD property_id);
 void es_append_filter(wchar_buf_t *wcbuf,const wchar_t *filter);
 void es_do_run_history_command(void);
-int es_check_sorts(const wchar_t *argv);
+static BOOL es_check_sorts(const wchar_t *argv);
 static void es_wait_for_db_loaded(void);
 static void es_wait_for_db_not_busy(void);
 static int es_is_literal_switch(const wchar_t *s);
@@ -410,1110 +307,49 @@ static SIZE_T _everything3_stream_read_len_vlq(_everything3_stream_t *stream);
 static BOOL es_read_pipe(HANDLE pipe_handle,void *buf,SIZE_T buf_size);
 static BOOL es_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size);
 static int es_property_name_to_id_compare(const char *a,const char *name);
-static DWORD es_property_id_from_name(const char *name);
-static es_column_color_t *es_column_color_find(DWORD property_id);
-static int es_column_is_right_aligned(DWORD property_id);
-static es_column_width_t *es_column_width_find(DWORD property_id);
-static int es_column_get_width(DWORD property_id);
-static int es_check_color_param(const wchar_t *argv,int *out_basic_property_name_i);
-static int es_check_column_param(const wchar_t *argv);
+//static DWORD es_property_id_from_name(const char *name);
+static BOOL es_column_is_right_aligned(DWORD property_id);
+static BOOL es_check_color_param(const wchar_t *argv,int *out_basic_property_name_i);
+static BOOL es_check_column_param(const wchar_t *argv);
 static int es_get_ipc_sort_type_from_property_id(DWORD property_id,int sort_ascending);
-static void es_column_clear_all(void);
 static void es_column_color_clear_all(void);
 static void es_column_width_clear_all(void);
-static BYTE es_get_property_format(DWORD property_id);
 static void es_get_window_classname(wchar_buf_t *wcbuf);
 static HANDLE es_connect_ipc_pipe(void);
 static void es_get_folder_size(const wchar_t *filename);
 static void es_get_reply_window(void);
-static int _es_main(void);
-
-// property name to IDs are sorted alphabetically.
-// the '-' in the name is ignored when sorting.
-// name is always lowercase ASCII.
-const es_basic_property_name_to_id_t es_basic_property_name_to_id_array[] = 
-{
-	{"attrib",EVERYTHING3_PROPERTY_ID_ATTRIBUTES},
-	{"attribs",EVERYTHING3_PROPERTY_ID_ATTRIBUTES},
-	{"attributes",EVERYTHING3_PROPERTY_ID_ATTRIBUTES},
-	{"da",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED},
-	{"date-accessed",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED},
-	{"date-created",EVERYTHING3_PROPERTY_ID_DATE_CREATED},
-	{"date-modified",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED},
-	{"date-recently-changed",EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED},
-	{"date-run",EVERYTHING3_PROPERTY_ID_DATE_RUN},
-	{"dc",EVERYTHING3_PROPERTY_ID_DATE_CREATED},
-	{"dm",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED},
-	{"drc",EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED},
-	{"ext",EVERYTHING3_PROPERTY_ID_EXTENSION},
-	{"extension",EVERYTHING3_PROPERTY_ID_EXTENSION},
-	{"file-list-file-name",EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME},
-	{"file-name",EVERYTHING3_PROPERTY_ID_FULL_PATH},
-	{"file-name-column",EVERYTHING3_PROPERTY_ID_FULL_PATH},
-	{"flfn",EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME},
-	{"full-path",EVERYTHING3_PROPERTY_ID_FULL_PATH},
-	{"full-path-and-name",EVERYTHING3_PROPERTY_ID_FULL_PATH},
-	{"name",EVERYTHING3_PROPERTY_ID_NAME},
-	{"path",EVERYTHING3_PROPERTY_ID_PATH},
-	{"path-and-name",EVERYTHING3_PROPERTY_ID_FULL_PATH},
-	{"path-column",EVERYTHING3_PROPERTY_ID_PATH}, // -path-column because -path <path> sets the path filter.
-	{"rc",EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED},
-	{"recent-change",EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED},
-	{"run-count",EVERYTHING3_PROPERTY_ID_RUN_COUNT},
-	{"size",EVERYTHING3_PROPERTY_ID_SIZE},
-};
-
-#define ES_BASIC_PROPERTY_NAME_TO_ID_COUNT (sizeof(es_basic_property_name_to_id_array) / sizeof(es_basic_property_name_to_id_t))
-
-// property name to IDs are sorted alphabetically.
-// the '-' in the name is ignored when sorting.
-// name is always lowercase ASCII.
-const es_property_name_to_id_t es_property_name_to_id_array[] =
-{
-	{"0",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_0},
-	{"1",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_1},
-	{"2",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_2},
-	{"3",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_3},
-	{"35mm-focal-length",EVERYTHING3_PROPERTY_ID_35MM_FOCAL_LENGTH},
-	{"4",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_4},
-	{"5",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_5},
-	{"6",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_6},
-	{"7",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_7},
-	{"8",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_8},
-	{"9",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_9},
-	{"a",EVERYTHING3_PROPERTY_ID_COLUMN_A},
-	{"ads-ansi",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_ANSI},
-	{"ads-count",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_COUNT},
-	{"ads-hex",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_HEX},
-	{"ads-names",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_NAMES},
-	{"ads-text-plain",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_TEXT_PLAIN},
-	{"ads-utf-16",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF16LE},
-	{"ads-utf-16be",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF16BE},
-	{"ads-utf-8",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF8},
-	{"album",EVERYTHING3_PROPERTY_ID_ALBUM},
-	{"album-artist",EVERYTHING3_PROPERTY_ID_ALBUM_ARTIST},
-	{"alignment-requirement",EVERYTHING3_PROPERTY_ID_ALIGNMENT_REQUIREMENT},
-	{"allocation-size",EVERYTHING3_PROPERTY_ID_ALLOCATION_SIZE},
-	{"alternate-data-stream-ansi",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_ANSI},
-	{"alternate-data-stream-count",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_COUNT},
-	{"alternate-data-stream-hex",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_HEX},
-	{"alternate-data-stream-names",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_NAMES},
-	{"alternate-data-stream-text-plain",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_TEXT_PLAIN},
-	{"alternate-data-stream-utf-16",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF16LE},
-	{"alternate-data-stream-utf-16be",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF16BE},
-	{"alternate-data-stream-utf-8",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF8},
-	{"altitude",EVERYTHING3_PROPERTY_ID_ALTITUDE},
-	{"aperture",EVERYTHING3_PROPERTY_ID_APERTURE},
-	{"artist",EVERYTHING3_PROPERTY_ID_ARTIST},
-	{"aspect-ratio",EVERYTHING3_PROPERTY_ID_ASPECT_RATIO},
-	{"attr",EVERYTHING3_PROPERTY_ID_ATTRIBUTES},
-	{"attrib",EVERYTHING3_PROPERTY_ID_ATTRIBUTES},
-	{"attributes",EVERYTHING3_PROPERTY_ID_ATTRIBUTES},
-	{"audio-bit-rate",EVERYTHING3_PROPERTY_ID_AUDIO_BIT_RATE},
-	{"audio-bits-per-sample",EVERYTHING3_PROPERTY_ID_AUDIO_BITS_PER_SAMPLE},
-	{"audio-channels",EVERYTHING3_PROPERTY_ID_AUDIO_CHANNELS},
-	{"audio-format",EVERYTHING3_PROPERTY_ID_AUDIO_FORMAT},
-	{"audio-sample-rate",EVERYTHING3_PROPERTY_ID_AUDIO_SAMPLE_RATE},
-	{"audio-track-count",EVERYTHING3_PROPERTY_ID_AUDIO_TRACK_COUNT},
-	{"author",EVERYTHING3_PROPERTY_ID_AUTHORS},
-	{"authors",EVERYTHING3_PROPERTY_ID_AUTHORS},
-	{"author-url",EVERYTHING3_PROPERTY_ID_AUTHOR_URL},
-	{"available-free-disk-size",EVERYTHING3_PROPERTY_ID_AVAILABLE_FREE_DISK_SIZE},
-	{"b",EVERYTHING3_PROPERTY_ID_COLUMN_B},
-	{"base-name",EVERYTHING3_PROPERTY_ID_NAME},
-	{"beats-per-minute",EVERYTHING3_PROPERTY_ID_BEATS_PER_MINUTE},
-	{"binary-type",EVERYTHING3_PROPERTY_ID_BINARY_TYPE},
-	{"birth-object-id",EVERYTHING3_PROPERTY_ID_BIRTH_OBJECT_ID},
-	{"birth-volume-id",EVERYTHING3_PROPERTY_ID_BIRTH_VOLUME_ID},
-	{"bit-depth",EVERYTHING3_PROPERTY_ID_BIT_DEPTH},
-	{"bit-rate",EVERYTHING3_PROPERTY_ID_TOTAL_BIT_RATE},
-	{"bom",EVERYTHING3_PROPERTY_ID_BYTE_ORDER_MARK},
-	{"brightness",EVERYTHING3_PROPERTY_ID_BRIGHTNESS},
-	{"byte-offset-for-partition-alignment",EVERYTHING3_PROPERTY_ID_BYTE_OFFSET_FOR_PARTITION_ALIGNMENT},
-	{"byte-offset-for-sector-alignment",EVERYTHING3_PROPERTY_ID_BYTE_OFFSET_FOR_SECTOR_ALIGNMENT},
-	{"byte-order-mark",EVERYTHING3_PROPERTY_ID_BYTE_ORDER_MARK},
-	{"c",EVERYTHING3_PROPERTY_ID_COLUMN_C},
-	{"camera-maker",EVERYTHING3_PROPERTY_ID_CAMERA_MAKER},
-	{"camera-model",EVERYTHING3_PROPERTY_ID_CAMERA_MODEL},
-	{"camera-serial-number",EVERYTHING3_PROPERTY_ID_CAMERA_SERIAL_NUMBER},
-	{"case-sensitive-dir",EVERYTHING3_PROPERTY_ID_CASE_SENSITIVE_DIR},
-	{"category",EVERYTHING3_PROPERTY_ID_CATEGORY},
-	{"character-count",EVERYTHING3_PROPERTY_ID_CHARACTER_COUNT},
-	{"character-encoding",EVERYTHING3_PROPERTY_ID_CHARACTER_ENCODING},
-	{"child-count",EVERYTHING3_PROPERTY_ID_CHILD_COUNT},
-	{"child-count-from-disk",EVERYTHING3_PROPERTY_ID_CHILD_COUNT_FROM_DISK},
-	{"child-file-count",EVERYTHING3_PROPERTY_ID_CHILD_FILE_COUNT},
-	{"child-file-count-from-disk",EVERYTHING3_PROPERTY_ID_CHILD_FILE_COUNT_FROM_DISK},
-	{"child-folder-count",EVERYTHING3_PROPERTY_ID_CHILD_FOLDER_COUNT},
-	{"child-folder-count-from-disk",EVERYTHING3_PROPERTY_ID_CHILD_FOLDER_COUNT_FROM_DISK},
-	{"child-occurrence-count",EVERYTHING3_PROPERTY_ID_CHILD_OCCURRENCE_COUNT},
-	{"cluster-size",EVERYTHING3_PROPERTY_ID_CLUSTER_SIZE},
-	{"col-0",EVERYTHING3_PROPERTY_ID_COLUMN_0},
-	{"col-1",EVERYTHING3_PROPERTY_ID_COLUMN_1},
-	{"col-2",EVERYTHING3_PROPERTY_ID_COLUMN_2},
-	{"col-3",EVERYTHING3_PROPERTY_ID_COLUMN_3},
-	{"col-4",EVERYTHING3_PROPERTY_ID_COLUMN_4},
-	{"col-5",EVERYTHING3_PROPERTY_ID_COLUMN_5},
-	{"col-6",EVERYTHING3_PROPERTY_ID_COLUMN_6},
-	{"col-7",EVERYTHING3_PROPERTY_ID_COLUMN_7},
-	{"col-8",EVERYTHING3_PROPERTY_ID_COLUMN_8},
-	{"col-9",EVERYTHING3_PROPERTY_ID_COLUMN_9},
-	{"col-a",EVERYTHING3_PROPERTY_ID_COLUMN_A},
-	{"col-b",EVERYTHING3_PROPERTY_ID_COLUMN_B},
-	{"col-c",EVERYTHING3_PROPERTY_ID_COLUMN_C},
-	{"col-d",EVERYTHING3_PROPERTY_ID_COLUMN_D},
-	{"col-e",EVERYTHING3_PROPERTY_ID_COLUMN_E},
-	{"col-f",EVERYTHING3_PROPERTY_ID_COLUMN_F},
-	{"color-representation",EVERYTHING3_PROPERTY_ID_COLOR_REPRESENTATION},
-	{"column-0",EVERYTHING3_PROPERTY_ID_COLUMN_0},
-	{"column-1",EVERYTHING3_PROPERTY_ID_COLUMN_1},
-	{"column-2",EVERYTHING3_PROPERTY_ID_COLUMN_2},
-	{"column-3",EVERYTHING3_PROPERTY_ID_COLUMN_3},
-	{"column-4",EVERYTHING3_PROPERTY_ID_COLUMN_4},
-	{"column-5",EVERYTHING3_PROPERTY_ID_COLUMN_5},
-	{"column-6",EVERYTHING3_PROPERTY_ID_COLUMN_6},
-	{"column-7",EVERYTHING3_PROPERTY_ID_COLUMN_7},
-	{"column-8",EVERYTHING3_PROPERTY_ID_COLUMN_8},
-	{"column-9",EVERYTHING3_PROPERTY_ID_COLUMN_9},
-	{"column-a",EVERYTHING3_PROPERTY_ID_COLUMN_A},
-	{"column-b",EVERYTHING3_PROPERTY_ID_COLUMN_B},
-	{"column-c",EVERYTHING3_PROPERTY_ID_COLUMN_C},
-	{"column-d",EVERYTHING3_PROPERTY_ID_COLUMN_D},
-	{"column-e",EVERYTHING3_PROPERTY_ID_COLUMN_E},
-	{"column-f",EVERYTHING3_PROPERTY_ID_COLUMN_F},
-	{"comment",EVERYTHING3_PROPERTY_ID_COMMENT},
-	{"company",EVERYTHING3_PROPERTY_ID_COMPANY},
-	{"composer",EVERYTHING3_PROPERTY_ID_COMPOSER},
-	{"compressed-bits-per-pixel",EVERYTHING3_PROPERTY_ID_COMPRESSED_BITS_PER_PIXEL},
-	{"compressed-size",EVERYTHING3_PROPERTY_ID_COMPRESSED_SIZE},
-	{"compression",EVERYTHING3_PROPERTY_ID_COMPRESSION},
-	{"compression-chunk-shift",EVERYTHING3_PROPERTY_ID_COMPRESSION_CHUNK_SHIFT},
-	{"compression-cluster-shift",EVERYTHING3_PROPERTY_ID_COMPRESSION_CLUSTER_SHIFT},
-	{"compression-format",EVERYTHING3_PROPERTY_ID_COMPRESSION_FORMAT},
-	{"compression-ratio",EVERYTHING3_PROPERTY_ID_COMPRESSION_RATIO},
-	{"compression-unit-shift",EVERYTHING3_PROPERTY_ID_COMPRESSION_UNIT_SHIFT},
-	{"computer",EVERYTHING3_PROPERTY_ID_COMPUTER},
-	{"conductor",EVERYTHING3_PROPERTY_ID_CONDUCTOR},
-	{"container-file-count",EVERYTHING3_PROPERTY_ID_CONTAINER_FILE_COUNT},
-	{"container-filenames",EVERYTHING3_PROPERTY_ID_CONTAINER_FILENAMES},
-	{"content",EVERYTHING3_PROPERTY_ID_CONTENT},
-	{"content-created",EVERYTHING3_PROPERTY_ID_DATE_CONTENT_CREATED},
-	{"content-provider",EVERYTHING3_PROPERTY_ID_CONTENT_DISTRIBUTOR},
-	{"content-status",EVERYTHING3_PROPERTY_ID_CONTENT_STATUS},
-	{"content-type",EVERYTHING3_PROPERTY_ID_CONTENT_TYPE},
-	{"contrast",EVERYTHING3_PROPERTY_ID_CONTRAST},
-	{"copyright",EVERYTHING3_PROPERTY_ID_COPYRIGHT},
-	{"crc-32",EVERYTHING3_PROPERTY_ID_CRC32},
-	{"crc-64",EVERYTHING3_PROPERTY_ID_CRC64},
-	{"custom-property-0",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_0},
-	{"custom-property-1",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_1},
-	{"custom-property-2",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_2},
-	{"custom-property-3",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_3},
-	{"custom-property-4",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_4},
-	{"custom-property-5",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_5},
-	{"custom-property-6",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_6},
-	{"custom-property-7",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_7},
-	{"custom-property-8",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_8},
-	{"custom-property-9",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_9},
-	{"d",EVERYTHING3_PROPERTY_ID_COLUMN_D},
-	{"da",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED},
-	{"da-date",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_DATE},
-	{"date-accessed",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED},
-	{"date-accessed-date",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_DATE},
-	{"date-accessed-time",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_TIME},
-	{"date-acquired",EVERYTHING3_PROPERTY_ID_DATE_ACQUIRED},
-	{"date-changed",EVERYTHING3_PROPERTY_ID_DATE_CHANGED},
-	{"date-created",EVERYTHING3_PROPERTY_ID_DATE_CREATED},
-	{"date-created-date",EVERYTHING3_PROPERTY_ID_DATE_CREATED_DATE},
-	{"date-created-time",EVERYTHING3_PROPERTY_ID_DATE_CREATED_TIME},
-	{"date-deleted",EVERYTHING3_PROPERTY_ID_DATE_DELETED},
-	{"date-encoded",EVERYTHING3_PROPERTY_ID_DATE_ENCODED},
-	{"date-indexed",EVERYTHING3_PROPERTY_ID_DATE_INDEXED},
-	{"date-media-created",EVERYTHING3_PROPERTY_ID_DATE_ENCODED},
-	{"date-modified",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED},
-	{"date-modified-date",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_DATE},
-	{"date-modified-time",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_TIME},
-	{"date-printed",EVERYTHING3_PROPERTY_ID_DATE_PRINTED},
-	{"date-received",EVERYTHING3_PROPERTY_ID_DATE_RECEIVED},
-	{"date-recently-changed",EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED},
-	{"date-released",EVERYTHING3_PROPERTY_ID_DATE_RELEASED},
-	{"date-run",EVERYTHING3_PROPERTY_ID_DATE_RUN},
-	{"date-saved",EVERYTHING3_PROPERTY_ID_DATE_SAVED},
-	{"date-sent",EVERYTHING3_PROPERTY_ID_DATE_SENT},
-	{"date-taken",EVERYTHING3_PROPERTY_ID_DATE_TAKEN},
-	{"da-time",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_TIME},
-	{"day-accessed",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_DATE},
-	{"day-created",EVERYTHING3_PROPERTY_ID_DATE_CREATED_DATE},
-	{"day-modified",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_DATE},
-	{"dc",EVERYTHING3_PROPERTY_ID_DATE_CREATED},
-	{"dc-date",EVERYTHING3_PROPERTY_ID_DATE_CREATED_DATE},
-	{"dc-time",EVERYTHING3_PROPERTY_ID_DATE_CREATED_TIME},
-	{"delete-pending",EVERYTHING3_PROPERTY_ID_DELETE_PENDING},
-	{"descendant-count",EVERYTHING3_PROPERTY_ID_DESCENDANT_COUNT},
-	{"descendant-file-count",EVERYTHING3_PROPERTY_ID_DESCENDANT_FILE_COUNT},
-	{"descendant-folder-count",EVERYTHING3_PROPERTY_ID_DESCENDANT_FOLDER_COUNT},
-	{"descendant-occurrence-count",EVERYTHING3_PROPERTY_ID_DESCENDANT_OCCURRENCE_COUNT},
-	{"description",EVERYTHING3_PROPERTY_ID_DESCRIPTION},
-	{"digital-signature-name",EVERYTHING3_PROPERTY_ID_DIGITAL_SIGNATURE_NAME},
-	{"digital-signature-timestamp",EVERYTHING3_PROPERTY_ID_DIGITAL_SIGNATURE_TIMESTAMP},
-	{"digital-zoom",EVERYTHING3_PROPERTY_ID_DIGITAL_ZOOM},
-	{"dimensions",EVERYTHING3_PROPERTY_ID_DIMENSIONS},
-	{"director",EVERYTHING3_PROPERTY_ID_DIRECTORS},
-	{"display-full-path",EVERYTHING3_PROPERTY_ID_DISPLAY_FULL_PATH},
-	{"display-name",EVERYTHING3_PROPERTY_ID_DISPLAY_NAME},
-	{"dm",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED},
-	{"dm-date",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_DATE},
-	{"dm-time",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_TIME},
-	{"document-content-type",EVERYTHING3_PROPERTY_ID_DOCUMENT_CONTENT_TYPE},
-	{"domain-id",EVERYTHING3_PROPERTY_ID_DOMAIN_ID},
-	{"drive-type",EVERYTHING3_PROPERTY_ID_DRIVE_TYPE},
-	{"duration",EVERYTHING3_PROPERTY_ID_LENGTH},
-	{"e",EVERYTHING3_PROPERTY_ID_COLUMN_E},
-	{"effective-physical-bytes-per-sector-for-atomicity",EVERYTHING3_PROPERTY_ID_EFFECTIVE_PHYSICAL_BYTES_PER_SECTOR_FOR_ATOMICITY},
-	{"encoded-by",EVERYTHING3_PROPERTY_ID_ENCODED_BY},
-	{"encryption-status",EVERYTHING3_PROPERTY_ID_ENCRYPTION_STATUS},
-	{"end-of-file",EVERYTHING3_PROPERTY_ID_END_OF_FILE},
-	{"exif-version",EVERYTHING3_PROPERTY_ID_EXIF_VERSION},
-	{"exposure-bias",EVERYTHING3_PROPERTY_ID_EXPOSURE_BIAS},
-	{"exposure-program",EVERYTHING3_PROPERTY_ID_EXPOSURE_PROGRAM},
-	{"exposure-time",EVERYTHING3_PROPERTY_ID_EXPOSURE_TIME},
-	{"ext",EVERYTHING3_PROPERTY_ID_EXTENSION},
-	{"extension",EVERYTHING3_PROPERTY_ID_EXTENSION},
-	{"extension-frequency",EVERYTHING3_PROPERTY_ID_EXTENSION_FREQUENCY},
-	{"extension-length",EVERYTHING3_PROPERTY_ID_EXTENSION_LENGTH},
-	{"f",EVERYTHING3_PROPERTY_ID_COLUMN_F},
-	{"file-id",EVERYTHING3_PROPERTY_ID_FILE_ID},
-	{"file-list-filename",EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME},
-	{"file-list-full-path",EVERYTHING3_PROPERTY_ID_FILE_LIST_FULL_PATH},
-	{"file-name",EVERYTHING3_PROPERTY_ID_FULL_PATH},
-	{"file-signature",EVERYTHING3_PROPERTY_ID_FILE_SIGNATURE},
-	{"file-storage-info-flags",EVERYTHING3_PROPERTY_ID_FILE_STORAGE_INFO_FLAGS},
-	{"file-system",EVERYTHING3_PROPERTY_ID_FILE_SYSTEM},
-	{"file-system-flags",EVERYTHING3_PROPERTY_ID_FILE_SYSTEM_FLAGS},
-	{"first-128-bytes",EVERYTHING3_PROPERTY_ID_FIRST_128_BYTES},
-	{"first-16-bytes",EVERYTHING3_PROPERTY_ID_FIRST_16_BYTES},
-	{"first-256-bytes",EVERYTHING3_PROPERTY_ID_FIRST_256_BYTES},
-	{"first-2-bytes",EVERYTHING3_PROPERTY_ID_FIRST_2_BYTES},
-	{"first-32-bytes",EVERYTHING3_PROPERTY_ID_FIRST_32_BYTES},
-	{"first-4-bytes",EVERYTHING3_PROPERTY_ID_FIRST_4_BYTES},
-	{"first-512-bytes",EVERYTHING3_PROPERTY_ID_FIRST_512_BYTES},
-	{"first-64-bytes",EVERYTHING3_PROPERTY_ID_FIRST_64_BYTES},
-	{"first-8-bytes",EVERYTHING3_PROPERTY_ID_FIRST_8_BYTES},
-	{"first-byte",EVERYTHING3_PROPERTY_ID_FIRST_BYTE},
-	{"flash-energy",EVERYTHING3_PROPERTY_ID_FLASH_ENERGY},
-	{"flash-maker",EVERYTHING3_PROPERTY_ID_FLASH_MAKER},
-	{"flash-mode",EVERYTHING3_PROPERTY_ID_FLASH_MODE},
-	{"flash-model",EVERYTHING3_PROPERTY_ID_FLASH_MODEL},
-	{"focal-length",EVERYTHING3_PROPERTY_ID_FOCAL_LENGTH},
-	{"folder-data-and-names-crc-32",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC32},
-	{"folder-data-and-names-crc-32-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC32_FROM_DISK},
-	{"folder-data-and-names-crc-64",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC64},
-	{"folder-data-and-names-crc-64-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC64_FROM_DISK},
-	{"folder-data-and-names-md5",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_MD5},
-	{"folder-data-and-names-md5-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_MD5_FROM_DISK},
-	{"folder-data-and-names-sha-1",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA1},
-	{"folder-data-and-names-sha-1-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA1_FROM_DISK},
-	{"folder-data-and-names-sha-256",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA256},
-	{"folder-data-and-names-sha-256-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA256_FROM_DISK},
-	{"folder-data-and-names-sha-512",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA512},
-	{"folder-data-and-names-sha-512-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA512_FROM_DISK},
-	{"folder-data-crc-32",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC32},
-	{"folder-data-crc-32-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC32_FROM_DISK},
-	{"folder-data-crc-64",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC64},
-	{"folder-data-crc-64-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC64_FROM_DISK},
-	{"folder-data-md5",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_MD5},
-	{"folder-data-md5-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_MD5_FROM_DISK},
-	{"folder-data-sha-1",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA1},
-	{"folder-data-sha-1-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA1_FROM_DISK},
-	{"folder-data-sha-256",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA256},
-	{"folder-data-sha-256-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA256_FROM_DISK},
-	{"folder-data-sha-512",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA512},
-	{"folder-data-sha-512-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA512_FROM_DISK},
-	{"folder-depth",EVERYTHING3_PROPERTY_ID_FOLDER_DEPTH},
-	{"folder-names-crc-32",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC32},
-	{"folder-names-crc-32-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC32_FROM_DISK},
-	{"folder-names-crc-64",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC64},
-	{"folder-names-crc-64-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC64_FROM_DISK},
-	{"folder-names-md5",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_MD5},
-	{"folder-names-md5-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_MD5_FROM_DISK},
-	{"folder-names-sha-1",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA1},
-	{"folder-names-sha-1-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA1_FROM_DISK},
-	{"folder-names-sha-256",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA256},
-	{"folder-names-sha-256-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA256_FROM_DISK},
-	{"folder-names-sha-512",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA512},
-	{"folder-names-sha-512-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA512_FROM_DISK},
-	{"frame-count",EVERYTHING3_PROPERTY_ID_FRAME_COUNT},
-	{"frame-rate",EVERYTHING3_PROPERTY_ID_FRAME_RATE},
-	{"free-disk-size",EVERYTHING3_PROPERTY_ID_FREE_DISK_SIZE},
-	{"frn",EVERYTHING3_PROPERTY_ID_FILE_ID},
-	{"from",EVERYTHING3_PROPERTY_ID_FROM},
-	{"f-stop",EVERYTHING3_PROPERTY_ID_F_STOP},
-	{"full-path",EVERYTHING3_PROPERTY_ID_FULL_PATH},
-	{"full-path-len",EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH},
-	{"full-path-length",EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH},
-	{"full-path-utf-8-byte-length",EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH_IN_UTF8_BYTES},
-	{"genre",EVERYTHING3_PROPERTY_ID_GENRE},
-	{"group-description",EVERYTHING3_PROPERTY_ID_CONTENT_GROUP_DESCRIPTION},
-	{"hard-link-count",EVERYTHING3_PROPERTY_ID_HARD_LINK_COUNT},
-	{"hard-link-filenames",EVERYTHING3_PROPERTY_ID_HARD_LINK_FILE_NAMES},
-	{"height",EVERYTHING3_PROPERTY_ID_HEIGHT},
-	{"hidden-slide-count",EVERYTHING3_PROPERTY_ID_HIDDEN_SLIDE_COUNT},
-	{"horizontal-resolution",EVERYTHING3_PROPERTY_ID_HORIZONTAL_RESOLUTION},
-	{"host-url",EVERYTHING3_PROPERTY_ID_HOST_URL},
-	{"icon",EVERYTHING3_PROPERTY_ID_ICON},
-	{"image-id",EVERYTHING3_PROPERTY_ID_IMAGE_ID},
-	{"incur-seek-penalty",EVERYTHING3_PROPERTY_ID_INCUR_SEEK_PENALTY},
-	{"index-number",EVERYTHING3_PROPERTY_ID_INDEX_NUMBER},
-	{"index-type",EVERYTHING3_PROPERTY_ID_INDEX_TYPE},
-	{"initial-key",EVERYTHING3_PROPERTY_ID_INITIAL_KEY},
-	{"is-directory",EVERYTHING3_PROPERTY_ID_IS_DIRECTORY},
-	{"is-folder",EVERYTHING3_PROPERTY_ID_IS_FOLDER},
-	{"iso-speed",EVERYTHING3_PROPERTY_ID_ISO_SPEED},
-	{"keyword",EVERYTHING3_PROPERTY_ID_TAGS},
-	{"keywords",EVERYTHING3_PROPERTY_ID_TAGS},
-	{"kind",EVERYTHING3_PROPERTY_ID_KIND},
-	{"language",EVERYTHING3_PROPERTY_ID_LANGUAGE},
-	{"last-128-bytes",EVERYTHING3_PROPERTY_ID_LAST_128_BYTES},
-	{"last-16-bytes",EVERYTHING3_PROPERTY_ID_LAST_16_BYTES},
-	{"last-256-bytes",EVERYTHING3_PROPERTY_ID_LAST_256_BYTES},
-	{"last-2-bytes",EVERYTHING3_PROPERTY_ID_LAST_2_BYTES},
-	{"last-32-bytes",EVERYTHING3_PROPERTY_ID_LAST_32_BYTES},
-	{"last-4-bytes",EVERYTHING3_PROPERTY_ID_LAST_4_BYTES},
-	{"last-512-bytes",EVERYTHING3_PROPERTY_ID_LAST_512_BYTES},
-	{"last-64-bytes",EVERYTHING3_PROPERTY_ID_LAST_64_BYTES},
-	{"last-8-bytes",EVERYTHING3_PROPERTY_ID_LAST_8_BYTES},
-	{"last-author",EVERYTHING3_PROPERTY_ID_LAST_AUTHOR},
-	{"last-byte",EVERYTHING3_PROPERTY_ID_LAST_BYTE},
-	{"latitude",EVERYTHING3_PROPERTY_ID_LATITUDE},
-	{"len",EVERYTHING3_PROPERTY_ID_FILE_NAME_LENGTH},
-	{"length",EVERYTHING3_PROPERTY_ID_LENGTH},
-	{"lens-maker",EVERYTHING3_PROPERTY_ID_LENS_MAKER},
-	{"lens-model",EVERYTHING3_PROPERTY_ID_LENS_MODEL},
-	{"light-source",EVERYTHING3_PROPERTY_ID_LIGHT_SOURCE},
-	{"line-count",EVERYTHING3_PROPERTY_ID_LINE_COUNT},
-	{"links-dirty",EVERYTHING3_PROPERTY_ID_LINKS_DIRTY},
-	{"loc",EVERYTHING3_PROPERTY_ID_PATH},
-	{"location",EVERYTHING3_PROPERTY_ID_PATH},
-	{"logical-bytes-per-sector",EVERYTHING3_PROPERTY_ID_LOGICAL_BYTES_PER_SECTOR},
-	{"long-full-path",EVERYTHING3_PROPERTY_ID_LONG_FULL_PATH},
-	{"longitude",EVERYTHING3_PROPERTY_ID_LONGITUDE},
-	{"long-name",EVERYTHING3_PROPERTY_ID_LONG_NAME},
-	{"machine-target",EVERYTHING3_PROPERTY_ID_TARGET_MACHINE},
-	{"maker-note",EVERYTHING3_PROPERTY_ID_MAKER_NOTE},
-	{"manager",EVERYTHING3_PROPERTY_ID_MANAGER},
-	{"max-aperture",EVERYTHING3_PROPERTY_ID_MAX_APERTURE},
-	{"max-child-depth",EVERYTHING3_PROPERTY_ID_MAX_CHILD_DEPTH},
-	{"maximum-component-length",EVERYTHING3_PROPERTY_ID_MAXIMUM_COMPONENT_LENGTH},
-	{"md5",EVERYTHING3_PROPERTY_ID_MD5},
-	{"md5sum-md5",EVERYTHING3_PROPERTY_ID_MD5SUM_MD5},
-	{"md5sum-pass",EVERYTHING3_PROPERTY_ID_MD5SUM_PASS},
-	{"media-created",EVERYTHING3_PROPERTY_ID_DATE_ENCODED},
-	{"metering-mode",EVERYTHING3_PROPERTY_ID_METERING_MODE},
-	{"mood",EVERYTHING3_PROPERTY_ID_MOOD},
-	{"name",EVERYTHING3_PROPERTY_ID_NAME},
-	{"name-frequency",EVERYTHING3_PROPERTY_ID_NAME_FREQUENCY},
-	{"name-len",EVERYTHING3_PROPERTY_ID_FILE_NAME_LENGTH},
-	{"name-length",EVERYTHING3_PROPERTY_ID_FILE_NAME_LENGTH},
-	{"name-utf-8-byte-length",EVERYTHING3_PROPERTY_ID_FILE_NAME_LENGTH_IN_UTF8_BYTES},
-	{"network-index-host",EVERYTHING3_PROPERTY_ID_NETWORK_INDEX_HOST},
-	{"note-count",EVERYTHING3_PROPERTY_ID_NOTE_COUNT},
-	{"object-id",EVERYTHING3_PROPERTY_ID_OBJECT_ID},
-	{"offline-availability",EVERYTHING3_PROPERTY_ID_OFFLINE_AVAILABILITY},
-	{"offline-status",EVERYTHING3_PROPERTY_ID_OFFLINE_STATUS},
-	{"online",EVERYTHING3_PROPERTY_ID_INDEX_ONLINE},
-	{"opened-by",EVERYTHING3_PROPERTY_ID_OPENED_BY},
-	{"opens-with",EVERYTHING3_PROPERTY_ID_OPENS_WITH},
-	{"orientation",EVERYTHING3_PROPERTY_ID_ORIENTATION},
-	{"original-filename",EVERYTHING3_PROPERTY_ID_ORIGINAL_FILE_NAME},
-	{"original-location",EVERYTHING3_PROPERTY_ID_ORIGINAL_LOCATION},
-	{"out-of-date",EVERYTHING3_PROPERTY_ID_OUT_OF_DATE},
-	{"owner",EVERYTHING3_PROPERTY_ID_OWNER},
-	{"page-count",EVERYTHING3_PROPERTY_ID_PAGE_COUNT},
-	{"paragraph-count",EVERYTHING3_PROPERTY_ID_PARAGRAPH_COUNT},
-	{"parental-rating",EVERYTHING3_PROPERTY_ID_PARENTAL_RATING},
-	{"parental-rating-reason",EVERYTHING3_PROPERTY_ID_PARENTAL_RATING_REASON},
-	{"parent-file-id",EVERYTHING3_PROPERTY_ID_PARENT_FILE_ID},
-	{"parent-name",EVERYTHING3_PROPERTY_ID_PARENT_NAME},
-	{"parent-path",EVERYTHING3_PROPERTY_ID_PARENT_PATH},
-	{"parent-size",EVERYTHING3_PROPERTY_ID_PARENT_SIZE},
-	{"parse-full-path",EVERYTHING3_PROPERTY_ID_PARSE_FULL_PATH},
-	{"parse-name",EVERYTHING3_PROPERTY_ID_PARSE_NAME},
-	{"part-of-a-compilation",EVERYTHING3_PROPERTY_ID_PART_OF_A_COMPILATION},
-	{"part-of-set",EVERYTHING3_PROPERTY_ID_PART_OF_SET},
-	{"path",EVERYTHING3_PROPERTY_ID_PATH},
-	{"path-len",EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH},
-	{"path-length",EVERYTHING3_PROPERTY_ID_PATH_PART_LENGTH},
-	{"path-part",EVERYTHING3_PROPERTY_ID_PATH},
-	{"people",EVERYTHING3_PROPERTY_ID_PEOPLE},
-	{"perceived-type",EVERYTHING3_PROPERTY_ID_PERCEIVED_TYPE},
-	{"period",EVERYTHING3_PROPERTY_ID_PERIOD},
-	{"photometric-interpretation",EVERYTHING3_PROPERTY_ID_PHOTOMETRIC_INTERPRETATION},
-	{"physical-bytes-per-sector-for-atomicity",EVERYTHING3_PROPERTY_ID_PHYSICAL_BYTES_PER_SECTOR_FOR_ATOMICITY},
-	{"physical-bytes-per-sector-for-performance",EVERYTHING3_PROPERTY_ID_PHYSICAL_BYTES_PER_SECTOR_FOR_PERFORMANCE},
-	{"plain-text-line-count",EVERYTHING3_PROPERTY_ID_PLAIN_TEXT_LINE_COUNT},
-	{"pp",EVERYTHING3_PROPERTY_ID_PATH},
-	{"presentation-format",EVERYTHING3_PROPERTY_ID_PRESENTATION_FORMAT},
-	{"producer",EVERYTHING3_PROPERTY_ID_PRODUCERS},
-	{"product-name",EVERYTHING3_PROPERTY_ID_PRODUCT_NAME},
-	{"product-version",EVERYTHING3_PROPERTY_ID_PRODUCT_VERSION},
-	{"promotion-url",EVERYTHING3_PROPERTY_ID_PROMOTION_URL},
-	{"protected",EVERYTHING3_PROPERTY_ID_PROTECTED},
-	{"publisher",EVERYTHING3_PROPERTY_ID_PUBLISHER},
-	{"quicktime-metadata",EVERYTHING3_PROPERTY_ID_QUICKTIME_METADATA},
-	{"rand",EVERYTHING3_PROPERTY_ID_RANDOMIZE},
-	{"random",EVERYTHING3_PROPERTY_ID_RANDOMIZE},
-	{"randomize",EVERYTHING3_PROPERTY_ID_RANDOMIZE},
-	{"rating",EVERYTHING3_PROPERTY_ID_RATING},
-	{"rc",EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED},
-	{"recent-change",EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED},
-	{"referrer-url",EVERYTHING3_PROPERTY_ID_REFERRER_URL},
-	{"regex-match-0",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_0},
-	{"regex-match-1",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_1},
-	{"regex-match-2",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_2},
-	{"regex-match-3",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_3},
-	{"regex-match-4",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_4},
-	{"regex-match-5",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_5},
-	{"regex-match-6",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_6},
-	{"regex-match-7",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_7},
-	{"regex-match-8",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_8},
-	{"regex-match-9",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_9},
-	{"regex-matches",EVERYTHING3_PROPERTY_ID_REGEX_MATCHES},
-	{"reg-match-0",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_0},
-	{"reg-match-1",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_1},
-	{"reg-match-2",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_2},
-	{"reg-match-3",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_3},
-	{"reg-match-4",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_4},
-	{"reg-match-5",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_5},
-	{"reg-match-6",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_6},
-	{"reg-match-7",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_7},
-	{"reg-match-8",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_8},
-	{"reg-match-9",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_9},
-	{"reg-matches",EVERYTHING3_PROPERTY_ID_REGEX_MATCHES},
-	{"regular-expression-match-0",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_0},
-	{"regular-expression-match-1",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_1},
-	{"regular-expression-match-2",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_2},
-	{"regular-expression-match-3",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_3},
-	{"regular-expression-match-4",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_4},
-	{"regular-expression-match-5",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_5},
-	{"regular-expression-match-6",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_6},
-	{"regular-expression-match-7",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_7},
-	{"regular-expression-match-8",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_8},
-	{"regular-expression-match-9",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_9},
-	{"regular-expression-matches-1-9",EVERYTHING3_PROPERTY_ID_REGEX_MATCHES},
-	{"related-sound-file",EVERYTHING3_PROPERTY_ID_RELATED_SOUND_FILE},
-	{"remote-protocol",EVERYTHING3_PROPERTY_ID_REMOTE_PROTOCOL},
-	{"remote-protocol-flags",EVERYTHING3_PROPERTY_ID_REMOTE_PROTOCOL_FLAGS},
-	{"remote-protocol-version",EVERYTHING3_PROPERTY_ID_REMOTE_PROTOCOL_VERSION},
-	{"reparse-tag",EVERYTHING3_PROPERTY_ID_REPARSE_TAG},
-	{"reparse-target",EVERYTHING3_PROPERTY_ID_REPARSE_TARGET},
-	{"resolution-unit",EVERYTHING3_PROPERTY_ID_RESOLUTION_UNIT},
-	{"revision-number",EVERYTHING3_PROPERTY_ID_REVISION_NUMBER},
-	{"root-name",EVERYTHING3_PROPERTY_ID_ROOT_NAME},
-	{"root-size",EVERYTHING3_PROPERTY_ID_ROOT_SIZE},
-	{"row",EVERYTHING3_PROPERTY_ID_ROW},
-	{"run-count",EVERYTHING3_PROPERTY_ID_RUN_COUNT},
-	{"saturation",EVERYTHING3_PROPERTY_ID_SATURATION},
-	{"scale",EVERYTHING3_PROPERTY_ID_SCALE},
-	{"sector-size",EVERYTHING3_PROPERTY_ID_SECTOR_SIZE},
-	{"sfv-crc-32",EVERYTHING3_PROPERTY_ID_SFV_CRC32},
-	{"sfv-pass",EVERYTHING3_PROPERTY_ID_SFV_PASS},
-	{"sha-1",EVERYTHING3_PROPERTY_ID_SHA1},
-	{"sha1sum-pass",EVERYTHING3_PROPERTY_ID_SHA1SUM_PASS},
-	{"sha1sum-sha-1",EVERYTHING3_PROPERTY_ID_SHA1SUM_SHA1},
-	{"sha-256",EVERYTHING3_PROPERTY_ID_SHA256},
-	{"sha256sum-pass",EVERYTHING3_PROPERTY_ID_SHA256SUM_PASS},
-	{"sha256sum-sha-256",EVERYTHING3_PROPERTY_ID_SHA256SUM_SHA256},
-	{"sha-384",EVERYTHING3_PROPERTY_ID_SHA384},
-	{"sha-512",EVERYTHING3_PROPERTY_ID_SHA512},
-	{"sha512sum-pass",EVERYTHING3_PROPERTY_ID_SHA512SUM_PASS},
-	{"sha512sum-sha-512",EVERYTHING3_PROPERTY_ID_SHA512SUM_SHA512},
-	{"shared-with",EVERYTHING3_PROPERTY_ID_SHARED_WITH},
-	{"sharpness",EVERYTHING3_PROPERTY_ID_SHARPNESS},
-	{"shell-attributes",EVERYTHING3_PROPERTY_ID_SHELL_ATTRIBUTES},
-	{"shortcut-target",EVERYTHING3_PROPERTY_ID_SHORTCUT_TARGET},
-	{"short-full-path",EVERYTHING3_PROPERTY_ID_SHORT_FULL_PATH},
-	{"short-name",EVERYTHING3_PROPERTY_ID_SHORT_NAME},
-	{"shutter-speed",EVERYTHING3_PROPERTY_ID_SHUTTER_SPEED},
-	{"sibling-count",EVERYTHING3_PROPERTY_ID_SIBLING_COUNT},
-	{"sibling-file-count",EVERYTHING3_PROPERTY_ID_SIBLING_FILE_COUNT},
-	{"sibling-folder-count",EVERYTHING3_PROPERTY_ID_SIBLING_FOLDER_COUNT},
-	{"size",EVERYTHING3_PROPERTY_ID_SIZE},
-	{"size-frequency",EVERYTHING3_PROPERTY_ID_SIZE_FREQUENCY},
-	{"size-on-disk",EVERYTHING3_PROPERTY_ID_SIZE_ON_DISK},
-	{"slide-count",EVERYTHING3_PROPERTY_ID_SLIDE_COUNT},
-	{"software",EVERYTHING3_PROPERTY_ID_SOFTWARE},
-	{"status",EVERYTHING3_PROPERTY_ID_STATUS},
-	{"stem",EVERYTHING3_PROPERTY_ID_STEM},
-	{"stem-length",EVERYTHING3_PROPERTY_ID_STEM_LENGTH},
-	{"subject",EVERYTHING3_PROPERTY_ID_SUBJECT},
-	{"subject-distance",EVERYTHING3_PROPERTY_ID_SUBJECT_DISTANCE},
-	{"subtitle",EVERYTHING3_PROPERTY_ID_SUBTITLE},
-	{"subtitle-track-count",EVERYTHING3_PROPERTY_ID_SUBTITLE_TRACK_COUNT},
-	{"sz",EVERYTHING3_PROPERTY_ID_SIZE},
-	{"tag",EVERYTHING3_PROPERTY_ID_TAGS},
-	{"tags",EVERYTHING3_PROPERTY_ID_TAGS},
-	{"target-machine",EVERYTHING3_PROPERTY_ID_TARGET_MACHINE},
-	{"template",EVERYTHING3_PROPERTY_ID_TEMPLATE},
-	{"text-plain-line-count",EVERYTHING3_PROPERTY_ID_PLAIN_TEXT_LINE_COUNT},
-	{"thumbnail",EVERYTHING3_PROPERTY_ID_THUMBNAIL},
-	{"time-accessed",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_TIME},
-	{"time-created",EVERYTHING3_PROPERTY_ID_DATE_CREATED_TIME},
-	{"time-modified",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_TIME},
-	{"title",EVERYTHING3_PROPERTY_ID_TITLE},
-	{"to",EVERYTHING3_PROPERTY_ID_TO},
-	{"total-alternate-data-stream-size",EVERYTHING3_PROPERTY_ID_TOTAL_ALTERNATE_DATA_STREAM_SIZE},
-	{"total-alternate-data-stream-size-on-disk",EVERYTHING3_PROPERTY_ID_TOTAL_ALTERNATE_DATA_STREAM_SIZE_ON_DISK},
-	{"total-bit-rate",EVERYTHING3_PROPERTY_ID_TOTAL_BIT_RATE},
-	{"total-child-size",EVERYTHING3_PROPERTY_ID_TOTAL_CHILD_SIZE},
-	{"total-disk-size",EVERYTHING3_PROPERTY_ID_TOTAL_DISK_SIZE},
-	{"total-editing-time",EVERYTHING3_PROPERTY_ID_TOTAL_EDITING_TIME},
-	{"total-size",EVERYTHING3_PROPERTY_ID_TOTAL_SIZE},
-	{"total-size-on-disk",EVERYTHING3_PROPERTY_ID_TOTAL_SIZE_ON_DISK},
-	{"track",EVERYTHING3_PROPERTY_ID_TRACK},
-	{"trademark",EVERYTHING3_PROPERTY_ID_TRADEMARKS},
-	{"trademarks",EVERYTHING3_PROPERTY_ID_TRADEMARKS},
-	{"transcoded-for-sync",EVERYTHING3_PROPERTY_ID_TRANSCODED_FOR_SYNC},
-	{"type",EVERYTHING3_PROPERTY_ID_TYPE},
-	{"url",EVERYTHING3_PROPERTY_ID_URL},
-	{"used-disk-size",EVERYTHING3_PROPERTY_ID_USED_DISK_SIZE},
-	{"valid-utf-8",EVERYTHING3_PROPERTY_ID_VALID_UTF8},
-	{"version",EVERYTHING3_PROPERTY_ID_VERSION},
-	{"version-number",EVERYTHING3_PROPERTY_ID_VERSION_NUMBER},
-	{"vertical-resolution",EVERYTHING3_PROPERTY_ID_VERTICAL_RESOLUTION},
-	{"video-bit-rate",EVERYTHING3_PROPERTY_ID_VIDEO_BIT_RATE},
-	{"video-format",EVERYTHING3_PROPERTY_ID_VIDEO_FORMAT},
-	{"video-track-count",EVERYTHING3_PROPERTY_ID_VIDEO_TRACK_COUNT},
-	{"volume-label",EVERYTHING3_PROPERTY_ID_VOLUME_LABEL},
-	{"volume-name",EVERYTHING3_PROPERTY_ID_VOLUME_NAME},
-	{"volume-path",EVERYTHING3_PROPERTY_ID_VOLUME_PATH},
-	{"volume-serial-number",EVERYTHING3_PROPERTY_ID_VOLUME_SERIAL_NUMBER},
-	{"vorbis-comment",EVERYTHING3_PROPERTY_ID_VORBIS_COMMENT},
-	{"white-balance",EVERYTHING3_PROPERTY_ID_WHITE_BALANCE},
-	{"width",EVERYTHING3_PROPERTY_ID_WIDTH},
-	{"word-count",EVERYTHING3_PROPERTY_ID_WORD_COUNT},
-	{"writer",EVERYTHING3_PROPERTY_ID_WRITERS},
-	{"year",EVERYTHING3_PROPERTY_ID_YEAR},
-	{"zone-id",EVERYTHING3_PROPERTY_ID_ZONE_ID},
-};
-
-#define ES_PROPERTY_NAME_TO_ID_COUNT (sizeof(es_property_name_to_id_array) / sizeof(es_property_name_to_id_t))
-
-// format type of each property
-// from the format we know how to display the data, work out the left/right alignment and the default column width.
-
-const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] = 
-{
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_NAME,
-	ES_PROPERTY_FORMAT_TEXT47, 					// EVERYTHING3_PROPERTY_ID_PATH,
-	ES_PROPERTY_FORMAT_SIZE, 					// EVERYTHING3_PROPERTY_ID_SIZE,
-	ES_PROPERTY_FORMAT_EXTENSION, 				// EVERYTHING3_PROPERTY_ID_EXTENSION,
-	ES_PROPERTY_FORMAT_TEXT30,			 		// EVERYTHING3_PROPERTY_ID_TYPE,
-	ES_PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_MODIFIED,
-	ES_PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_CREATED,
-	ES_PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_ACCESSED,
-	ES_PROPERTY_FORMAT_ATTRIBUTES, 				// EVERYTHING3_PROPERTY_ID_ATTRIBUTES,
-	ES_PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_RUN_COUNT,
-	ES_PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_RUN,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_WIDTH,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_HEIGHT,
-	ES_PROPERTY_FORMAT_DIMENSIONS,				// EVERYTHING3_PROPERTY_ID_DIMENSIONS,
-	ES_PROPERTY_FORMAT_FIXED_Q1K,				// EVERYTHING3_PROPERTY_ID_ASPECT_RATIO,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_BIT_DEPTH,
-	ES_PROPERTY_FORMAT_DURATION, 				// EVERYTHING3_PROPERTY_ID_LENGTH,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_AUDIO_SAMPLE_RATE,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_AUDIO_CHANNELS,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_AUDIO_BITS_PER_SAMPLE,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_AUDIO_BIT_RATE,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_AUDIO_FORMAT,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_FILE_SIGNATURE,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_TITLE,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_ARTIST,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_ALBUM,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_YEAR,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_COMMENT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_TRACK,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_GENRE,	
-	ES_PROPERTY_FORMAT_FIXED_Q1K,				// EVERYTHING3_PROPERTY_ID_FRAME_RATE,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_VIDEO_BIT_RATE,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_VIDEO_FORMAT,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_RATING,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_TAGS,
-	ES_PROPERTY_FORMAT_DATA16, 					// EVERYTHING3_PROPERTY_ID_MD5,
-	ES_PROPERTY_FORMAT_DATA20, 					// EVERYTHING3_PROPERTY_ID_SHA1,
-	ES_PROPERTY_FORMAT_DATA32, 					// EVERYTHING3_PROPERTY_ID_SHA256,
-	ES_PROPERTY_FORMAT_DATA4, 					// EVERYTHING3_PROPERTY_ID_CRC32,
-	ES_PROPERTY_FORMAT_SIZE, 					// EVERYTHING3_PROPERTY_ID_SIZE_ON_DISK,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_DESCRIPTION,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_VERSION,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_PRODUCT_NAME,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_PRODUCT_VERSION,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_COMPANY,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_KIND,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_FILE_NAME_LENGTH,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_SUBJECT,
-	ES_PROPERTY_FORMAT_TEXT30,			 		// EVERYTHING3_PROPERTY_ID_AUTHORS,
-	ES_PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_TAKEN,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_SOFTWARE,
-	ES_PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_ACQUIRED,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_COPYRIGHT,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_IMAGE_ID,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_HORIZONTAL_RESOLUTION,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_VERTICAL_RESOLUTION,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_COMPRESSION,
-	ES_PROPERTY_FORMAT_TEXT30,	 				// EVERYTHING3_PROPERTY_ID_RESOLUTION_UNIT,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_COLOR_REPRESENTATION,
-	ES_PROPERTY_FORMAT_FIXED_Q1K,				// EVERYTHING3_PROPERTY_ID_COMPRESSED_BITS_PER_PIXEL,	
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_CAMERA_MAKER,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_CAMERA_MODEL,
-	ES_PROPERTY_FORMAT_FIXED_Q1K,				// EVERYTHING3_PROPERTY_ID_F_STOP,
-	ES_PROPERTY_FORMAT_FIXED_Q1K,				// EVERYTHING3_PROPERTY_ID_EXPOSURE_TIME,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_ISO_SPEED,
-	ES_PROPERTY_FORMAT_FIXED_Q1K, 				// EVERYTHING3_PROPERTY_ID_EXPOSURE_BIAS,
-	ES_PROPERTY_FORMAT_FIXED_Q1K, 				// EVERYTHING3_PROPERTY_ID_FOCAL_LENGTH,
-	ES_PROPERTY_FORMAT_FIXED_Q1M,				// EVERYTHING3_PROPERTY_ID_MAX_APERTURE,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_METERING_MODE,
-	ES_PROPERTY_FORMAT_FIXED_Q1K,				// EVERYTHING3_PROPERTY_ID_SUBJECT_DISTANCE,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_FLASH_MODE,
-	ES_PROPERTY_FORMAT_FIXED_Q1K,				// EVERYTHING3_PROPERTY_ID_FLASH_ENERGY,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_35MM_FOCAL_LENGTH,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_LENS_MAKER,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_LENS_MODEL,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_FLASH_MAKER,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_FLASH_MODEL,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_CAMERA_SERIAL_NUMBER,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_CONTRAST,
-	ES_PROPERTY_FORMAT_FIXED_Q1M,				// EVERYTHING3_PROPERTY_ID_BRIGHTNESS,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_LIGHT_SOURCE,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_EXPOSURE_PROGRAM,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_SATURATION,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_SHARPNESS,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_WHITE_BALANCE,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_PHOTOMETRIC_INTERPRETATION,
-	ES_PROPERTY_FORMAT_FIXED_Q1K,			// EVERYTHING3_PROPERTY_ID_DIGITAL_ZOOM,
-	ES_PROPERTY_FORMAT_TEXT30, 				// EVERYTHING3_PROPERTY_ID_EXIF_VERSION,
-	ES_PROPERTY_FORMAT_FIXED_Q1M, 			// EVERYTHING3_PROPERTY_ID_LATITUDE, Multivalue Double
-	ES_PROPERTY_FORMAT_FIXED_Q1M, 			// EVERYTHING3_PROPERTY_ID_LONGITUDE, Multivalue Double
-	ES_PROPERTY_FORMAT_FIXED_Q1M, 			// EVERYTHING3_PROPERTY_ID_ALTITUDE, Double
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_SUBTITLE
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_TOTAL_BIT_RATE
-	ES_PROPERTY_FORMAT_TEXT30,	// EVERYTHING3_PROPERTY_ID_DIRECTORS,
-	ES_PROPERTY_FORMAT_TEXT30,	// EVERYTHING3_PROPERTY_ID_PRODUCERS,
-	ES_PROPERTY_FORMAT_TEXT30,	// EVERYTHING3_PROPERTY_ID_WRITERS,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_PUBLISHER,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CONTENT_DISTRIBUTOR,
-	ES_PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_ENCODED,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_ENCODED_BY,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_AUTHOR_URL,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_PROMOTION_URL,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_OFFLINE_AVAILABILITY,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_OFFLINE_STATUS,
-	ES_PROPERTY_FORMAT_TEXT30,	// EVERYTHING3_PROPERTY_ID_SHARED_WITH,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_OWNER,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_COMPUTER,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_ALBUM_ARTIST,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_PARENTAL_RATING_REASON,
-	ES_PROPERTY_FORMAT_TEXT30,	// EVERYTHING3_PROPERTY_ID_COMPOSER,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CONDUCTOR,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CONTENT_GROUP_DESCRIPTION,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_MOOD,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_PART_OF_SET,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_INITIAL_KEY,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_BEATS_PER_MINUTE,
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_PROTECTED,
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_PART_OF_A_COMPILATION,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_PARENTAL_RATING,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_PERIOD,
-	ES_PROPERTY_FORMAT_TEXT30,	// EVERYTHING3_PROPERTY_ID_PEOPLE,
-	ES_PROPERTY_FORMAT_TEXT30,	// EVERYTHING3_PROPERTY_ID_CATEGORY,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CONTENT_STATUS,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_DOCUMENT_CONTENT_TYPE,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_PAGE_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_WORD_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_CHARACTER_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_LINE_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_PARAGRAPH_COUNT,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_TEMPLATE,
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_SCALE,
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_LINKS_DIRTY,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_LANGUAGE,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_LAST_AUTHOR,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_REVISION_NUMBER,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_VERSION_NUMBER,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_MANAGER,
-	ES_PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_CONTENT_CREATED,
-	ES_PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_SAVED,
-	ES_PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_PRINTED,
-	ES_PROPERTY_FORMAT_DURATION,					// EVERYTHING3_PROPERTY_ID_TOTAL_EDITING_TIME,	
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_ORIGINAL_FILE_NAME,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_DATE_RELEASED,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_SLIDE_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_NOTE_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_HIDDEN_SLIDE_COUNT,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_PRESENTATION_FORMAT,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_TRADEMARKS,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_DISPLAY_NAME,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_FILE_NAME_LENGTH_IN_UTF8_BYTES
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH_IN_UTF8_BYTES
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_CHILD_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_CHILD_FOLDER_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_CHILD_FILE_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_CHILD_COUNT_FROM_DISK,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_CHILD_FOLDER_COUNT_FROM_DISK,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_CHILD_FILE_COUNT_FROM_DISK,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_FOLDER_DEPTH,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_TOTAL_SIZE,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_TOTAL_SIZE_ON_DISK,
-	ES_PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_CHANGED,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_HARD_LINK_COUNT,
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_DELETE_PENDING,
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_IS_DIRECTORY,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_COUNT,
-	ES_PROPERTY_FORMAT_TEXT30,	// EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_NAMES,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_TOTAL_ALTERNATE_DATA_STREAM_SIZE,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_TOTAL_ALTERNATE_DATA_STREAM_SIZE_ON_DISK,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_COMPRESSED_SIZE,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_COMPRESSION_FORMAT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_COMPRESSION_UNIT_SHIFT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_COMPRESSION_CHUNK_SHIFT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_COMPRESSION_CLUSTER_SHIFT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_COMPRESSION_RATIO
-	ES_PROPERTY_FORMAT_HEX_NUMBER,					// EVERYTHING3_PROPERTY_ID_REPARSE_TAG
-	ES_PROPERTY_FORMAT_HEX_NUMBER,					// EVERYTHING3_PROPERTY_ID_REMOTE_PROTOCOL,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_REMOTE_PROTOCOL_VERSION
-	ES_PROPERTY_FORMAT_HEX_NUMBER,					// EVERYTHING3_PROPERTY_ID_REMOTE_PROTOCOL_FLAGS,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_LOGICAL_BYTES_PER_SECTOR,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_PHYSICAL_BYTES_PER_SECTOR_FOR_ATOMICITY,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_PHYSICAL_BYTES_PER_SECTOR_FOR_PERFORMANCE,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_EFFECTIVE_PHYSICAL_BYTES_PER_SECTOR_FOR_ATOMICITY,
-	ES_PROPERTY_FORMAT_HEX_NUMBER,					// EVERYTHING3_PROPERTY_ID_FILE_STORAGE_INFO_FLAGS,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_BYTE_OFFSET_FOR_SECTOR_ALIGNMENT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_BYTE_OFFSET_FOR_PARTITION_ALIGNMENT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_ALIGNMENT_REQUIREMENT,
-	ES_PROPERTY_FORMAT_DATA8,					// EVERYTHING3_PROPERTY_ID_VOLUME_SERIAL_NUMBER,
-	ES_PROPERTY_FORMAT_HEX_NUMBER,					// EVERYTHING3_PROPERTY_ID_FILE_ID,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_FRAME_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_CLUSTER_SIZE,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_SECTOR_SIZE,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_AVAILABLE_FREE_DISK_SIZE,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_FREE_DISK_SIZE,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_TOTAL_DISK_SIZE,
-	ES_PROPERTY_FORMAT_TEXT30,					// __EVERYTHING3_PROPERTY_ID_VOLUME_LABEL,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_MAXIMUM_COMPONENT_LENGTH,
-	ES_PROPERTY_FORMAT_HEX_NUMBER,				// EVERYTHING3_PROPERTY_ID_FILE_SYSTEM_FLAGS,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_FILE_SYSTEM,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_ORIENTATION,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_END_OF_FILE,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_SHORT_NAME,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_SHORT_FULL_PATH,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_ENCRYPTION_STATUS,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_HARD_LINK_FILE_NAMES,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_INDEX_TYPE,	
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_DRIVE_TYPE,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_BINARY_TYPE,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCH_0,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCH_1,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCH_2,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCH_3,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCH_4,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCH_5,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCH_6,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCH_7,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCH_8,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCH_9,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_SIBLING_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_SIBLING_FOLDER_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_SIBLING_FILE_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_INDEX_NUMBER,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_SHORTCUT_TARGET
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_OUT_OF_DATE,
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_INCUR_SEEK_PENALTY,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_PLAIN_TEXT_LINE_COUNT,
-	ES_PROPERTY_FORMAT_FIXED_Q1M,		// EVERYTHING3_PROPERTY_ID_APERTURE,
-	ES_PROPERTY_FORMAT_TEXT30, 				// EVERYTHING3_PROPERTY_ID_MAKER_NOTE,
-	ES_PROPERTY_FORMAT_TEXT30, 				// EVERYTHING3_PROPERTY_ID_RELATED_SOUND_FILE,
-	ES_PROPERTY_FORMAT_FIXED_Q1K,		// EVERYTHING3_PROPERTY_ID_SHUTTER_SPEED,
-	ES_PROPERTY_FORMAT_YESNO, 			// EVERYTHING3_PROPERTY_ID_TRANSCODED_FOR_SYNC,
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_CASE_SENSITIVE_DIR,
-	ES_PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_INDEXED,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_NAME_FREQUENCY,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_SIZE_FREQUENCY,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_EXTENSION_FREQUENCY,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_REGEX_MATCHES,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_URL,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_FULL_PATH,
-	ES_PROPERTY_FORMAT_HEX_NUMBER,					// EVERYTHING3_PROPERTY_ID_PARENT_FILE_ID,
-	ES_PROPERTY_FORMAT_DATA64, 					// EVERYTHING3_PROPERTY_ID_SHA512,
-	ES_PROPERTY_FORMAT_DATA48, 					// EVERYTHING3_PROPERTY_ID_SHA384,
-	ES_PROPERTY_FORMAT_DATA8, 					// EVERYTHING3_PROPERTY_ID_CRC64,
-	ES_PROPERTY_FORMAT_DATA1, 					// EVERYTHING3_PROPERTY_ID_FIRST_BYTE,
-	ES_PROPERTY_FORMAT_DATA2, 					// EVERYTHING3_PROPERTY_ID_FIRST_2_BYTES,
-	ES_PROPERTY_FORMAT_DATA4, 					// EVERYTHING3_PROPERTY_ID_FIRST_4_BYTES,
-	ES_PROPERTY_FORMAT_DATA8, 					// EVERYTHING3_PROPERTY_ID_FIRST_8_BYTES,
-	ES_PROPERTY_FORMAT_DATA16, 					// EVERYTHING3_PROPERTY_ID_FIRST_16_BYTES,
-	ES_PROPERTY_FORMAT_DATA32, 					// EVERYTHING3_PROPERTY_ID_FIRST_32_BYTES,
-	ES_PROPERTY_FORMAT_DATA64, 					// EVERYTHING3_PROPERTY_ID_FIRST_64_BYTES,
-	ES_PROPERTY_FORMAT_DATA128, 					// EVERYTHING3_PROPERTY_ID_FIRST_128_BYTES,
-	ES_PROPERTY_FORMAT_DATA1, 					// EVERYTHING3_PROPERTY_ID_LAST_BYTE,
-	ES_PROPERTY_FORMAT_DATA2, 					// EVERYTHING3_PROPERTY_ID_LAST_2_BYTES,
-	ES_PROPERTY_FORMAT_DATA4, 					// EVERYTHING3_PROPERTY_ID_LAST_4_BYTES,
-	ES_PROPERTY_FORMAT_DATA8, 					// EVERYTHING3_PROPERTY_ID_LAST_8_BYTES,
-	ES_PROPERTY_FORMAT_DATA16, 					// EVERYTHING3_PROPERTY_ID_LAST_16_BYTES,
-	ES_PROPERTY_FORMAT_DATA32, 					// EVERYTHING3_PROPERTY_ID_LAST_32_BYTES,
-	ES_PROPERTY_FORMAT_DATA64, 					// EVERYTHING3_PROPERTY_ID_LAST_64_BYTES,
-	ES_PROPERTY_FORMAT_DATA128, 					// EVERYTHING3_PROPERTY_ID_LAST_128_BYTES,
-	ES_PROPERTY_FORMAT_TEXT30,			// EVERYTHING3_PROPERTY_ID_BYTE_ORDER_MARK,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_INDEX_VOLUME_LABEL,
-	ES_PROPERTY_FORMAT_TEXT47,		// EVERYTHING3_PROPERTY_ID_FILE_LIST_FULL_PATH,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_DISPLAY_FULL_PATH,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_PARSE_NAME,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_PARSE_FULL_PATH,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_STEM,
-	ES_PROPERTY_FORMAT_HEX_NUMBER,					// EVERYTHING3_PROPERTY_ID_SHELL_ATTRIBUTES,
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_IS_FOLDER,
-	ES_PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_VALID_UTF8,
-	ES_PROPERTY_FORMAT_NUMBER, 				// EVERYTHING3_PROPERTY_ID_STEM_LENGTH,
-	ES_PROPERTY_FORMAT_NUMBER, 				// EVERYTHING3_PROPERTY_ID_EXTENSION_LENGTH,
-	ES_PROPERTY_FORMAT_NUMBER, 				// EVERYTHING3_PROPERTY_ID_PATH_PART_LENGTH,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_TIME,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_DATE_CREATED_TIME,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_TIME,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_DATE,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_DATE_CREATED_DATE,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_DATE,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_PARENT_NAME,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_REPARSE_TARGET
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_DESCENDANT_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_DESCENDANT_FOLDER_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_DESCENDANT_FILE_COUNT,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_FROM,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_TO,
-	ES_PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_RECEIVED,
-	ES_PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_SENT,
-	ES_PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_CONTAINER_FILENAMES,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_CONTAINER_FILE_COUNT,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_0,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_1,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_2,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_3,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_4,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_5,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_6,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_7,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_8,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_9,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_ALLOCATION_SIZE,
-	ES_PROPERTY_FORMAT_DATA4, 					// EVERYTHING3_PROPERTY_ID_SFV_CRC32,
-	ES_PROPERTY_FORMAT_DATA16, 					// EVERYTHING3_PROPERTY_ID_MD5SUM_MD5,
-	ES_PROPERTY_FORMAT_DATA20, 					// EVERYTHING3_PROPERTY_ID_SHA1SUM_SHA1,
-	ES_PROPERTY_FORMAT_DATA32, 					// EVERYTHING3_PROPERTY_ID_SHA256SUM_SHA256,
-	ES_PROPERTY_FORMAT_YESNO, 			// EVERYTHING3_PROPERTY_ID_SFV_PASS,
-	ES_PROPERTY_FORMAT_YESNO, 			// EVERYTHING3_PROPERTY_ID_MD5SUM_PASS,
-	ES_PROPERTY_FORMAT_YESNO, 			// EVERYTHING3_PROPERTY_ID_SHA1SUM_PASS,
-	ES_PROPERTY_FORMAT_YESNO, 			// EVERYTHING3_PROPERTY_ID_SHA256SUM_PASS,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_ANSI,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF8,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF16LE,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF16BE,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_TEXT_PLAIN,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_HEX,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_PERCEIVED_TYPE,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_CONTENT_TYPE,
-	ES_PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_OPENED_BY,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_TARGET_MACHINE,
-	ES_PROPERTY_FORMAT_DATA64, 					// EVERYTHING3_PROPERTY_ID_SHA512SUM_SHA512,
-	ES_PROPERTY_FORMAT_YESNO, 					// EVERYTHING3_PROPERTY_ID_SHA512SUM_PASS,
-	ES_PROPERTY_FORMAT_TEXT47, 					// EVERYTHING3_PROPERTY_ID_PARENT_PATH,
-	ES_PROPERTY_FORMAT_DATA256, 				// EVERYTHING3_PROPERTY_ID_FIRST_256_BYTES,
-	ES_PROPERTY_FORMAT_DATA512, 				// EVERYTHING3_PROPERTY_ID_FIRST_512_BYTES,
-	ES_PROPERTY_FORMAT_DATA256, 				// EVERYTHING3_PROPERTY_ID_LAST_256_BYTES,
-	ES_PROPERTY_FORMAT_DATA512, 				// EVERYTHING3_PROPERTY_ID_LAST_512_BYTES,
-	ES_PROPERTY_FORMAT_YESNO, 			// EVERYTHING3_PROPERTY_ID_INDEX_ONLINE,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_0,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_1,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_2,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_3,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_4,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_5,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_6,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_7,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_8,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_9,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_A,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_B,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_C,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_D,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_E,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_COLUMN_F,
-	ES_PROPERTY_FORMAT_TEXT30,			// EVERYTHING3_PROPERTY_ID_ZONE_ID,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_REFERRER_URL,
-	ES_PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_HOST_URL,
-	ES_PROPERTY_FORMAT_TEXT30,			// EVERYTHING3_PROPERTY_ID_CHARACTER_ENCODING,
-	ES_PROPERTY_FORMAT_TEXT30,		// EVERYTHING3_PROPERTY_ID_ROOT_NAME,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_USED_DISK_SIZE,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_VOLUME_PATH,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_MAX_CHILD_DEPTH,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_TOTAL_CHILD_SIZE,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_ROW,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_CHILD_OCCURRENCE_COUNT,
-	ES_PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_VOLUME_NAME,
-	ES_PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_DESCENDANT_OCCURRENCE_COUNT,
-	ES_PROPERTY_FORMAT_DATA16,					// EVERYTHING3_PROPERTY_ID_OBJECT_ID,
-	ES_PROPERTY_FORMAT_DATA16,					// EVERYTHING3_PROPERTY_ID_BIRTH_VOLUME_ID,
-	ES_PROPERTY_FORMAT_DATA16,					// EVERYTHING3_PROPERTY_ID_BIRTH_OBJECT_ID,
-	ES_PROPERTY_FORMAT_DATA16,					// EVERYTHING3_PROPERTY_ID_DOMAIN_ID,
-	ES_PROPERTY_FORMAT_DATA4,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC32,
-	ES_PROPERTY_FORMAT_DATA8,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC64,
-	ES_PROPERTY_FORMAT_DATA16,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_MD5,
-	ES_PROPERTY_FORMAT_DATA20,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA1,
-	ES_PROPERTY_FORMAT_DATA32,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA256,
-	ES_PROPERTY_FORMAT_DATA64,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA512,
-	ES_PROPERTY_FORMAT_DATA4,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC32,
-	ES_PROPERTY_FORMAT_DATA8,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC64,
-	ES_PROPERTY_FORMAT_DATA16,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_MD5,
-	ES_PROPERTY_FORMAT_DATA20,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA1,
-	ES_PROPERTY_FORMAT_DATA32,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA256,
-	ES_PROPERTY_FORMAT_DATA64,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA512,
-	ES_PROPERTY_FORMAT_DATA4,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC32,
-	ES_PROPERTY_FORMAT_DATA8,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC64,
-	ES_PROPERTY_FORMAT_DATA16,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_MD5,
-	ES_PROPERTY_FORMAT_DATA20,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA1,
-	ES_PROPERTY_FORMAT_DATA32,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA256,
-	ES_PROPERTY_FORMAT_DATA64,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA512,
-	ES_PROPERTY_FORMAT_DATA4,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC32_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA8,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC64_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA16,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_MD5_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA20,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA1_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA32,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA256_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA64,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA512_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA4,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC32_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA8,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC64_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA16,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_MD5_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA20,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA1_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA32,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA256_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA64,					// EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA512_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA4,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC32_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA8,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC64_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA16,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_MD5_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA20,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA1_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA32,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA256_FROM_DISK,
-	ES_PROPERTY_FORMAT_DATA64,					// EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA512_FROM_DISK,
-	ES_PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_LONG_NAME,
-	ES_PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_LONG_FULL_PATH,
-	ES_PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_DIGITAL_SIGNATURE_NAME,
-	ES_PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DIGITAL_SIGNATURE_TIMESTAMP,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_AUDIO_TRACK_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_VIDEO_TRACK_COUNT,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_SUBTITLE_TRACK_COUNT,
-	ES_PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_NETWORK_INDEX_HOST,
-	ES_PROPERTY_FORMAT_TEXT47, 					// EVERYTHING3_PROPERTY_ID_ORIGINAL_LOCATION,
-	ES_PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_DELETED,
-	ES_PROPERTY_FORMAT_NUMBER, 					// EVERYTHING3_PROPERTY_ID_STATUS,
-	ES_PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_VORBIS_COMMENT,
-	ES_PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_QUICKTIME_METADATA,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_PARENT_SIZE,
-	ES_PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_ROOT_SIZE,
-	ES_PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_OPENS_WITH,
-	ES_PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_RANDOMIZE,
-	ES_PROPERTY_FORMAT_NONE,					// EVERYTHING3_PROPERTY_ID_ICON,
-	ES_PROPERTY_FORMAT_NONE,					// EVERYTHING3_PROPERTY_ID_THUMBNAIL,
-	ES_PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_CONTENT,
-	ES_PROPERTY_FORMAT_NONE,					// EVERYTHING3_PROPERTY_ID_SEPARATOR,
-};
-
-// default column widths.
-BYTE es_property_format_to_column_width[ES_PROPERTY_FORMAT_COUNT] =
-{
-	0, // ES_PROPERTY_FORMAT_NONE,
-	30, // ES_PROPERTY_FORMAT_TEXT30, // 30 characters
-	47, // ES_PROPERTY_FORMAT_TEXT47, // 47 characters
-	14, // ES_PROPERTY_FORMAT_SIZE, // 123456789
-	4, // ES_PROPERTY_FORMAT_EXTENSION, // 4 characters
-	16, // ES_PROPERTY_FORMAT_DATE, // 2025-06-16 21:22:23
-	4, // ES_PROPERTY_FORMAT_ATTRIBUTES, // RASH
-	14, // ES_PROPERTY_FORMAT_NUMBER, // 12345678	
-	11, // ES_PROPERTY_FORMAT_HEX_NUMBER, // 0xdeadbeef
-	10, // ES_PROPERTY_FORMAT_DIMENSIONS, // 9999x9999
-	9, // ES_PROPERTY_FORMAT_FIXED_Q1K, // 9999.123
-	12, // ES_PROPERTY_FORMAT_FIXED_Q1M, // 9999.123456
-	8, // ES_PROPERTY_FORMAT_DURATION, // 1:23:45
-	2, // ES_PROPERTY_FORMAT_DATA1, // data
-	5, // ES_PROPERTY_FORMAT_DATA2, // data
-	9, // ES_PROPERTY_FORMAT_DATA4, // crc
-	17, // ES_PROPERTY_FORMAT_DATA8, // crc64
-	33, // ES_PROPERTY_FORMAT_DATA16, // md5
-	41, // ES_PROPERTY_FORMAT_DATA20, // sha1
-	65, // ES_PROPERTY_FORMAT_DATA32, // sha256
-	97, // ES_PROPERTY_FORMAT_DATA48, // sha384
-	129, // ES_PROPERTY_FORMAT_DATA64, // sha512
-	257, // ES_PROPERTY_FORMAT_DATA128, // data
-	513, // ES_PROPERTY_FORMAT_DATA256, // data
-	1025, // ES_PROPERTY_FORMAT_DATA512, // data
-	4, // ES_PROPERTY_FORMAT_YESNO, // 30 characters
-};
-
-// default column widths.
-BYTE es_property_format_to_right_align[ES_PROPERTY_FORMAT_COUNT] =
-{
-	0, // ES_PROPERTY_FORMAT_NONE,
-	0, // ES_PROPERTY_FORMAT_TEXT30, // 30 characters
-	0, // ES_PROPERTY_FORMAT_TEXT47, // 47 characters
-	1, // ES_PROPERTY_FORMAT_SIZE, // 123456789
-	0, // ES_PROPERTY_FORMAT_EXTENSION, // 4 characters
-	0, // ES_PROPERTY_FORMAT_DATE, // 2025-06-16 21:22:23
-	0, // ES_PROPERTY_FORMAT_ATTRIBUTES, // RASH
-	1, // ES_PROPERTY_FORMAT_NUMBER, // 12345678	
-	1, // ES_PROPERTY_FORMAT_HEX_NUMBER, // 0xdeadbeef
-	1, // ES_PROPERTY_FORMAT_DIMENSIONS, // 9999x9999
-	1, // ES_PROPERTY_FORMAT_FIXED_Q1K, // 9999.123
-	1, // ES_PROPERTY_FORMAT_FIXED_Q1M, // 9999.123456
-	1, // ES_PROPERTY_FORMAT_DURATION, // 1:23:45
-	0, // ES_PROPERTY_FORMAT_DATA1, // data
-	0, // ES_PROPERTY_FORMAT_DATA2, // data
-	0, // ES_PROPERTY_FORMAT_DATA4, // crc
-	0, // ES_PROPERTY_FORMAT_DATA8, // crc64
-	0, // ES_PROPERTY_FORMAT_DATA16, // md5
-	0, // ES_PROPERTY_FORMAT_DATA20, // sha1
-	0, // ES_PROPERTY_FORMAT_DATA32, // sha256
-	0, // ES_PROPERTY_FORMAT_DATA48, // sha384
-	0, // ES_PROPERTY_FORMAT_DATA64, // sha512
-	0, // ES_PROPERTY_FORMAT_DATA128, // data
-	0, // ES_PROPERTY_FORMAT_DATA256, // data
-	0, // ES_PROPERTY_FORMAT_DATA512, // data
-	0, // ES_PROPERTY_FORMAT_YESNO, // 30 characters
-};
+static BOOL _es_load_settings_with_filename(const wchar_t *filename);
+static BOOL _es_load_settings_with_appdata(int is_appdata);
 
 static DWORD es_sort_property_id = EVERYTHING3_PROPERTY_ID_NAME;
-static int es_sort_ascending = 0; // 0 = default, >0 = ascending, <0 = descending
-static EVERYTHING_IPC_LIST *es_sort_list;
+static char es_sort_ascending = 0; // 0 = default, >0 = ascending, <0 = descending
+static const EVERYTHING_IPC_LIST *es_sort_list;
 static BOOL (WINAPI *es_pChangeWindowMessageFilterEx)(HWND hWnd,UINT message,DWORD action,_ES_CHANGEFILTERSTRUCT *pChangeFilterStruct) = 0;
 static int es_highlight_color = FOREGROUND_GREEN|FOREGROUND_INTENSITY;
-static int es_highlight = 0;
-static int es_match_whole_word = 0;
-static int es_match_path = 0;
-static int es_match_case = 0;
-static int es_match_diacritics = 0;
-static int es_exit_everything = 0;
-static int es_reindex = 0;
-static int es_save_db = 0;
-static int es_export = ES_EXPORT_NONE;
+static char es_highlight = 0;
+static char es_match_whole_word = 0;
+static char es_match_path = 0;
+static char es_match_case = 0;
+static char es_match_diacritics = 0;
+static char es_exit_everything = 0;
+static char es_reindex = 0;
+static char es_save_db = 0;
+static BYTE es_export_type = ES_EXPORT_TYPE_NONE;
 static HANDLE es_export_file = INVALID_HANDLE_VALUE;
-static unsigned char *es_export_buf = 0;
-static unsigned char *es_export_p;
+static BYTE *es_export_buf = 0;
+static BYTE *es_export_p;
 static int es_export_remaining = 0;
-static int es_size_leading_zero = 0;
-static int es_run_count_leading_zero = 0;
-static int es_digit_grouping = 1;
+static char es_size_leading_zero = 0;
+static char es_run_count_leading_zero = 0;
+static char es_digit_grouping = 1;
 static DWORD es_offset = 0;
 static DWORD es_max_results = EVERYTHING_IPC_ALLRESULTS;
 static DWORD es_ret = ES_ERROR_SUCCESS;
 static const wchar_t *es_command_line = 0;
 static WORD es_last_color;
-static int es_is_last_color = 0;
-static int es_size_format = 1; // 0 = auto, 1=bytes, 2=kb
-static int es_date_format = 0; // 0 = system format, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
+static char es_is_last_color = 0;
+static BYTE es_size_format = 1; // 0 = auto, 1=bytes, 2=kb
+static BYTE es_date_format = 0; // 0 = system format, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
 static CHAR_INFO *es_cibuf = 0;
 static int es_max_wide = 0;
 static int es_console_wide = 80;
@@ -1521,45 +357,37 @@ static int es_console_high = 25;
 static int es_console_size_high = 25;
 static int es_console_window_x = 0;
 static int es_console_window_y = 0;
-static int es_pause = 0; 
-static int es_last_page_start = 0; 
+static char es_pause = 0; 
 static int es_cibuf_attributes = 0x07;
 static int es_cibuf_hscroll = 0;
 static int es_cibuf_x = 0;
 static int es_cibuf_y = 0;
-static int es_empty_search_help = 0;
-static int es_hide_empty_search_results = 0;
-static int es_save = 0;
+static char es_empty_search_help = 0;
+static char es_hide_empty_search_results = 0;
+static char es_save = 0;
 static HWND es_everything_hwnd = 0;
 static DWORD es_timeout = 0;
-static int es_get_result_count = 0; // 1 = show result count only
-static int es_get_total_size = 0; // 1 = calculate total result size, only display this total size and exit.
-static int es_no_result_error = 0; // 1 = set errorlevel if no results found.
+static char es_get_result_count = 0; // 1 = show result count only
+static char es_get_total_size = 0; // 1 = calculate total result size, only display this total size and exit.
+static char es_no_result_error = 0; // 1 = set errorlevel if no results found.
 static HANDLE es_output_handle = 0;
 static UINT es_cp = 0; // current code page
-static int es_output_is_char = 0; // default to file, unless we can get the console mode.
-static int es_default_attributes = 0x07;
+static char es_output_is_char = 0; // default to file, unless we can get the console mode.
+static WORD es_default_attributes = 0x07;
 static void *es_run_history_data = 0; // run count command
 static DWORD es_run_history_count = 0; // run count command
 static int es_run_history_command = 0;
 static SIZE_T es_run_history_size = 0;
 static DWORD es_ipc_version = 0xffffffff; // allow all ipc versions
-static int es_header = 1;
-static int es_double_quote = 0; // always use double quotes for filenames.
-static int es_csv_double_quote = 1; // always use double quotes for CSV for consistancy.
-static int es_get_everything_version = 0;
+static char es_header = 1;
+static char es_double_quote = 0; // always use double quotes for filenames.
+static char es_csv_double_quote = 1; // always use double quotes for CSV for consistancy.
+static char es_get_everything_version = 0;
 static char es_utf8_bom = 0;
-static pool_t *es_column_color_pool = NULL; // pool of es_column_color_t
-static pool_t *es_column_width_pool = NULL; // pool of es_column_width_t
-static pool_t *es_column_pool = NULL; // pool of es_column_t
-static array_t *es_column_color_array = NULL; // array of es_column_color_t
-static array_t *es_column_width_array = NULL; // array of es_column_width_t
-static array_t *es_column_array = NULL; // array of es_column_t
-static es_column_t *es_column_order_start = NULL; // column order
-static es_column_t *es_column_order_last = NULL;
 static wchar_buf_t *es_instance_name_wcbuf = NULL;
 static wchar_buf_t *es_search_wcbuf = NULL;
 static HWND es_reply_hwnd = 0;
+static char es_loaded_appdata_ini = 0; // loaded settings from appdata, we should save to appdata.
 
 // load unicode for windows 95/98
 HMODULE LoadUnicowsProc(void);
@@ -1585,15 +413,15 @@ HMODULE LoadUnicowsProc(void)
 }
 
 // query everything with search string
-int es_sendquery(void)
+static BOOL es_sendquery(void)
 {
 	EVERYTHING_IPC_QUERY *query;
 	SIZE_T search_length_in_wchars;
 	SIZE_T size;
-	int ret;
+	BOOL ret;
 	utf8_buf_t cbuf;
 	
-	ret = 0;
+	ret = FALSE;
 	utf8_buf_init(&cbuf);
 	
 	es_get_reply_window();
@@ -1611,7 +439,7 @@ int es_sendquery(void)
 	{
 		es_max_results = 0;
 	}
-	
+
 	query->max_results = es_max_results;
 	query->offset = 0;
 	query->reply_copydata_message = ES_COPYDATA_IPCTEST_QUERYCOMPLETEW;
@@ -1631,7 +459,7 @@ int es_sendquery(void)
 
 		if (SendMessage(es_everything_hwnd,WM_COPYDATA,(WPARAM)es_reply_hwnd,(LPARAM)&cds) == TRUE)
 		{
-			ret = 1;
+			ret = TRUE;
 		}
 	}
 
@@ -1641,17 +469,17 @@ int es_sendquery(void)
 }
 
 // query everything with search string
-int es_sendquery2(void)
+static BOOL es_sendquery2(void)
 {
 	EVERYTHING_IPC_QUERY2 *query;
 	SIZE_T search_length_in_wchars;
 	SIZE_T size;
 	COPYDATASTRUCT cds;
-	int ret;
+	BOOL ret;
 	DWORD request_flags;
 	utf8_buf_t cbuf;
 	
-	ret = 0;
+	ret = FALSE;
 	utf8_buf_init(&cbuf);
 
 	es_get_reply_window();
@@ -1667,16 +495,16 @@ int es_sendquery2(void)
 	request_flags = 0;
 	
 	{
-		es_column_t *column;
+		column_t *column;
 
-		column = es_column_order_start;
+		column = column_order_start;
 		
 		while(column)
 		{
 			switch(column->property_id)
 			{
 				case EVERYTHING3_PROPERTY_ID_FULL_PATH:
-					if (column->flags & ES_COLUMN_FLAG_HIGHLIGHT)
+					if (column->flags & COLUMN_FLAG_HIGHLIGHT)
 					{
 						request_flags |= EVERYTHING_IPC_QUERY2_REQUEST_HIGHLIGHTED_FULL_PATH_AND_NAME;
 					}
@@ -1687,7 +515,7 @@ int es_sendquery2(void)
 					break;
 					
 				case EVERYTHING3_PROPERTY_ID_NAME:
-					if (column->flags & ES_COLUMN_FLAG_HIGHLIGHT)
+					if (column->flags & COLUMN_FLAG_HIGHLIGHT)
 					{
 						request_flags |= EVERYTHING_IPC_QUERY2_REQUEST_HIGHLIGHTED_NAME;
 					}
@@ -1698,7 +526,7 @@ int es_sendquery2(void)
 					break;
 					
 				case EVERYTHING3_PROPERTY_ID_PATH:
-					if (column->flags & ES_COLUMN_FLAG_HIGHLIGHT)
+					if (column->flags & COLUMN_FLAG_HIGHLIGHT)
 					{
 						request_flags |= EVERYTHING_IPC_QUERY2_REQUEST_HIGHLIGHTED_PATH;
 					}
@@ -1785,7 +613,7 @@ int es_sendquery2(void)
 
 		if (SendMessage(es_everything_hwnd,WM_COPYDATA,(WPARAM)es_reply_hwnd,(LPARAM)&cds) == TRUE)
 		{
-			ret = 1;
+			ret = TRUE;
 		}
 	}
 
@@ -1794,12 +622,12 @@ int es_sendquery2(void)
 	return ret;
 }
 
-int es_sendquery3(void)
+static BOOL es_sendquery3(void)
 {
-	int ret;
+	BOOL ret;
 	HANDLE pipe_handle;
 	
-	ret = 0;
+	ret = FALSE;
 
 	pipe_handle = es_connect_ipc_pipe();
 	if (pipe_handle != INVALID_HANDLE_VALUE)
@@ -1817,27 +645,27 @@ int es_sendquery3(void)
 
 //TODO:
 /*
-			if (es_export == ES_EXPORT_EFU)
+			if (es_export_type == ES_EXPORT_TYPE_EFU)
 			{
 				// get indexed file info column for exporting.
 				if (SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_FILE_INFO_INDEXED,EVERYTHING_IPC_FILE_INFO_FILE_SIZE))
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_SIZE);
+					column_add(EVERYTHING3_PROPERTY_ID_SIZE);
 				}
 				
 				if (SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_FILE_INFO_INDEXED,EVERYTHING_IPC_FILE_INFO_DATE_MODIFIED))
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_DATE_MODIFIED);
+					column_add(EVERYTHING3_PROPERTY_ID_DATE_MODIFIED);
 				}
 				
 				if (SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_FILE_INFO_INDEXED,EVERYTHING_IPC_FILE_INFO_DATE_CREATED))
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_DATE_CREATED);
+					column_add(EVERYTHING3_PROPERTY_ID_DATE_CREATED);
 				}
 				
 				if (SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_FILE_INFO_INDEXED,EVERYTHING_IPC_FILE_INFO_ATTRIBUTES))
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_ATTRIBUTES);
+					column_add(EVERYTHING3_PROPERTY_ID_ATTRIBUTES);
 				}
 			}
 	*/
@@ -1943,7 +771,7 @@ int es_sendquery3(void)
 				}
 			}
 */
-			ES_ASSERT((packet_d - packet_data) == packet_size);
+			DEBUG_ASSERT((packet_d - packet_data) == packet_size);
 			
 			if (es_write_pipe_message(pipe_handle,_EVERYTHING3_COMMAND_SEARCH,packet_data,packet_size))
 			{
@@ -2023,7 +851,7 @@ int es_sendquery3(void)
 					
 					property_request_size = property_request_count;
 					
-					ES_ASSERT(sizeof(_everything3_result_list_property_request_t) <= 12);
+					DEBUG_ASSERT(sizeof(_everything3_result_list_property_request_t) <= 12);
 
 					property_request_size = safe_size_add(property_request_size,property_request_size); // x2
 					property_request_size = safe_size_add(property_request_size,property_request_size); // x4
@@ -2112,7 +940,7 @@ int es_sendquery3(void)
 												
 												property_text_cbuf.buf[len] = 0;
 												
-												printf("ITEM PROPERTY %s\n",property_text_cbuf.buf);
+												debug_printf("ITEM PROPERTY %s\n",property_text_cbuf.buf);
 											}
 
 											break;
@@ -2249,9 +1077,9 @@ int es_sendquery3(void)
 				
 				if (!stream.is_error)
 				{
-					printf("OK\n");
+					debug_printf("OK\n");
 					
-					ret = 1;
+					ret = TRUE;
 				}
 				
 				if (property_request_array)
@@ -2276,25 +1104,28 @@ int es_sendquery3(void)
 	return ret;
 }
 
-int es_compare_list_items(const void *a,const void *b)
+int es_compare_list_items(const EVERYTHING_IPC_ITEM *a,const EVERYTHING_IPC_ITEM *b)
 {
-	int i;
+	int cmp_ret;
+
+	cmp_ret = CompareString(LOCALE_USER_DEFAULT,NORM_IGNORECASE,EVERYTHING_IPC_ITEMPATH(es_sort_list,a),-1,EVERYTHING_IPC_ITEMPATH(es_sort_list,b),-1);
 	
-	i = wcsicmp(EVERYTHING_IPC_ITEMPATH(es_sort_list,a),EVERYTHING_IPC_ITEMPATH(es_sort_list,b));
-	
-	if (!i)
+//debug_printf("cmp %S %S %d\n",EVERYTHING_IPC_ITEMPATH(es_sort_list,a),EVERYTHING_IPC_ITEMPATH(es_sort_list,b),cmp_ret)	;
+
+	if (cmp_ret)
 	{
-		return wcsicmp(EVERYTHING_IPC_ITEMFILENAME(es_sort_list,a),EVERYTHING_IPC_ITEMFILENAME(es_sort_list,b));
+		if (cmp_ret == CSTR_LESS_THAN)
+		{
+			return -1;
+		}
+		else
+		if (cmp_ret == CSTR_GREATER_THAN)
+		{
+			return 1;
+		}
 	}
-	else
-	if (i > 0)
-	{
-		return 1;
-	}
-	else
-	{
-		return -1;
-	}
+
+	return wchar_string_compare(EVERYTHING_IPC_ITEMPATH(es_sort_list,a),EVERYTHING_IPC_ITEMPATH(es_sort_list,b));
 }
 
 void DECLSPEC_NORETURN es_fatal(int error_code)
@@ -2308,80 +1139,49 @@ void DECLSPEC_NORETURN es_fatal(int error_code)
 	switch(error_code)
 	{
 		case ES_ERROR_REGISTER_WINDOW_CLASS:
-			msg = "Error 1: Failed to register window class.\r\n";
+			msg = "Failed to register window class.\r\n";
 			break;
 			
 		case ES_ERROR_CREATE_WINDOW:
-			msg = "Error 2: Failed to create window.\r\n";
+			msg = "Failed to create window.\r\n";
 			break;
 			
 		case ES_ERROR_OUT_OF_MEMORY:
-			msg = "Error 3: Out of memory.\r\n";
+			msg = "Out of memory.\r\n";
 			break;
 			
 		case ES_ERROR_EXPECTED_SWITCH_PARAMETER:
-			msg = "Error 4: Expected switch parameter.\r\n";
+			msg = "Expected switch parameter.\r\n";
 			// this error is permanent, show help:
 			show_help = 1;
 			break;
 			
 		case ES_ERROR_CREATE_FILE:
-			msg = "Error 5: Failed to create output file.\r\n";
+			msg = "Failed to create output file.\r\n";
 			break;
 			
 		case ES_ERROR_UNKNOWN_SWITCH:
-			msg = "Error 6: Unknown switch.\r\n";
+			msg = "Unknown switch.\r\n";
 			// this error is permanent, show help:
 			show_help = 1;
 			break;
 			
 		case ES_ERROR_SEND_MESSAGE:
-			msg = "Error 7: Unable to send IPC message.\r\n";
+			msg = "Unable to send IPC message.\r\n";
 			break;
 			
 		case ES_ERROR_IPC:
-			msg = "Error 8: Everything IPC window not found. Please make sure Everything is running.\r\n";
+			msg = "Everything IPC window not found. Please make sure Everything is running.\r\n";
 			break;
 			
 		case ES_ERROR_NO_RESULTS:
-			msg = "Error 9: No results found.\r\n";
+			msg = "No results found.\r\n";
 			break;
 	}
 	
 	if (msg)
 	{
-		
-		DWORD numwritten;
-		HANDLE error_handle;
-		
-		error_handle = GetStdHandle(STD_ERROR_HANDLE);
-
-		if (GetFileType(error_handle) == FILE_TYPE_CHAR)
-		{
-			wchar_buf_t msg_wcbuf;
-			DWORD num_written;
-
-			wchar_buf_init(&msg_wcbuf);
-
-			wchar_buf_copy_utf8_string(&msg_wcbuf,msg);
-
-			if (msg_wcbuf.length_in_wchars <= ES_DWORD_MAX)
-			{
-				WriteConsole(error_handle,msg_wcbuf.buf,(DWORD)msg_wcbuf.length_in_wchars,&num_written,NULL);
-			}
-
-			wchar_buf_kill(&msg_wcbuf);
-		}
-		else
-		{
-			SIZE_T length;
-			
-			length = utf8_string_get_length_in_bytes(msg);
-			if (length <= ES_DWORD_MAX)
-			{
-				WriteFile(error_handle,msg,(DWORD)length,&numwritten,0);
-			}
-		}
+		os_error_printf("Error %d: %s",error_code,msg);
 	}
 	
 	if (show_help)
@@ -2482,7 +1282,7 @@ void es_fill(int count,int utf8ch)
 	else
 	{
 		utf8_buf_t cbuf;
-		unsigned char *p;
+		BYTE *p;
 		DWORD numwritten;
 		int i;
 		
@@ -2528,7 +1328,7 @@ void es_fwrite_n(const wchar_t *text,int wlen)
 			cp = CP_UTF8;
 			utf8_buf_init(&cbuf);
 
-			if (es_export == ES_EXPORT_M3U)		
+			if (es_export_type == ES_EXPORT_TYPE_M3U)		
 			{
 				cp = CP_ACP;
 			}
@@ -2902,9 +1702,41 @@ void es_write_dword(DWORD value)
 	es_write_UINT64(value);
 }
 
-void es_write_result_count(DWORD result_count)
+static void es_write_result_count(DWORD result_count)
 {
 	es_write_dword(result_count);
+	es_write_utf8_string("\r\n");
+}
+
+static void es_output_text_property(const wchar_t *value)
+{
+	if ((es_export_type == ES_EXPORT_TYPE_CSV) || (es_export_type == ES_EXPORT_TYPE_TSV))
+	{
+		es_fwrite_csv_string_with_optional_quotes((es_export_type == ES_EXPORT_TYPE_CSV) ? es_csv_double_quote : es_double_quote,(es_export_type == ES_EXPORT_TYPE_CSV) ? ',' : '\t',value);
+	}
+	else
+	{
+		es_write_wchar_string(value);
+	}
+}
+
+static void es_output_attributes(DWORD file_attributes)
+{
+//TODO:
+	es_write_dword(file_attributes);
+//	es_write_wchar_string(value);
+}
+
+static void es_output_separator(void)
+{
+	if ((es_export_type == ES_EXPORT_TYPE_CSV) || (es_export_type == ES_EXPORT_TYPE_TSV))
+	{
+		es_write_wchar((es_export_type == ES_EXPORT_TYPE_CSV) ? ',' : '\t');
+	}
+}
+
+static void es_output_newline(void)
+{
 	es_write_utf8_string("\r\n");
 }
 
@@ -2930,28 +1762,152 @@ void es_listresultsW(EVERYTHING_IPC_LIST *list)
 	}
 	else
 	{
-		DWORD i;
-		
 		if (es_sort_property_id == EVERYTHING3_PROPERTY_ID_PATH)
 		{
+			utf8_buf_t indexes_cbuf;
+			EVERYTHING_IPC_ITEM **indexes;
+			EVERYTHING_IPC_ITEM **indexes_d;
+
+			utf8_buf_init(&indexes_cbuf);
+
+			// allocate indexes.
+			utf8_buf_grow_size(&indexes_cbuf,safe_size_mul_sizeof_pointer(list->numitems));
+			
+			// fill in indexes.
+			indexes = (EVERYTHING_IPC_ITEM **)indexes_cbuf.buf;
+			indexes_d = indexes;
+	
+			{
+				DWORD i;
+			
+				for(i=0;i<list->numitems;i++)
+				{
+					*indexes_d++ = &list->items[i];
+				}
+			}
+			
+			// set es_sort_list for es_compare_list_items.
+			// we are single threaded, and es_sort_list is read only.
 			es_sort_list = list;
-			qsort(list->items,list->numitems,sizeof(EVERYTHING_IPC_ITEM),es_compare_list_items);
+			
+			os_sort(indexes,list->numitems,es_compare_list_items);
+			
+			{
+				const EVERYTHING_IPC_ITEM **indexes_p;
+				DWORD run;
+				wchar_buf_t filename_wcbuf;
+				
+				wchar_buf_init(&filename_wcbuf);
+				indexes_p = indexes;
+				run = list->numitems;
+
+				while(run)
+				{
+					column_t *column;
+					int done_first;
+					
+					done_first = 0;
+					column = column_order_start;
+					
+					while(column)
+					{
+						if (done_first)
+						{
+							es_output_separator();
+						}
+						else
+						{
+							done_first = 1;
+						}
+						
+						switch(column->property_id)
+						{
+							case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
+								es_output_attributes(((*indexes_p)->flags & EVERYTHING_IPC_FOLDER) ? FILE_ATTRIBUTE_DIRECTORY : 0);
+								break;
+								
+							case EVERYTHING3_PROPERTY_ID_FULL_PATH:
+								wchar_buf_path_cat_filename(EVERYTHING_IPC_ITEMPATH(list,*indexes_p),EVERYTHING_IPC_ITEMFILENAME(list,*indexes_p),&filename_wcbuf);
+								es_output_text_property(filename_wcbuf.buf);
+								break;
+
+							case EVERYTHING3_PROPERTY_ID_PATH:
+								es_output_text_property(EVERYTHING_IPC_ITEMPATH(list,*indexes_p));
+								break;
+								
+							case EVERYTHING3_PROPERTY_ID_NAME:
+								es_output_text_property(EVERYTHING_IPC_ITEMFILENAME(list,*indexes_p));
+								break;
+						}
+						
+						column = column->order_next;
+					}									
+					
+					es_output_newline();
+					
+					indexes_p++;
+					run--;
+				}
+
+				wchar_buf_kill(&filename_wcbuf);
+			}
+			
+			utf8_buf_kill(&indexes_cbuf);
 		}
-		
-		for(i=0;i<list->numitems;i++)
+		else
 		{
-			if (list->items[i].flags & EVERYTHING_IPC_DRIVE)
+			DWORD i;
+			wchar_buf_t filename_wcbuf;
+				
+			wchar_buf_init(&filename_wcbuf);
+			
+			for(i=0;i<list->numitems;i++)
 			{
-				es_write_wchar_string(EVERYTHING_IPC_ITEMFILENAME(list,&list->items[i]));
-				es_write_utf8_string("\r\n");
+				column_t *column;
+				int done_first;
+				
+				done_first = 0;
+				column = column_order_start;
+				
+				while(column)
+				{
+					if (done_first)
+					{
+						es_output_separator();
+					}
+					else
+					{
+						done_first = 1;
+					}
+					
+					switch(column->property_id)
+					{
+						case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
+							es_output_attributes((list->items[i].flags & EVERYTHING_IPC_FOLDER) ? FILE_ATTRIBUTE_DIRECTORY : 0);
+							break;
+							
+						case EVERYTHING3_PROPERTY_ID_FULL_PATH:
+							wchar_buf_path_cat_filename(EVERYTHING_IPC_ITEMPATH(list,&list->items[i]),EVERYTHING_IPC_ITEMFILENAME(list,&list->items[i]),&filename_wcbuf);
+							es_output_text_property(filename_wcbuf.buf);
+							break;
+
+						case EVERYTHING3_PROPERTY_ID_PATH:
+							es_output_text_property(EVERYTHING_IPC_ITEMPATH(list,&list->items[i]));
+							break;
+							
+						case EVERYTHING3_PROPERTY_ID_NAME:
+							es_output_text_property(EVERYTHING_IPC_ITEMFILENAME(list,&list->items[i]));
+							break;
+					}
+					
+					column = column->order_next;
+				}									
+				
+				es_output_newline();
+				
 			}
-			else
-			{
-				es_write_wchar_string(EVERYTHING_IPC_ITEMPATH(list,&list->items[i]));
-				es_write_utf8_string("\\");
-				es_write_wchar_string(EVERYTHING_IPC_ITEMFILENAME(list,&list->items[i]));
-				es_write_utf8_string("\r\n");
-			}
+			
+			wchar_buf_kill(&filename_wcbuf);
 		}
 	}
 	
@@ -2979,21 +1935,21 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 	
 		es_cibuf_x = -es_cibuf_hscroll;
 		
-		if ((es_export == ES_EXPORT_CSV) || (es_export == ES_EXPORT_TSV))
+		if ((es_export_type == ES_EXPORT_TYPE_CSV) || (es_export_type == ES_EXPORT_TYPE_TSV))
 		{
-			es_column_t *column;
+			column_t *column;
 			int csv_double_quote;
 			int separator_ch;
 			int done_first;
 			
 			// Like Excel, avoid quoting unless we really need to with TSV
 			// CSV should always quote for consistancy.
-			csv_double_quote = (es_export == ES_EXPORT_CSV) ? es_csv_double_quote : es_double_quote;
+			csv_double_quote = (es_export_type == ES_EXPORT_TYPE_CSV) ? es_csv_double_quote : es_double_quote;
 			
-			separator_ch = (es_export == ES_EXPORT_CSV) ? ',' : '\t';
+			separator_ch = (es_export_type == ES_EXPORT_TYPE_CSV) ? ',' : '\t';
 			
 			done_first = 0;
-			column = es_column_order_start;
+			column = column_order_start;
 			
 			while(column)
 			{
@@ -3076,7 +2032,7 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 			es_fwrite_utf8_string("\r\n");
 		}
 		else
-		if (es_export == ES_EXPORT_EFU)
+		if (es_export_type == ES_EXPORT_TYPE_EFU)
 		{
 			void *data;
 				
@@ -3156,7 +2112,7 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 			es_fwrite_utf8_string("\r\n");
 		}
 		else
-		if ((es_export == ES_EXPORT_TXT) || (es_export == ES_EXPORT_M3U) || (es_export == ES_EXPORT_M3U8))
+		if ((es_export_type == ES_EXPORT_TYPE_TXT) || (es_export_type == ES_EXPORT_TYPE_M3U) || (es_export_type == ES_EXPORT_TYPE_M3U8))
 		{
 			void *data;
 			
@@ -3181,7 +2137,7 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 		}
 		else
 		{
-			es_column_t *column;
+			column_t *column;
 			int did_set_color;
 			int tot_column_text_len;
 			int tot_column_width;
@@ -3191,7 +2147,7 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 			tot_column_width = 0;
 			done_first = 0;
 			
-			column = es_column_order_start;
+			column = column_order_start;
 
 			while(column)
 			{
@@ -3211,7 +2167,7 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 					done_first = 1;
 				}
 				
-				data = es_get_column_data(list,i,column->property_id,column->flags & ES_COLUMN_FLAG_HIGHLIGHT);
+				data = es_get_column_data(list,i,column->property_id,column->flags & COLUMN_FLAG_HIGHLIGHT);
 
 				es_is_last_color = 0;
 				did_set_color = 0;
@@ -3219,7 +2175,7 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 				column_text = L"";
 				column_is_highlighted = 0;
 
-				if (column->flags & ES_COLUMN_FLAG_HIGHLIGHT)
+				if (column->flags & COLUMN_FLAG_HIGHLIGHT)
 				{
 					column_is_highlighted = 1;
 				}
@@ -3230,9 +2186,9 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 				{
 					if (es_output_is_char)
 					{
-						es_column_color_t *column_color;
+						column_color_t *column_color;
 						
-						column_color = es_column_color_find(column->property_id);
+						column_color = column_color_find(column->property_id);
 						if (column_color)
 						{
 							es_cibuf_attributes = column_color->color;
@@ -3371,7 +2327,7 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 							column_text_len += 2;
 						}
 						
-						column_width = es_column_get_width(column->property_id);
+						column_width = column_width_get(column->property_id);
 						
 						// left fill
 						if (is_right_aligned)
@@ -3431,7 +2387,7 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 								fill = tot_column_width + column_width - (tot_column_text_len + column_text_len);
 
 								// dont right fill last column.
-								if (column != es_column_order_last)
+								if (column != column_order_last)
 								{
 									// right spaces.
 									es_fill(fill,' ');
@@ -4111,34 +3067,34 @@ static int _es_main(void)
 	wchar_buf_t filter_wcbuf;
 	wchar_buf_t instance_name_wcbuf;
 	wchar_t *get_folder_size_filename;
-	pool_t column_color_pool;
-	pool_t column_width_pool;
-	pool_t column_pool;
-	array_t column_color_array;
-	array_t column_width_array;
-	array_t column_array;
+	pool_t local_column_color_pool;
+	pool_t local_column_width_pool;
+	pool_t local_column_pool;
+	array_t local_column_color_array;
+	array_t local_column_width_array;
+	array_t local_column_array;
 	
 	wchar_buf_init(&argv_wcbuf);
 	wchar_buf_init(&search_wcbuf);
 	wchar_buf_init(&filter_wcbuf);
 	wchar_buf_init(&instance_name_wcbuf);
-	pool_init(&column_color_pool);
-	pool_init(&column_width_pool);
-	pool_init(&column_pool);
-	array_init(&column_color_array);
-	array_init(&column_width_array);
-	array_init(&column_array);
+	pool_init(&local_column_color_pool);
+	pool_init(&local_column_width_pool);
+	pool_init(&local_column_pool);
+	array_init(&local_column_color_array);
+	array_init(&local_column_width_array);
+	array_init(&local_column_array);
 	
 	get_folder_size_filename = NULL;
 	es_instance_name_wcbuf = &instance_name_wcbuf;
 	es_search_wcbuf = &search_wcbuf;
 	
-	es_column_color_pool = &column_color_pool;
-	es_column_width_pool = &column_width_pool;
-	es_column_pool = &column_pool;
-	es_column_color_array = &column_color_array;
-	es_column_width_array = &column_width_array;
-	es_column_array = &column_array;
+	column_color_pool = &local_column_color_pool;
+	column_width_pool = &local_column_width_pool;
+	column_pool = &local_column_pool;
+	column_color_array = &local_column_color_array;
+	column_width_array = &local_column_width_array;
+	column_array = &local_column_array;
 	
 /*
 printf("PROPERTY %u\n",es_property_id_from_name("date-modified"));
@@ -4156,11 +3112,12 @@ return 0;
 	// get console info.
 	
 	{
-		CONSOLE_SCREEN_BUFFER_INFO csbi;
 		DWORD mode;
 
 		if (GetConsoleMode(es_output_handle,&mode))
 		{
+			CONSOLE_SCREEN_BUFFER_INFO csbi;
+			
 			if (GetConsoleScreenBufferInfo(es_output_handle,&csbi))
 			{
 				es_console_wide = csbi.srWindow.Right - csbi.srWindow.Left + 1;
@@ -4359,7 +3316,7 @@ return 0;
 				else
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"m3u"))
 				{
-					es_export = ES_EXPORT_M3U;
+					es_export_type = ES_EXPORT_TYPE_M3U;
 				}
 				else				
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"export-m3u"))
@@ -4369,7 +3326,7 @@ return 0;
 					es_export_file = os_create_file(argv_wcbuf.buf);
 					if (es_export_file != INVALID_HANDLE_VALUE)
 					{
-						es_export = ES_EXPORT_M3U;
+						es_export_type = ES_EXPORT_TYPE_M3U;
 					}
 					else
 					{
@@ -4379,7 +3336,7 @@ return 0;
 				else					
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"m3u8"))
 				{
-					es_export = ES_EXPORT_M3U8;
+					es_export_type = ES_EXPORT_TYPE_M3U8;
 				}
 				else				
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"export-m3u8"))
@@ -4389,7 +3346,7 @@ return 0;
 					es_export_file = os_create_file(argv_wcbuf.buf);
 					if (es_export_file != INVALID_HANDLE_VALUE)
 					{
-						es_export = ES_EXPORT_M3U8;
+						es_export_type = ES_EXPORT_TYPE_M3U8;
 					}
 					else
 					{
@@ -4399,12 +3356,12 @@ return 0;
 				else		
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"csv"))
 				{
-					es_export = ES_EXPORT_CSV;
+					es_export_type = ES_EXPORT_TYPE_CSV;
 				}
 				else				
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"tsv"))
 				{
-					es_export = ES_EXPORT_TSV;
+					es_export_type = ES_EXPORT_TYPE_TSV;
 				}
 				else				
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"export-csv"))
@@ -4414,7 +3371,7 @@ return 0;
 					es_export_file = os_create_file(argv_wcbuf.buf);
 					if (es_export_file != INVALID_HANDLE_VALUE)
 					{
-						es_export = ES_EXPORT_CSV;
+						es_export_type = ES_EXPORT_TYPE_CSV;
 					}
 					else
 					{
@@ -4429,7 +3386,7 @@ return 0;
 					es_export_file = os_create_file(argv_wcbuf.buf);
 					if (es_export_file != INVALID_HANDLE_VALUE)
 					{
-						es_export = ES_EXPORT_TSV;
+						es_export_type = ES_EXPORT_TYPE_TSV;
 					}
 					else
 					{
@@ -4439,7 +3396,7 @@ return 0;
 				else		
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"efu"))
 				{
-					es_export = ES_EXPORT_EFU;
+					es_export_type = ES_EXPORT_TYPE_EFU;
 				}
 				else		
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"export-efu"))
@@ -4449,7 +3406,7 @@ return 0;
 					es_export_file = os_create_file(argv_wcbuf.buf);
 					if (es_export_file != INVALID_HANDLE_VALUE)
 					{
-						es_export = ES_EXPORT_EFU;
+						es_export_type = ES_EXPORT_TYPE_EFU;
 					}
 					else
 					{
@@ -4459,7 +3416,7 @@ return 0;
 				else		
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"txt"))
 				{
-					es_export = ES_EXPORT_TXT;
+					es_export_type = ES_EXPORT_TYPE_TXT;
 				}
 				else				
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"export-txt"))
@@ -4469,7 +3426,7 @@ return 0;
 					es_export_file = os_create_file(argv_wcbuf.buf);
 					if (es_export_file != INVALID_HANDLE_VALUE)
 					{
-						es_export = ES_EXPORT_TXT;
+						es_export_type = ES_EXPORT_TYPE_TXT;
 					}
 					else
 					{
@@ -4508,91 +3465,91 @@ return 0;
 				{
 					es_expect_command_argv(&argv_wcbuf);
 
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_FULL_PATH,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_FULL_PATH,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"name-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"name-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_NAME,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_NAME,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"path-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"path-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_PATH,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_PATH,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"extension-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"extension-wide")) || (es_check_option_utf8_string(argv_wcbuf.buf,"ext-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"ext-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_EXTENSION,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_EXTENSION,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"size-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"size-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_SIZE,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_SIZE,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"date-created-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"date-created-wide")) || (es_check_option_utf8_string(argv_wcbuf.buf,"dc-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"dc-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_DATE_CREATED,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_DATE_CREATED,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"date-modified-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"date-modified-wide")) || (es_check_option_utf8_string(argv_wcbuf.buf,"dm-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"dm-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_DATE_MODIFIED,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_DATE_MODIFIED,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"date-accessed-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"date-accessed-wide")) || (es_check_option_utf8_string(argv_wcbuf.buf,"da-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"da-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_DATE_ACCESSED,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_DATE_ACCESSED,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"attributes-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"attributes-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_ATTRIBUTES,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_ATTRIBUTES,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"file-list-file-name-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"file-list-file-name-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"run-count-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"run-count-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_RUN_COUNT,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_RUN_COUNT,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"date-run-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"date-run-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_DATE_RUN,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_DATE_RUN,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if ((es_check_option_utf8_string(argv_wcbuf.buf,"date-recently-changed-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"date-recently-changed-wide")) || (es_check_option_utf8_string(argv_wcbuf.buf,"rc-width")) || (es_check_option_utf8_string(argv_wcbuf.buf,"rc-wide")))
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_column_wide(EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"size-leading-zero"))
@@ -4682,7 +3639,7 @@ return 0;
 
 					wchar_buf_init(&ini_filename_wcbuf);
 					
-					if (config_get_filename(0,&ini_filename_wcbuf))
+					if (config_get_filename(0,0,&ini_filename_wcbuf))
 					{
 						DeleteFile(ini_filename_wcbuf.buf);
 
@@ -4788,7 +3745,7 @@ return 0;
 				{
 					es_expect_command_argv(&argv_wcbuf);
 					
-					es_set_color(es_basic_property_name_to_id_array[basic_property_name_i].id,wchar_string_to_int(argv_wcbuf.buf));
+					column_color_set(property_basic_name_to_id_array[basic_property_name_i].id,wchar_string_to_int(argv_wcbuf.buf));
 				}
 				else
 				if (es_check_column_param(argv_wcbuf.buf))
@@ -4813,32 +3770,32 @@ return 0;
 					wchar_buf_init(&sort_name_wcbuf);
 					es_expect_command_argv(&argv_wcbuf);
 
-					for(basic_property_name_i=0;basic_property_name_i<ES_BASIC_PROPERTY_NAME_TO_ID_COUNT;basic_property_name_i++)
+					for(basic_property_name_i=0;basic_property_name_i<PROPERTY_BASIC_COUNT;basic_property_name_i++)
 					{
-						if (es_check_param_ascii(argv_wcbuf.buf,es_basic_property_name_to_id_array[basic_property_name_i].name))
+						if (es_check_param_ascii(argv_wcbuf.buf,property_basic_name_to_id_array[basic_property_name_i].name))
 						{
-							es_sort_property_id = es_basic_property_name_to_id_array[basic_property_name_i].id;
+							es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 
 							break;
 						}
 						else
 						{
-							wchar_buf_printf(&sort_name_wcbuf,"%s-ascending",es_basic_property_name_to_id_array[basic_property_name_i].name);
+							wchar_buf_printf(&sort_name_wcbuf,"%s-ascending",property_basic_name_to_id_array[basic_property_name_i].name);
 
 							if (es_check_option_wchar_string_name(argv_wcbuf.buf,sort_name_wcbuf.buf))
 							{
-								es_sort_property_id = es_basic_property_name_to_id_array[basic_property_name_i].id;
+								es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 								es_sort_ascending = 1;
 
 								break;
 							}
 							else
 							{
-								wchar_buf_printf(&sort_name_wcbuf,"%s-descending",es_basic_property_name_to_id_array[basic_property_name_i].name);
+								wchar_buf_printf(&sort_name_wcbuf,"%s-descending",property_basic_name_to_id_array[basic_property_name_i].name);
 								
 								if (es_check_option_wchar_string_name(argv_wcbuf.buf,sort_name_wcbuf.buf))
 								{
-									es_sort_property_id = es_basic_property_name_to_id_array[basic_property_name_i].id;
+									es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 									es_sort_ascending = -1;
 
 									break;
@@ -4847,7 +3804,7 @@ return 0;
 						}
 					}
 					
-					if (basic_property_name_i == ES_BASIC_PROPERTY_NAME_TO_ID_COUNT)
+					if (basic_property_name_i == PROPERTY_BASIC_COUNT)
 					{
 						es_fatal(ES_ERROR_EXPECTED_SWITCH_PARAMETER);
 					}
@@ -5181,8 +4138,7 @@ return 0;
 		}
 		else
 		{
-			//TODO: printf with error code.
-			es_write_utf8_string("Unable to save settings.\r\n");
+			es_fatal(ES_ERROR_CREATE_FILE);
 		}
 		
 		perform_search = 0;
@@ -5344,13 +4300,13 @@ return 0;
 		}
 		
 		// add filename column
-		if (!es_column_find(EVERYTHING3_PROPERTY_ID_FULL_PATH))
+		if (!column_find(EVERYTHING3_PROPERTY_ID_FULL_PATH))
 		{
-			if (!es_column_find(EVERYTHING3_PROPERTY_ID_NAME))
+			if (!column_find(EVERYTHING3_PROPERTY_ID_NAME))
 			{
-				if (!es_column_find(EVERYTHING3_PROPERTY_ID_PATH))
+				if (!column_find(EVERYTHING3_PROPERTY_ID_PATH))
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_FULL_PATH);
+					column_add(EVERYTHING3_PROPERTY_ID_FULL_PATH);
 				}
 			}
 		}
@@ -5360,9 +4316,9 @@ return 0;
 		// TODO: users will need to call -highlight-column <property-name> to highlight other columns.
 		if (es_highlight)
 		{
-			es_column_t *column;
+			column_t *column;
 			
-			column = es_column_order_start;
+			column = column_order_start;
 			
 			while(column)
 			{
@@ -5371,7 +4327,7 @@ return 0;
 					case EVERYTHING3_PROPERTY_ID_FULL_PATH:
 					case EVERYTHING3_PROPERTY_ID_NAME:
 					case EVERYTHING3_PROPERTY_ID_PATH:
-						column->flags |= ES_COLUMN_FLAG_HIGHLIGHT;
+						column->flags |= COLUMN_FLAG_HIGHLIGHT;
 						break;
 				}
 				
@@ -5381,7 +4337,7 @@ return 0;
 				
 		// write export headers
 		// write header
-		if (es_export)
+		if (es_export_type)
 		{
 			if (es_utf8_bom)
 			{
@@ -5405,15 +4361,15 @@ return 0;
 			// remove highlighting.
 			
 			{
-				es_column_t *column;
+				column_t *column;
 				
-				column = es_column_order_start;
+				column = column_order_start;
 				
 				while(column)
 				{
-					if (column->flags & ES_COLUMN_FLAG_HIGHLIGHT)
+					if (column->flags & COLUMN_FLAG_HIGHLIGHT)
 					{
-						column->flags &= (~ES_COLUMN_FLAG_HIGHLIGHT);
+						column->flags &= (~COLUMN_FLAG_HIGHLIGHT);
 					}
 
 					column = column->order_next;
@@ -5427,11 +4383,12 @@ return 0;
 				es_export_remaining = ES_EXPORT_BUF_SIZE;
 			}
 			
-			if ((es_export == ES_EXPORT_CSV) || (es_export == ES_EXPORT_TSV))
+			if ((es_export_type == ES_EXPORT_TYPE_CSV) || (es_export_type == ES_EXPORT_TYPE_TSV))
 			{
+//TODO: we have to output header later, as it might change with ipc3 or ipc1.
 				if (es_header)
 				{
-					const es_column_t **column_p;
+					const column_t **column_p;
 					SIZE_T column_run;
 					int done_first;
 //					es_buf_t name_cbuf;
@@ -5439,14 +4396,14 @@ return 0;
 					
 					done_first = 0;
 					
-					column_p = (const es_column_t **)column_array.indexes;
-					column_run = column_array.count;
+					column_p = (const column_t **)local_column_array.indexes;
+					column_run = local_column_array.count;
 					
 					while(column_run)
 					{
 						if (done_first)
 						{
-							es_fwrite_utf8_string((es_export == ES_EXPORT_CSV) ? "," : "\t");
+							es_fwrite_utf8_string((es_export_type == ES_EXPORT_TYPE_CSV) ? "," : "\t");
 						}
 						else
 						{
@@ -5465,7 +4422,7 @@ return 0;
 				}
 			}
 			else
-			if (es_export == ES_EXPORT_EFU)
+			if (es_export_type == ES_EXPORT_TYPE_EFU)
 			{
 				int was_size_column;
 				int was_date_modified_column;
@@ -5478,9 +4435,9 @@ return 0;
 				was_attributes_column = 0;
 							
 				{
-					es_column_t *column;
+					column_t *column;
 					
-					column = es_column_order_start;
+					column = column_order_start;
 					
 					while(column)
 					{
@@ -5508,28 +4465,28 @@ return 0;
 				}
 				
 				// reset columns and force Filename,Size,Date Modified,Date Created,Attributes.
-				es_column_clear_all();
+				column_clear_all();
 
-				es_column_add(EVERYTHING3_PROPERTY_ID_FULL_PATH);
+				column_add(EVERYTHING3_PROPERTY_ID_FULL_PATH);
 				
 				if (was_size_column)
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_SIZE);
+					column_add(EVERYTHING3_PROPERTY_ID_SIZE);
 				}
 
 				if (was_date_modified_column)
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_DATE_MODIFIED);
+					column_add(EVERYTHING3_PROPERTY_ID_DATE_MODIFIED);
 				}
 
 				if (was_date_created_column)
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_DATE_CREATED);
+					column_add(EVERYTHING3_PROPERTY_ID_DATE_CREATED);
 				}
 
 				if (was_attributes_column)
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_ATTRIBUTES);
+					column_add(EVERYTHING3_PROPERTY_ID_ATTRIBUTES);
 				}
 
 				if (es_header)
@@ -5538,16 +4495,16 @@ return 0;
 				}
 			}
 			else
-			if ((es_export == ES_EXPORT_TXT) || (es_export == ES_EXPORT_M3U) || (es_export == ES_EXPORT_M3U8))
+			if ((es_export_type == ES_EXPORT_TYPE_TXT) || (es_export_type == ES_EXPORT_TYPE_M3U) || (es_export_type == ES_EXPORT_TYPE_M3U8))
 			{
-				if (es_export == ES_EXPORT_M3U)		
+				if (es_export_type == ES_EXPORT_TYPE_M3U)		
 				{
 					es_cp = CP_ACP;
 				}
 
 				// reset columns and force Filename.
-				es_column_clear_all();
-				es_column_add(EVERYTHING3_PROPERTY_ID_FULL_PATH);
+				column_clear_all();
+				column_add(EVERYTHING3_PROPERTY_ID_FULL_PATH);
 			}
 		}
 
@@ -5592,27 +4549,27 @@ return 0;
 		es_everything_hwnd = es_find_ipc_window();
 		if (es_everything_hwnd)
 		{
-			if (es_export == ES_EXPORT_EFU)
+			if (es_export_type == ES_EXPORT_TYPE_EFU)
 			{
 				// get indexed file info column for exporting.
 				if (SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_FILE_INFO_INDEXED,EVERYTHING_IPC_FILE_INFO_FILE_SIZE))
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_SIZE);
+					column_add(EVERYTHING3_PROPERTY_ID_SIZE);
 				}
 				
 				if (SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_FILE_INFO_INDEXED,EVERYTHING_IPC_FILE_INFO_DATE_MODIFIED))
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_DATE_MODIFIED);
+					column_add(EVERYTHING3_PROPERTY_ID_DATE_MODIFIED);
 				}
 				
 				if (SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_FILE_INFO_INDEXED,EVERYTHING_IPC_FILE_INFO_DATE_CREATED))
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_DATE_CREATED);
+					column_add(EVERYTHING3_PROPERTY_ID_DATE_CREATED);
 				}
 				
 				if (SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_FILE_INFO_INDEXED,EVERYTHING_IPC_FILE_INFO_ATTRIBUTES))
 				{
-					es_column_add(EVERYTHING3_PROPERTY_ID_ATTRIBUTES);
+					column_add(EVERYTHING3_PROPERTY_ID_ATTRIBUTES);
 				}
 			}
 	
@@ -5670,7 +4627,7 @@ exit:
 		DestroyWindow(es_reply_hwnd);
 	}
 
-	es_column_clear_all();
+	column_clear_all();
 	es_column_color_clear_all();
 	es_column_width_clear_all();
 
@@ -5696,12 +4653,12 @@ exit:
 		es_fatal(es_ret);
 	}
 
-	array_kill(&column_array);
-	array_kill(&column_width_array);
-	array_kill(&column_color_array);
-	pool_kill(&column_pool);
-	pool_kill(&column_width_pool);
-	pool_kill(&column_color_pool);
+	array_kill(&local_column_array);
+	array_kill(&local_column_width_array);
+	array_kill(&local_column_color_array);
+	pool_kill(&local_column_pool);
+	pool_kill(&local_column_width_pool);
+	pool_kill(&local_column_color_pool);
 	wchar_buf_kill(&instance_name_wcbuf);
 	wchar_buf_kill(&filter_wcbuf);
 	wchar_buf_kill(&search_wcbuf);
@@ -5971,6 +4928,7 @@ int es_check_option_wchar_string(const wchar_t *argv,const wchar_t *s)
 	return 0;
 }
 
+//TODO: optimize.
 int es_check_option_utf8_string(const wchar_t *argv,const ES_UTF8 *s)
 {
 	int ret;
@@ -6666,7 +5624,7 @@ void es_get_argv(wchar_buf_t *wcbuf)
 		
 		while(*p)
 		{
-			if ((!inquote) && (unicode_is_ws(*p)))
+			if ((!inquote) && (unicode_is_ascii_ws(*p)))
 			{
 				break;
 			}
@@ -6763,7 +5721,7 @@ void es_get_command_argv(wchar_buf_t *wcbuf)
 		
 		while(*p)
 		{
-			if ((!inquote) && (unicode_is_ws(*p)))
+			if ((!inquote) && (unicode_is_ascii_ws(*p)))
 			{
 				break;
 			}
@@ -6827,92 +5785,6 @@ void es_expect_command_argv(wchar_buf_t *wcbuf)
 	}
 }
 
-static int es_column_color_compare(const es_column_color_t *a,const void *property_id)
-{
-	if (a->property_id < (DWORD)property_id)
-	{
-		return -1;
-	}
-
-	if (a->property_id > (DWORD)property_id)
-	{
-		return 1;
-	}
-	
-	return 0;
-}
-
-static void es_set_color(DWORD property_id,WORD color)
-{
-	es_column_color_t *column_color;
-	SIZE_T insert_index;
-	
-	column_color = array_find_or_get_insertion_index(es_column_color_array,es_column_color_compare,(const void *)property_id,&insert_index);
-	if (column_color)
-	{
-		column_color->color = color;
-	}
-	else
-	{
-		column_color = pool_alloc(es_column_color_pool,sizeof(es_column_color_t));
-		
-		column_color->property_id = property_id;
-		column_color->color = color;
-
-		array_insert(es_column_color_array,insert_index,column_color);
-	}
-}
-
-static int es_column_width_compare(const es_column_width_t *a,const void *property_id)
-{
-	if (a->property_id < (DWORD)property_id)
-	{
-		return -1;
-	}
-
-	if (a->property_id > (DWORD)property_id)
-	{
-		return 1;
-	}
-	
-	return 0;
-}
-
-static void es_set_column_wide(DWORD property_id,int width)
-{
-	es_column_width_t *column_width;
-	SIZE_T insert_index;
-	int sane_width;
-	
-	sane_width = width;
-	
-	// sanity.
-	if (sane_width < 0) 
-	{
-		sane_width = 0;
-	}
-	
-	if (sane_width > 4095) 
-	{
-		sane_width = 4095;
-	}
-	
-	column_width = array_find_or_get_insertion_index(es_column_width_array,es_column_width_compare,(const void *)property_id,&insert_index);
-	if (column_width)
-	{
-		column_width->width = sane_width;
-	}
-	else
-	{
-		column_width = pool_alloc(es_column_width_pool,sizeof(es_column_width_t));
-		
-		column_width->property_id = property_id;
-		column_width->width = sane_width;
-
-		array_insert(es_column_width_array,insert_index,column_width);
-	}
-}
-
 int es_is_valid_key(INPUT_RECORD *ir)
 {
 	switch (ir->Event.KeyEvent.wVirtualKeyCode)
@@ -6931,325 +5803,407 @@ int es_is_valid_key(INPUT_RECORD *ir)
     return 1;
 }
 
-static int _es_save_settings(void)
+static BOOL _es_save_settings_with_filename(const wchar_t *filename)
 {
-	int ret;
+	BOOL ret;
+	HANDLE file_handle;
+	
+	ret = FALSE;
+			
+	file_handle = os_create_file(filename);
+	if (file_handle != INVALID_HANDLE_VALUE)
+	{
+		os_write_file_utf8_string(file_handle,"[ES]\r\n");
+		
+//TODO: use canonical name
+		config_write_int(file_handle,"sort_property_id",es_sort_property_id);
+		config_write_int(file_handle,"sort_ascending",es_sort_ascending);
+		config_write_string(file_handle,"instance",es_instance_name_wcbuf->buf);
+		config_write_int(file_handle,"highlight_color",es_highlight_color);
+		config_write_int(file_handle,"highlight",es_highlight);
+		config_write_int(file_handle,"match_whole_word",es_match_whole_word);
+		config_write_int(file_handle,"match_path",es_match_path);
+		config_write_int(file_handle,"match_case",es_match_case);
+		config_write_int(file_handle,"match_diacritics",es_match_diacritics);
+
+//TODO: use canonical name
+/*
+		{
+			wchar_t columnbuf[ES_WSTRING_SIZE];
+			SIZE_T columni;
+			
+			*columnbuf = 0;
+			
+			for(columni=0;columni<es_numcolumns;columni++)
+			{
+				if (columni)
+				{
+					wchar_string_cat_wchar_string(columnbuf,L",");
+				}
+				
+				wchar_string_cat_wchar_string_UINT64(columnbuf,es_columns[columni]);
+			}
+
+			config_write_string("columns",columnbuf);
+		}
+*/
+		config_write_int(file_handle,"size_leading_zero",es_size_leading_zero);
+		config_write_int(file_handle,"run_count_leading_zero",es_run_count_leading_zero);
+		config_write_int(file_handle,"digit_grouping",es_digit_grouping);
+		config_write_int(file_handle,"offset",es_offset);
+		config_write_int(file_handle,"max_results",es_max_results);
+		config_write_int(file_handle,"timeout",es_timeout);
+
+//TODO: use canonical name
+/*
+		{
+			wchar_t colorbuf[ES_WSTRING_SIZE];
+			int columni;
+			
+			*colorbuf = 0;
+			
+			for(columni=0;columni<ES_COLUMN_TOTAL;columni++)
+			{
+				if (columni)
+				{
+					wchar_string_cat_wchar_string(colorbuf,L",");
+				}
+				
+				if (es_column_color_is_valid[columni])
+				{
+					wchar_string_cat_wchar_string_UINT64(colorbuf,es_column_color[columni]);
+				}
+			}
+
+			config_write_string("column_colors",colorbuf,filename);
+		}
+*/
+		config_write_int(file_handle,"size_format",es_size_format);
+		config_write_int(file_handle,"date_format",es_date_format);
+		config_write_int(file_handle,"pause",es_pause);
+		config_write_int(file_handle,"empty_search_help",es_empty_search_help);
+		config_write_int(file_handle,"hide_empty_search_results",es_hide_empty_search_results);
+		config_write_int(file_handle,"utf8_bom",es_utf8_bom);
+		
+//TODO: use canonical name
+/*
+		{
+			wchar_t widthbuf[ES_WSTRING_SIZE];
+			int columni;
+			
+			*widthbuf = 0;
+			
+			for(columni=0;columni<ES_COLUMN_TOTAL;columni++)
+			{
+				if (columni)
+				{
+					wchar_string_cat_wchar_string(widthbuf,L",");
+				}
+				
+				wchar_string_cat_wchar_string_UINT64(widthbuf,es_column_widths[columni]);
+			}
+
+			config_write_string("column_widths",widthbuf,filename);
+		}
+		*/
+		
+		ret = TRUE;
+		
+		CloseHandle(file_handle);
+	}
+	
+	return ret;
+}
+
+static BOOL _es_save_settings_with_appdata(int is_appdata)
+{
+	BOOL ret;
 	wchar_buf_t ini_temp_filename_wcbuf;
 	wchar_buf_t ini_filename_wcbuf;
 
-	ret = 0;
+	ret = FALSE;
 	wchar_buf_init(&ini_temp_filename_wcbuf);
 	wchar_buf_init(&ini_filename_wcbuf);
 	
-	if (config_get_filename(1,&ini_temp_filename_wcbuf))
+	// if we loaded from appdata ini, always save to appdata ini.
+	// try to write to exe dir first..
+	// if that fails (typically access denied), write to appdata.
+	if (config_get_filename(is_appdata,1,&ini_temp_filename_wcbuf))
 	{
-		if (config_get_filename(0,&ini_filename_wcbuf))
+		if (config_get_filename(is_appdata,0,&ini_filename_wcbuf))
 		{
-			HANDLE file_handle;
-			
-			file_handle = os_create_file(ini_temp_filename_wcbuf.buf);
-			if (file_handle != INVALID_HANDLE_VALUE)
+			if (is_appdata)
 			{
-				os_write_file_utf8_string(file_handle,"[ES]\r\n");
-		//TODO: use canonical name
-				config_write_int(file_handle,"sort_property_id",es_sort_property_id);
-				config_write_int(file_handle,"sort_ascending",es_sort_ascending);
-				config_write_string(file_handle,"instance",es_instance_name_wcbuf->buf);
-				config_write_int(file_handle,"highlight_color",es_highlight_color);
-				config_write_int(file_handle,"highlight",es_highlight);
-				config_write_int(file_handle,"match_whole_word",es_match_whole_word);
-				config_write_int(file_handle,"match_path",es_match_path);
-				config_write_int(file_handle,"match_case",es_match_case);
-				config_write_int(file_handle,"match_diacritics",es_match_diacritics);
-
-		//TODO: use canonical name
-		/*
-				{
-					wchar_t columnbuf[ES_WSTRING_SIZE];
-					SIZE_T columni;
-					
-					*columnbuf = 0;
-					
-					for(columni=0;columni<es_numcolumns;columni++)
-					{
-						if (columni)
-						{
-							wchar_string_cat_wchar_string(columnbuf,L",");
-						}
-						
-						wchar_string_cat_wchar_string_UINT64(columnbuf,es_columns[columni]);
-					}
-
-					config_write_string("columns",columnbuf);
-				}
-		*/
-				config_write_int(file_handle,"size_leading_zero",es_size_leading_zero);
-				config_write_int(file_handle,"run_count_leading_zero",es_run_count_leading_zero);
-				config_write_int(file_handle,"digit_grouping",es_digit_grouping);
-				config_write_int(file_handle,"offset",es_offset);
-				config_write_int(file_handle,"max_results",es_max_results);
-				config_write_int(file_handle,"timeout",es_timeout);
-
-		//TODO: use canonical name
-		/*
-				{
-					wchar_t colorbuf[ES_WSTRING_SIZE];
-					int columni;
-					
-					*colorbuf = 0;
-					
-					for(columni=0;columni<ES_COLUMN_TOTAL;columni++)
-					{
-						if (columni)
-						{
-							wchar_string_cat_wchar_string(colorbuf,L",");
-						}
-						
-						if (es_column_color_is_valid[columni])
-						{
-							wchar_string_cat_wchar_string_UINT64(colorbuf,es_column_color[columni]);
-						}
-					}
-
-					config_write_string("column_colors",colorbuf,filename);
-				}
-		*/
-				config_write_int(file_handle,"size_format",es_size_format);
-				config_write_int(file_handle,"date_format",es_date_format);
-				config_write_int(file_handle,"pause",es_pause);
-				config_write_int(file_handle,"empty_search_help",es_empty_search_help);
-				config_write_int(file_handle,"hide_empty_search_results",es_hide_empty_search_results);
-				config_write_int(file_handle,"utf8_bom",es_utf8_bom);
-				
-		//TODO: use canonical name
-		/*
-				{
-					wchar_t widthbuf[ES_WSTRING_SIZE];
-					int columni;
-					
-					*widthbuf = 0;
-					
-					for(columni=0;columni<ES_COLUMN_TOTAL;columni++)
-					{
-						if (columni)
-						{
-							wchar_string_cat_wchar_string(widthbuf,L",");
-						}
-						
-						wchar_string_cat_wchar_string_UINT64(widthbuf,es_column_widths[columni]);
-					}
-
-					config_write_string("column_widths",widthbuf,filename);
-				}
-				*/
-				
-				CloseHandle(file_handle);
-
+				os_make_sure_path_to_file_exists(ini_temp_filename_wcbuf.buf);
+			}
+			
+			if (_es_save_settings_with_filename(ini_temp_filename_wcbuf.buf))
+			{
 				if (os_replace_file(ini_temp_filename_wcbuf.buf,ini_filename_wcbuf.buf))
 				{
-					ret = 1;
+					ret = TRUE;
 				}
 			}
 		}
 	}
 
 	wchar_buf_kill(&ini_filename_wcbuf);
-	wchar_buf_kill(&ini_temp_filename_wcbuf);
+	wchar_buf_kill(&ini_temp_filename_wcbuf);	
 	
-	return 1;
+	return ret;
+}
+
+// returns 1 if successful.
+// returns 0 on failure and sets GetLastError();
+static BOOL _es_save_settings(void)
+{
+	BOOL ret;
+
+	ret = FALSE;
+	
+	// if we loaded from appdata ini, always save to appdata ini.
+	// try to write to exe dir first..
+	// if that fails (typically access denied), write to appdata.
+	// 
+	// our manifest uses:
+	// <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+	// which disables the virtual store.
+	
+	if (!es_loaded_appdata_ini)
+	{
+		if (_es_save_settings_with_appdata(0))
+		{
+			ret = TRUE;
+			
+			goto got_ret;
+		}
+	}
+
+	if (_es_save_settings_with_appdata(1))
+	{
+		ret = TRUE;
+	}
+
+got_ret:
+
+	return ret;
+}
+
+static BOOL _es_load_settings_with_filename(const wchar_t *filename)
+{
+	BOOL ret;
+	config_ini_t ini;
+	
+	ret = FALSE;
+	
+	if (config_ini_open(&ini,filename,"ES"))
+	{
+		//TODO: use canonical sort name
+		es_sort_property_id = config_read_int(&ini,"sort_property_id",es_sort_property_id);
+		es_sort_ascending = config_read_int(&ini,"sort_ascending",es_sort_ascending);
+		config_read_string(&ini,"instance",es_instance_name_wcbuf);
+		es_highlight_color = config_read_int(&ini,"highlight_color",es_highlight_color);
+		es_highlight = config_read_int(&ini,"highlight",es_highlight);
+		es_match_whole_word = config_read_int(&ini,"match_whole_word",es_match_whole_word);
+		es_match_path = config_read_int(&ini,"match_path",es_match_path);
+		es_match_case = config_read_int(&ini,"match_case",es_match_case);
+		es_match_diacritics = config_read_int(&ini,"match_diacritics",es_match_diacritics);
+
+//TODO: use canonical name
+/*
+		{
+			wchar_t columnbuf[ES_WSTRING_SIZE];
+			wchar_t *p;
+			
+			*columnbuf = 0;
+			
+			config_read_string("columns",columnbuf,&ini);
+			
+			p = columnbuf;
+			
+			while(*p)
+			{
+				const wchar_t *start;
+				int columntype;
+				
+				start = p;
+				
+				while(*p)
+				{
+					if (*p == ',')
+					{
+						*p++ = 0;
+						
+						break;
+					}
+
+					p++;
+				}
+				
+				if (*start)
+				{
+					columntype = wchar_string_to_int(start);
+					
+					if ((columntype >= 0) && (columntype < ES_COLUMN_TOTAL))
+					{
+					#error property_id
+//						column_add(columntype);
+					}
+				}
+			}
+		}*/
+
+		es_size_leading_zero = config_read_int(&ini,"size_leading_zero",es_size_leading_zero);
+		es_run_count_leading_zero = config_read_int(&ini,"run_count_leading_zero",es_run_count_leading_zero);
+		es_digit_grouping = config_read_int(&ini,"digit_grouping",es_digit_grouping);
+		es_offset = config_read_int(&ini,"offset",es_offset);
+		es_max_results = config_read_int(&ini,"max_results",es_max_results);
+		es_timeout = config_read_int(&ini,"timeout",es_timeout);
+
+//TODO: use canonical name
+/*
+		{
+			wchar_t colorbuf[ES_WSTRING_SIZE];
+			wchar_t *p;
+			int column_index;
+			
+			*colorbuf = 0;
+			
+			config_read_string("column_colors",colorbuf,&ini);
+			
+			p = colorbuf;
+			column_index = 0;
+			
+			while(*p)
+			{
+				const wchar_t *start;
+				int color;
+				
+				start = p;
+				
+				while(*p)
+				{
+					if (*p == ',')
+					{
+						*p++ = 0;
+						
+						break;
+					}
+
+					p++;
+				}
+				
+				if (*start)
+				{
+					color = wchar_string_to_int(start);
+					
+					es_column_color[column_index] = color;
+					es_column_color_is_valid[column_index] = 1;
+				}
+				
+				column_index++;
+			}
+		}
+*/
+
+		es_size_format = config_read_int(&ini,"size_format",es_size_format);
+		es_date_format = config_read_int(&ini,"date_format",es_date_format);
+		es_pause = config_read_int(&ini,"pause",es_pause);
+		es_empty_search_help = config_read_int(&ini,"empty_search_help",es_empty_search_help);
+		es_hide_empty_search_results = config_read_int(&ini,"hide_empty_search_results",es_hide_empty_search_results);
+		es_utf8_bom = config_read_int(&ini,"utf8_bom",es_utf8_bom);
+		
+//TODO: use canonical name
+/*
+		{
+			wchar_t widthbuf[ES_WSTRING_SIZE];
+			wchar_t *p;
+			int column_index;
+			
+			*widthbuf = 0;
+			
+			config_read_string("column_widths",widthbuf,&ini);
+			
+			p = widthbuf;
+			column_index = 0;
+			
+			while(*p)
+			{
+				const wchar_t *start;
+				int width;
+				
+				start = p;
+				
+				while(*p)
+				{
+					if (*p == ',')
+					{
+						*p++ = 0;
+						
+						break;
+					}
+
+					p++;
+				}
+				
+				if (*start)
+				{
+					width = wchar_string_to_int(start);
+					
+					// sanity.
+					if (width < 0) 
+					{
+						width = 0;
+					}
+					
+					if (width > 200) 
+					{
+						width = 200;
+					}						
+					
+					es_column_widths[column_index] = width;
+				}
+				
+				column_index++;
+			}
+		}	
+		*/
+
+		config_ini_close(&ini);
+	}
+	
+	return ret;
+}
+
+static BOOL _es_load_settings_with_appdata(int is_appdata)
+{
+	BOOL ret;
+	wchar_buf_t ini_filename_wcbuf;
+
+	ret = FALSE;
+	wchar_buf_init(&ini_filename_wcbuf);
+	
+	if (config_get_filename(is_appdata,0,&ini_filename_wcbuf))
+	{
+		if (_es_load_settings_with_filename(ini_filename_wcbuf.buf))
+		{
+			ret = TRUE;
+		}
+	}
+
+	wchar_buf_kill(&ini_filename_wcbuf);
+	
+	return ret;
 }
 
 static void _es_load_settings(void)
 {
-	wchar_buf_t ini_filename_wcbuf;
-
-	wchar_buf_init(&ini_filename_wcbuf);
+	_es_load_settings_with_appdata(0);
 	
-	if (config_get_filename(0,&ini_filename_wcbuf))
+	if (_es_load_settings_with_appdata(1))
 	{
-		HANDLE file_handle;
-		
-		file_handle = os_open_file(ini_filename_wcbuf.buf);
-		if (file_handle != INVALID_HANDLE_VALUE)
-		{
-		//TODO:
-		#if 0
-	//TODO: use canonical sort name
-			es_sort_property_id = config_read_int(filename,"sort_property_id",es_sort_property_id);
-			es_sort_ascending = config_read_int(filename,"sort_ascending",es_sort_ascending);
-			config_read_string(filename,"instance",es_instance_name_wcbuf);
-			es_highlight_color = config_read_int(filename,"highlight_color",es_highlight_color);
-			es_highlight = config_read_int(filename,"highlight",es_highlight);
-			es_match_whole_word = config_read_int(filename,"match_whole_word",es_match_whole_word);
-			es_match_path = config_read_int(filename,"match_path",es_match_path);
-			es_match_case = config_read_int(filename,"match_case",es_match_case);
-			es_match_diacritics = config_read_int(filename,"match_diacritics",es_match_diacritics);
-
-	//TODO: use canonical name
-	/*
-			{
-				wchar_t columnbuf[ES_WSTRING_SIZE];
-				wchar_t *p;
-				
-				*columnbuf = 0;
-				
-				config_read_string("columns",columnbuf,filename);
-				
-				p = columnbuf;
-				
-				while(*p)
-				{
-					const wchar_t *start;
-					int columntype;
-					
-					start = p;
-					
-					while(*p)
-					{
-						if (*p == ',')
-						{
-							*p++ = 0;
-							
-							break;
-						}
-
-						p++;
-					}
-					
-					if (*start)
-					{
-						columntype = wchar_string_to_int(start);
-						
-						if ((columntype >= 0) && (columntype < ES_COLUMN_TOTAL))
-						{
-						#error property_id
-	//						es_column_add(columntype);
-						}
-					}
-				}
-			}*/
-
-			es_size_leading_zero = config_read_int(filename,"size_leading_zero",es_size_leading_zero);
-			es_run_count_leading_zero = config_read_int(filename,"run_count_leading_zero",es_run_count_leading_zero);
-			es_digit_grouping = config_read_int(filename,"digit_grouping",es_digit_grouping);
-			es_offset = config_read_int(filename,"offset",es_offset);
-			es_max_results = config_read_int(filename,"max_results",es_max_results);
-			es_timeout = config_read_int(filename,"timeout",es_timeout);
-
-	//TODO: use canonical name
-	/*
-			{
-				wchar_t colorbuf[ES_WSTRING_SIZE];
-				wchar_t *p;
-				int column_index;
-				
-				*colorbuf = 0;
-				
-				config_read_string("column_colors",colorbuf,filename);
-				
-				p = colorbuf;
-				column_index = 0;
-				
-				while(*p)
-				{
-					const wchar_t *start;
-					int color;
-					
-					start = p;
-					
-					while(*p)
-					{
-						if (*p == ',')
-						{
-							*p++ = 0;
-							
-							break;
-						}
-
-						p++;
-					}
-					
-					if (*start)
-					{
-						color = wchar_string_to_int(start);
-						
-						es_column_color[column_index] = color;
-						es_column_color_is_valid[column_index] = 1;
-					}
-					
-					column_index++;
-				}
-			}
-	*/
-
-			es_size_format = config_read_int(filename,"size_format",es_size_format);
-			es_date_format = config_read_int(filename,"date_format",es_date_format);
-			es_pause = config_read_int(filename,"pause",es_pause);
-			es_empty_search_help = config_read_int(filename,"empty_search_help",es_empty_search_help);
-			es_hide_empty_search_results = config_read_int(filename,"hide_empty_search_results",es_hide_empty_search_results);
-			es_utf8_bom = config_read_int(filename,"utf8_bom",es_utf8_bom);
-			
-	//TODO: use canonical name
-	/*
-			{
-				wchar_t widthbuf[ES_WSTRING_SIZE];
-				wchar_t *p;
-				int column_index;
-				
-				*widthbuf = 0;
-				
-				config_read_string("column_widths",widthbuf,filename);
-				
-				p = widthbuf;
-				column_index = 0;
-				
-				while(*p)
-				{
-					const wchar_t *start;
-					int width;
-					
-					start = p;
-					
-					while(*p)
-					{
-						if (*p == ',')
-						{
-							*p++ = 0;
-							
-							break;
-						}
-
-						p++;
-					}
-					
-					if (*start)
-					{
-						width = wchar_string_to_int(start);
-						
-						// sanity.
-						if (width < 0) 
-						{
-							width = 0;
-						}
-						
-						if (width > 200) 
-						{
-							width = 200;
-						}						
-						
-						es_column_widths[column_index] = width;
-					}
-					
-					column_index++;
-				}
-			}	
-	*/		
-	#endif	
-			CloseHandle(file_handle);
-		}
+		es_loaded_appdata_ini = 1;
 	}
-
-	wchar_buf_kill(&ini_filename_wcbuf);
 }
 
 void es_append_filter(wchar_buf_t *wcbuf,const wchar_t *filter)
@@ -7299,46 +6253,46 @@ void es_do_run_history_command(void)
 
 // checks for -sort-size, -sort-size-ascending and -sort-size-descending
 // depreciated.
-int es_check_sorts(const wchar_t *argv)
+static BOOL es_check_sorts(const wchar_t *argv)
 {
-	int ret;
+	BOOL ret;
 	wchar_buf_t sort_name_wcbuf;
 	int basic_property_name_i;
 	
-	ret = 0;
+	ret = FALSE;
 	wchar_buf_init(&sort_name_wcbuf);
 	
-	for(basic_property_name_i=0;basic_property_name_i<ES_BASIC_PROPERTY_NAME_TO_ID_COUNT;basic_property_name_i++)
+	for(basic_property_name_i=0;basic_property_name_i<PROPERTY_BASIC_COUNT;basic_property_name_i++)
 	{
-		wchar_buf_printf(&sort_name_wcbuf,"sort-%s-ascending",es_basic_property_name_to_id_array[basic_property_name_i].name);
+		wchar_buf_printf(&sort_name_wcbuf,"sort-%s-ascending",property_basic_name_to_id_array[basic_property_name_i].name);
 		
 		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
 		{
-			es_sort_property_id = es_basic_property_name_to_id_array[basic_property_name_i].id;
+			es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 			es_sort_ascending = 1;
 
-			ret = 1;
+			ret = TRUE;
 			break;
 		}
 		
-		wchar_buf_printf(&sort_name_wcbuf,"sort-%s-descending",es_basic_property_name_to_id_array[basic_property_name_i].name);
+		wchar_buf_printf(&sort_name_wcbuf,"sort-%s-descending",property_basic_name_to_id_array[basic_property_name_i].name);
 		
 		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
 		{
-			es_sort_property_id = es_basic_property_name_to_id_array[basic_property_name_i].id;
+			es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 			es_sort_ascending = -1;
 
-			ret = 1;
+			ret = TRUE;
 			break;
 		}
 		
-		wchar_buf_printf(&sort_name_wcbuf,"sort-%s",es_basic_property_name_to_id_array[basic_property_name_i].name);
+		wchar_buf_printf(&sort_name_wcbuf,"sort-%s",property_basic_name_to_id_array[basic_property_name_i].name);
 		
 		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
 		{
-			es_sort_property_id = es_basic_property_name_to_id_array[basic_property_name_i].id;
+			es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 
-			ret = 1;
+			ret = TRUE;
 			break;
 		}
 	}
@@ -7969,216 +6923,14 @@ static BOOL es_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size)
 	return 1;
 }
 
-// compare property names
-// ignores '-' in a, UNLESS there's also a '-' in name.
-static int es_property_name_to_id_compare(const char *a,const char *name)
+static BOOL es_column_is_right_aligned(DWORD property_id)
 {
-	const char *p1;
-	const char *p2;
-	
-	p1 = a;
-	p2 = name;
-	
-	while(*p1)
+	if (property_format_to_right_align[property_get_format(property_id)])
 	{
-		int c1;
-		int c2;
-		
-		if (!*p2)
-		{
-			// a > b
-			return 1;
-		}
-		
-		c1 = *p1++;
-		
-		if (c1 == '-')
-		{
-			if (*p2 == '-')
-			{
-				// eat the - in p2 too.
-				p2++;
-			}
-			
-			continue;
-		}
-		
-		c2 = *p2++;
-		
-		if ((c2 >= 'A') && (c2 <= 'Z'))
-		{
-			c2 = c2 - 'A' + 'a';
-		}
-		
-		if (c1 != c2)
-		{
-			return c1 - c2;
-		}
+		return TRUE;
 	}
 	
-	if (*p2)
-	{
-		// a < b
-		return -1;
-	}
-	
-	return 0;
-}
-
-#ifdef _DEBUG
-
-// compare property names
-// ignores '-' in a, UNLESS there's also a '-' in name.
-static int es_property_name_to_id_compare_debug(const char *a,const char *name)
-{
-	const char *p1;
-	const char *p2;
-	
-	p1 = a;
-	p2 = name;
-	
-	while(*p1)
-	{
-		int c1;
-		int c2;
-		
-		c1 = *p1++;
-		
-		if (c1 == '-')
-		{
-			continue;
-		}
-
-next_c2:
-		
-		if (!*p2)
-		{
-			// a > b
-			return 1;
-		}
-		
-		c2 = *p2++;
-		
-		if (c2 == '-')
-		{
-			goto next_c2;
-		}
-		
-		if ((c2 >= 'A') && (c2 <= 'Z'))
-		{
-			c2 = c2 - 'A' + 'a';
-		}
-		
-		if (c1 != c2)
-		{
-			return c1 - c2;
-		}
-	}
-	
-	if (*p2)
-	{
-		// a < b
-		return -1;
-	}
-	
-	return 0;
-}
-
-#endif
-
-// name can omit '-'
-// returns the EVERYTHING3_PROPERTY_ID_* property ID.
-// returns EVERYTHING3_INVALID_PROPERTY_ID if not found.
-static DWORD es_property_id_from_name(const char *name)
-{
-	SIZE_T blo;
-	SIZE_T bhi;
-	
-#ifdef _DEBUG
-	
-	{
-		int i;
-		const char *last_name;
-		
-		last_name = NULL;
-		
-		for(i=0;i<ES_PROPERTY_NAME_TO_ID_COUNT;i++)
-		{
-			if (last_name)
-			{
-				if (es_property_name_to_id_compare_debug(last_name,es_property_name_to_id_array[i].name) >= 0)
-				{
-					printf("unsorted property %s %s\n",last_name,es_property_name_to_id_array[i].name);
-					
-					ExitProcess(0);
-				}
-				
-			}
-			
-			last_name = es_property_name_to_id_array[i].name;
-		}
-	}
-
-#endif
-	
-	// search for name insertion point.
-	blo = 0;
-	bhi = ES_PROPERTY_NAME_TO_ID_COUNT;
-
-	while(blo < bhi)
-	{
-		SIZE_T bpos;
-		int i;
-		
-		bpos = blo + ((bhi - blo) / 2);
-
-		i = es_property_name_to_id_compare(es_property_name_to_id_array[bpos].name,name);
-// printf("CMP %s %s %d\n",es_property_name_to_id_array[bpos].name,name,i)		;
-		if (i > 0)
-		{
-			bhi = bpos;
-		}
-		else
-		if (!i)
-		{
-			return es_property_name_to_id_array[bpos].id;
-		}
-		else
-		{
-			blo = bpos + 1;
-		}
-	}
-	
-	return EVERYTHING3_INVALID_PROPERTY_ID;
-}
-
-static es_column_color_t *es_column_color_find(DWORD property_id)
-{
-	return array_find(es_column_color_array,es_column_color_compare,(const void *)property_id);
-}
-
-static int es_column_is_right_aligned(DWORD property_id)
-{
-	return es_property_format_to_right_align[es_get_property_format(property_id)];
-}
-
-static es_column_width_t *es_column_width_find(DWORD property_id)
-{
-	return array_find(es_column_width_array,es_column_width_compare,(const void *)property_id);
-}
-
-static int es_column_get_width(DWORD property_id)
-{
-	es_column_width_t *column_width;
-	
-	column_width = es_column_width_find(property_id);
-
-	if (column_width)
-	{
-		return column_width->width;
-	}
-	
-	return es_property_format_to_column_width[es_get_property_format(property_id)];
+	return FALSE;
 }
 
 static void es_write_utf8_string(const ES_UTF8 *text)
@@ -8194,25 +6946,25 @@ static void es_write_utf8_string(const ES_UTF8 *text)
 	wchar_buf_kill(&wcbuf);
 }
 
-static int es_check_color_param(const wchar_t *argv,int *out_basic_property_name_i)
+static BOOL es_check_color_param(const wchar_t *argv,int *out_basic_property_name_i)
 {
-	int ret;
+	BOOL ret;
 	wchar_buf_t sort_name_wcbuf;
 	int basic_property_name_i;
 
-	ret = 0;
+	ret = FALSE;
 	wchar_buf_init(&sort_name_wcbuf);
 	
-	for(basic_property_name_i=0;basic_property_name_i<ES_BASIC_PROPERTY_NAME_TO_ID_COUNT;basic_property_name_i++)
+	for(basic_property_name_i=0;basic_property_name_i<PROPERTY_BASIC_COUNT;basic_property_name_i++)
 	{
-		wchar_buf_copy_utf8_string(&sort_name_wcbuf,es_basic_property_name_to_id_array[basic_property_name_i].name);
+		wchar_buf_copy_utf8_string(&sort_name_wcbuf,property_basic_name_to_id_array[basic_property_name_i].name);
 		wchar_buf_cat_utf8_string(&sort_name_wcbuf,"-color");
 
 		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
 		{
 			*out_basic_property_name_i = basic_property_name_i;
 			
-			ret = 1;
+			ret = TRUE;
 			break;
 		}
 	}
@@ -8222,34 +6974,34 @@ static int es_check_color_param(const wchar_t *argv,int *out_basic_property_name
 	return ret;
 }
 
-static int es_check_column_param(const wchar_t *argv)
+static BOOL es_check_column_param(const wchar_t *argv)
 {
-	int ret;
+	BOOL ret;
 	wchar_buf_t sort_name_wcbuf;
 	int basic_property_name_i;
 	
-	ret = 0;
+	ret = FALSE;
 	wchar_buf_init(&sort_name_wcbuf);
 	
-	for(basic_property_name_i=0;basic_property_name_i<ES_BASIC_PROPERTY_NAME_TO_ID_COUNT;basic_property_name_i++)
+	for(basic_property_name_i=0;basic_property_name_i<PROPERTY_BASIC_COUNT;basic_property_name_i++)
 	{
-		wchar_buf_copy_utf8_string(&sort_name_wcbuf,es_basic_property_name_to_id_array[basic_property_name_i].name);
+		wchar_buf_copy_utf8_string(&sort_name_wcbuf,property_basic_name_to_id_array[basic_property_name_i].name);
 		
 		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
 		{
-			es_column_add(es_basic_property_name_to_id_array[basic_property_name_i].id);
+			column_add(property_basic_name_to_id_array[basic_property_name_i].id);
 			
-			ret = 1;
+			ret = TRUE;
 			break;
 		}
 
-		wchar_buf_printf(&sort_name_wcbuf,"no-%s",es_basic_property_name_to_id_array[basic_property_name_i].name);
+		wchar_buf_printf(&sort_name_wcbuf,"no-%s",property_basic_name_to_id_array[basic_property_name_i].name);
 		
 		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
 		{
-			es_column_remove(es_basic_property_name_to_id_array[basic_property_name_i].id);
+			column_remove(property_basic_name_to_id_array[basic_property_name_i].id);
 			
-			ret = 1;
+			ret = TRUE;
 			break;
 		}
 	}
@@ -8257,101 +7009,6 @@ static int es_check_column_param(const wchar_t *argv)
 	wchar_buf_kill(&sort_name_wcbuf);
 
 	return ret;
-}
-
-static int es_column_compare(const es_column_t *a,const void *property_id)
-{
-	if (a->property_id < (DWORD)property_id)
-	{
-		return -1;
-	}
-
-	if (a->property_id > (DWORD)property_id)
-	{
-		return 1;
-	}
-	
-	return 0;
-}
-
-// returns SIZE_MAX if not found.
-static es_column_t *es_column_find(DWORD property_id)
-{
-	return array_find(es_column_array,es_column_compare,(const void *)property_id);
-}
-
-static void es_column_insert_order(es_column_t *column)
-{
-	if (es_column_order_start)
-	{
-		es_column_order_last->order_next = column;
-		column->order_prev = es_column_order_last;
-	}
-	else
-	{
-		es_column_order_start = column;
-		column->order_prev = NULL;
-	}
-	
-	column->order_next = NULL;
-	es_column_order_last = column;
-}
-		
-static void es_column_remove_order(es_column_t *column)
-{
-	if (es_column_order_start == column)
-	{
-		es_column_order_start = column->order_next;
-	}
-	else
-	{
-		column->order_prev->order_next = column->order_next;
-	}
-	
-	if (es_column_order_last == column)
-	{
-		es_column_order_last = column->order_prev;
-	}
-	else
-	{
-		column->order_next->order_prev = column->order_prev;
-	}
-}
-		
-static es_column_t *es_column_add(DWORD property_id)
-{
-	es_column_t *column;
-	SIZE_T insert_index;
-	
-	column = array_find_or_get_insertion_index(es_column_array,es_column_compare,(const void *)property_id,&insert_index);
-	if (column)
-	{
-		es_column_remove_order(column);
-	}
-	else
-	{
-		column = pool_alloc(es_column_pool,sizeof(es_column_t));
-		
-		column->property_id = property_id;
-		column->flags = 0;
-		
-		array_insert(es_column_array,insert_index,column);
-	}
-	
-	es_column_insert_order(column);
-	
-	return column;
-}
-
-static void es_column_remove(DWORD property_id)
-{
-	es_column_t *column;
-	
-	column = array_remove(es_column_array,es_column_compare,(const void *)property_id);
-	if (column)
-	{
-		es_column_remove_order(column);
-	}
 }
 
 //static int es_resolve_sort_ascending(DWORD property_id,int sort_ascending)
@@ -8409,35 +7066,16 @@ static int es_get_ipc_sort_type_from_property_id(DWORD property_id,int sort_asce
 	return EVERYTHING_IPC_SORT_NAME_ASCENDING;
 }
 
-static void es_column_clear_all(void)
-{
-	array_empty(es_column_array);
-	pool_empty(es_column_pool);
-
-	es_column_order_start = NULL;
-	es_column_order_last = NULL;
-}
-
 static void es_column_color_clear_all(void)
 {
-	array_empty(es_column_color_array);
-	pool_empty(es_column_color_pool);
+	array_empty(column_color_array);
+	pool_empty(column_color_pool);
 }
 
 static void es_column_width_clear_all(void)
 {
-	array_empty(es_column_width_array);
-	pool_empty(es_column_width_pool);
-}
-
-static BYTE es_get_property_format(DWORD property_id)
-{
-	if (property_id < EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT)	
-	{
-		return es_property_format[property_id];
-	}
-	
-	return ES_PROPERTY_FORMAT_TEXT30;
+	array_empty(column_width_array);
+	pool_empty(column_width_pool);
 }
 
 static HANDLE es_connect_ipc_pipe(void)

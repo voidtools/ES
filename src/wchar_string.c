@@ -271,7 +271,7 @@ const wchar_t *wchar_string_skip_ws(const wchar_t *p)
 {
 	while(*p)
 	{
-		if (!unicode_is_ws(*p))
+		if (!unicode_is_ascii_ws(*p))
 		{
 			break;
 		}
@@ -299,14 +299,14 @@ wchar_t *wchar_string_alloc_wchar_string_n(const wchar_t *s,SIZE_T slength_in_wc
 }
 
 // matches '\\' or '/'
-int wchar_string_is_trailing_path_separator_n(const wchar_t *s,SIZE_T slength_in_wchars)
+BOOL wchar_string_is_trailing_path_separator_n(const wchar_t *s,SIZE_T slength_in_wchars)
 {
 	if ((slength_in_wchars) && ((s[slength_in_wchars - 1] == '\\') || (s[slength_in_wchars - 1] == '/')))
 	{
-		return 1;
+		return TRUE;
 	}
 	
-	return 0;
+	return FALSE;
 }
 
 int wchar_string_get_path_separator_from_root(const wchar_t *s)
@@ -362,4 +362,38 @@ int wchar_string_get_path_separator_from_root(const wchar_t *s)
 
 	// default to '\\'
 	return '\\';
+}
+
+int wchar_string_compare(const wchar_t *a,const wchar_t *b)
+{
+	const wchar_t *p1;
+	const wchar_t *p2;
+	
+	p1 = a;
+	p2 = b;
+	
+	while(*p2)
+	{
+		if (!*p1)
+		{
+			// a < b
+			return -1;
+		}
+		
+		if (*p1 != *p2)
+		{
+			return *p1 - *p2;
+		}
+		
+		p1++;
+		p2++;
+	}
+	
+	if (*p1)
+	{
+		// a > b
+		return 1;
+	}
+	
+	return 0;
 }

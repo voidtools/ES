@@ -1,3 +1,4 @@
+
 #define ARRAY_STACK_SIZE				256
 
 // a simple array
@@ -21,7 +22,7 @@ typedef struct array_s
 void array_init(array_t *a);
 void array_kill(array_t *a);
 void array_empty(array_t *a);
-void *array_find_or_get_insertion_index(array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data,SIZE_T *out_insertion_index);
-void *array_find(array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data);
+void *array_find_or_get_insertion_index(const array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data,SIZE_T *out_insertion_index);
+void *array_find(const array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data);
 void array_insert(array_t *a,SIZE_T insertion_index,void *item);
 void *array_remove(array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data);

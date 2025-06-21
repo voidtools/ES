@@ -69,7 +69,7 @@ void *pool_alloc(pool_t *buf,SIZE_T size)
 		SIZE_T alloc_size;
 		pool_chunk_t *chunk;
 		
-		alloc_size = buf->cur_alloc_size * 2;
+		alloc_size = safe_size_mul_2(buf->cur_alloc_size);
 		
 		if (alloc_size > POOL_MAX_CHUNK_SIZE)
 		{

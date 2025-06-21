@@ -23,27 +23,52 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
-// Unicode functions
+// column colors
 
 #include "es.h"
 
-// ASCII only white space.
-BOOL unicode_is_ascii_ws(int c)
+// these must be set in main()
+pool_t *column_color_pool = NULL; // pool of column_color_t
+array_t *column_color_array = NULL; // array of column_color_t
+
+int column_color_compare(const column_color_t *a,const void *property_id)
 {
-	if ((c == ' ') || (c == '\t') || (c == '\r') || (c == '\n'))
+	if (a->property_id < (DWORD)(uintptr_t)property_id)
 	{
-		return TRUE;
+		return -1;
+	}
+
+	if (a->property_id > (DWORD)(uintptr_t)property_id)
+	{
+		return 1;
 	}
 	
-	return FALSE;
+	return 0;
 }
 
-int unicode_ascii_to_lower(int c)
+void column_color_set(DWORD property_id,WORD color)
 {
-	if ((c >= 'A') && (c <= 'Z'))
-	{
-		return c - 'A' + 'a';
-	}
+	column_color_t *column_color;
+	SIZE_T insert_index;
 	
-	return c;
+	column_color = array_find_or_get_insertion_index(column_color_array,column_color_compare,(const void *)(uintptr_t)property_id,&insert_index);
+	if (column_color)
+	{
+		column_color->color = color;
+	}
+	else
+	{
+		column_color = pool_alloc(column_color_pool,sizeof(column_color_t));
+		
+		column_color->property_id = property_id;
+		column_color->color = color;
+
+		array_insert(column_color_array,insert_index,column_color);
+	}
 }
+
+column_color_t *column_color_find(DWORD property_id)
+{
+	return array_find(column_color_array,column_color_compare,(const void *)(uintptr_t)property_id);
+}
+

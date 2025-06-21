@@ -27,20 +27,21 @@
 
 #include "es.h"
 
-// Copy a wide char string into a UTF-8 buffer.
+// Copy a wchar string into a UTF-8 buffer.
 // Use a NULL buffer to calculate the size.
 // Handles surrogates correctly.
 ES_UTF8 *utf8_string_copy_wchar_string(ES_UTF8 *buf,const wchar_t *ws)
 {
 	const wchar_t *p;
 	ES_UTF8 *d;
-	int c;
 	
 	p = ws;
 	d = buf;
 	
 	while(*p)
 	{
+		int c;
+		
 		c = *p++;
 		
 		// surrogates
@@ -132,4 +133,26 @@ SIZE_T utf8_string_get_length_in_bytes(const ES_UTF8 *s)
 	}
 	
 	return p - s;
+}
+
+const ES_UTF8 *utf8_string_match_utf8_string(const ES_UTF8 *s,const ES_UTF8 *search)
+{
+	const ES_UTF8 *p1;
+	const ES_UTF8 *p2;
+	
+	p1 = s;
+	p2 = search;
+	
+	while(*p2)
+	{
+		if (*p1 != *p2)
+		{
+			return NULL;
+		}
+		
+		p1++;
+		p2++;
+	}
+	
+	return p1;
 }

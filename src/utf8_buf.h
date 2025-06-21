@@ -1,7 +1,7 @@
 
 #define UTF8_BUF_STACK_SIZE		MAX_PATH
 
-// a dyanimcally sized UTF-8 string
+// a dyanimcally sized UTF-8 string buffer
 // has some stack space to avoid memory allocations.
 typedef struct utf8_buf_s
 {

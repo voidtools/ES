@@ -1,2 +1,3 @@
-int unicode_is_ws(const wchar_t c);
+
+BOOL unicode_is_ascii_ws(int c);
 int unicode_ascii_to_lower(int c);

@@ -48,7 +48,7 @@ void array_empty(array_t *a)
 	array_init(a);
 }
 
-void *array_find_or_get_insertion_index(array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data,SIZE_T *out_insertion_index)
+void *array_find_or_get_insertion_index(const array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data,SIZE_T *out_insertion_index)
 {
 	SIZE_T blo;
 	SIZE_T bhi;
@@ -92,13 +92,13 @@ void *array_find_or_get_insertion_index(array_t *a,int (*compare)(const void *a,
 	return NULL;
 }
 
-void *array_find(array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data)
+void *array_find(const array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data)
 {
 	SIZE_T blo;
 	SIZE_T bhi;
 	void **array_base;
 	
-	// search for name insertion point.
+	// search for insertion point.
 	blo = 0;
 	bhi = a->count;
 	array_base = a->indexes;
@@ -156,7 +156,7 @@ void array_insert(array_t *a,SIZE_T insertion_index,void *item)
 		SIZE_T new_allocated;
 		void **new_indexes;
 		
-		new_allocated = a->allocated * 2;
+		new_allocated = safe_size_add(a->allocated,a->allocated);
 		
 		new_indexes = mem_alloc(safe_size_mul_sizeof_pointer(new_allocated));
 		
@@ -179,6 +179,7 @@ void array_insert(array_t *a,SIZE_T insertion_index,void *item)
 	a->count++;
 }
 
+// caller should free returned item.
 void *array_remove(array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data)
 {
 	SIZE_T blo;

@@ -23,27 +23,42 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
-// Unicode functions
+// simple arrays
 
 #include "es.h"
 
-// ASCII only white space.
-BOOL unicode_is_ascii_ws(int c)
+#ifdef _DEBUG
+
+void debug_printf(ES_UTF8 *format,...)
 {
-	if ((c == ' ') || (c == '\t') || (c == '\r') || (c == '\n'))
-	{
-		return TRUE;
-	}
+	va_list argptr;
+	wchar_buf_t wcbuf;
+	DWORD num_written;
+
+	va_start(argptr,format);
+	wchar_buf_init(&wcbuf);
+
+	wchar_buf_vprintf(&wcbuf,format,argptr);
 	
-	return FALSE;
+	if (wcbuf.length_in_wchars <= ES_DWORD_MAX)
+	{
+		WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE),wcbuf.buf,(DWORD)wcbuf.length_in_wchars,&num_written,NULL);
+	}
+
+	wchar_buf_kill(&wcbuf);
+	va_end(argptr);
 }
 
-int unicode_ascii_to_lower(int c)
+void debug_error_printf(const ES_UTF8 *format,...)
 {
-	if ((c >= 'A') && (c <= 'Z'))
-	{
-		return c - 'A' + 'a';
-	}
-	
-	return c;
+	va_list argptr;
+
+	va_start(argptr,format);
+
+	os_error_vprintf(format,argptr);
+
+	va_end(argptr);
 }
+
+#endif
+

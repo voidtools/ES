@@ -1,10 +1,4 @@
 
-// compiler options
-//TODO: remove.
-#pragma warning(disable : 4996) // deprecation
-#pragma warning(disable : 4311) // warning C4311: 'type cast' : pointer truncation from 'const void *' to 'DWORD'
-#pragma warning(disable : 4312) // warning C4312: 'type cast' : conversion from 'DWORD' to 'const void *' of greater size
-
 // errorlevel returned from ES.
 #define ES_ERROR_SUCCESS					0 // no known error, search successful.
 #define ES_ERROR_REGISTER_WINDOW_CLASS		1 // failed to register window class
@@ -17,22 +11,19 @@
 #define ES_ERROR_IPC						8 // NO Everything IPC window.
 #define ES_ERROR_NO_RESULTS					9 // No results found. Only set if -no-result-error is used
 
-//TODO: remove.
-//#define ES_WSTRING_SIZE				MAX_PATH
-
 #define ES_DWORD_MAX		0xffffffff
 #define ES_UINT64_MAX		0xffffffffffffffffUI64
 
+#define WIN32_LEAN_AND_MEAN
+
 #include <windows.h>
-//#include <stdio.h>
+#include <limits.h> // SIZE_MAX
 
 typedef unsigned __int64 ES_UINT64;
 typedef BYTE ES_UTF8;
 
-// IPC Header from the Everything SDK:
 #include "everything_ipc.h"
 #include "everything3.h"
-//#include "shlwapi.h" // Path functions
 #include "version.h"
 #include "safe_size.h"
 #include "safe_int.h"
@@ -45,6 +36,11 @@ typedef BYTE ES_UTF8;
 #include "utf8_string.h"
 #include "utf8_buf.h"
 #include "config.h"
+#include "property.h"
+#include "column.h"
+#include "column_color.h"
+#include "column_width.h"
 #include "os.h"
+#include "debug.h"
 
 void DECLSPEC_NORETURN es_fatal(int error_code);

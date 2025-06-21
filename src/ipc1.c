@@ -23,27 +23,7 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
-// Unicode functions
+// IPC v1 (Everything 1.3)
 
 #include "es.h"
 
-// ASCII only white space.
-BOOL unicode_is_ascii_ws(int c)
-{
-	if ((c == ' ') || (c == '\t') || (c == '\r') || (c == '\n'))
-	{
-		return TRUE;
-	}
-	
-	return FALSE;
-}
-
-int unicode_ascii_to_lower(int c)
-{
-	if ((c >= 'A') && (c <= 'Z'))
-	{
-		return c - 'A' + 'a';
-	}
-	
-	return c;
-}

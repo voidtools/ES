@@ -27,10 +27,10 @@
 
 #include "es.h"
 
-// safely add some values.
+// safely add two values.
 // SIZE_MAX is used as an invalid value.
 // you will be unable to allocate SIZE_MAX bytes.
-// always use es_safe_size when allocating memory.
+// always use safe_size when allocating memory.
 SIZE_T safe_size_add(SIZE_T a,SIZE_T b)
 {
 	SIZE_T c;
@@ -73,6 +73,11 @@ SIZE_T safe_size_mul_sizeof_pointer(SIZE_T a)
 }
 
 SIZE_T safe_size_mul_sizeof_wchar(SIZE_T a)
+{
+	return safe_size_add(a,a); // x2
+}
+
+SIZE_T safe_size_mul_2(SIZE_T a)
 {
 	return safe_size_add(a,a); // x2
 }
