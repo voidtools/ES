@@ -8,7 +8,14 @@ enum
 	PROPERTY_FORMAT_EXTENSION, // 4 characters
 	PROPERTY_FORMAT_DATE, // 2025-06-16 21:22:23
 	PROPERTY_FORMAT_ATTRIBUTES, // RASH
-	PROPERTY_FORMAT_NUMBER, // 12345678	
+	PROPERTY_FORMAT_NUMBER1, // 1
+	PROPERTY_FORMAT_NUMBER2, // 12
+	PROPERTY_FORMAT_NUMBER3, // 123
+	PROPERTY_FORMAT_NUMBER4, // 1234 (no comma)
+	PROPERTY_FORMAT_NUMBER5, // 12345 (no comma)
+	PROPERTY_FORMAT_NUMBER6, // 12,345
+	PROPERTY_FORMAT_NUMBER7, // 123,456
+	PROPERTY_FORMAT_NUMBER,  // 123,456,789
 	PROPERTY_FORMAT_HEX_NUMBER, // 0xdeadbeef
 	PROPERTY_FORMAT_DIMENSIONS, // 123x456
 	PROPERTY_FORMAT_FIXED_Q1K, // 0.123
@@ -57,6 +64,8 @@ typedef struct es_property_name_to_id_s
 */
 
 BYTE property_get_format(DWORD property_id);
+BOOL property_is_right_aligned(DWORD property_id);
+void property_get_name(DWORD property_id,wchar_buf_t *out_wcbuf);
 
 extern BYTE property_format_to_column_width[PROPERTY_FORMAT_COUNT];
 extern BYTE property_format_to_right_align[PROPERTY_FORMAT_COUNT];

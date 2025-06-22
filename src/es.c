@@ -91,6 +91,7 @@
 #define ES_EXPORT_TYPE_M3U			4
 #define ES_EXPORT_TYPE_M3U8			5
 #define ES_EXPORT_TYPE_TSV			6
+#define ES_EXPORT_TYPE_JSON			7
 
 #define ES_EXPORT_BUF_SIZE			65536
 
@@ -231,12 +232,13 @@ typedef struct _everything3_result_list_property_request_s
 }_everything3_result_list_property_request_t;
 
 static int _es_main(void);
-static void es_write_wchar_string(const wchar_t *text);
+static void es_console_fill(SIZE_T count,int ascii_ch);
+static void es_console_write_wchar_string(const wchar_t *text);
 static void es_write_utf8_string(const ES_UTF8 *text);
-void es_fwrite_utf8_string(const ES_UTF8 *text);
-void es_fwrite_wchar_string(const wchar_t *text);
-void es_fwrite_n(const wchar_t *text,int wlen);
-void es_write_wchar(wchar_t ch);
+void es_output_column_utf8_string(const ES_UTF8 *text);
+void es_output_column_wchar_string(const wchar_t *text);
+static void es_export_write_wchar_string_n(const wchar_t *text,SIZE_T wlen);
+void es_output_wchar(wchar_t ch);
 void es_write_highlighted(const wchar_t *text);
 void es_write_UINT64(ES_UINT64 value);
 void es_write_dword(DWORD value);
@@ -246,10 +248,14 @@ static BOOL es_sendquery2(void);
 static BOOL es_sendquery3(void);
 int es_compare_list_items(const EVERYTHING_IPC_ITEM *a,const EVERYTHING_IPC_ITEM *b);
 static void es_write_result_count(DWORD result_count);
-static void es_output_text_property(const wchar_t *value);
-static void es_output_attributes(DWORD file_attributes);
-static void es_output_separator(void);
-static void es_output_newline(void);
+static void es_output_column_text_property(const wchar_t *value);
+static void es_output_column_size_property(int is_dir,ES_UINT64 value);
+static void es_output_column_filetime_property(ES_UINT64 value);
+static void es_output_column_attribute_property(DWORD file_attributes);
+static void es_output_column_separator(void);
+static void es_output_noncolumn_wchar_string(const wchar_t *text);
+static void es_output_column_newline(void);
+static void es_output_column_printf(ES_UTF8 *format,...);
 void es_listresultsW(EVERYTHING_IPC_LIST *list);
 void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count);
 void es_write_total_size(EVERYTHING_IPC_LIST2 *list,int count);
@@ -257,9 +263,7 @@ LRESULT __stdcall es_window_proc(HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)
 void es_help(void);
 HWND es_find_ipc_window(void);
 int es_check_option_utf8_string(const wchar_t *param,const ES_UTF8 *s);
-int es_check_option_wchar_string(const wchar_t *param,const wchar_t *s);
 void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,DWORD property_highlight);
-void es_format_dir(wchar_buf_t *wcbuf);
 void es_format_size(ES_UINT64 size,wchar_buf_t *wcbuf);
 void es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf);
 void es_format_attributes(DWORD attributes,wchar_buf_t *wcbuf);
@@ -267,29 +271,28 @@ int es_filetime_to_localtime(SYSTEMTIME *localst,ES_UINT64 ft);
 void es_format_leading_space(wchar_t *buf,int size,int ch);
 void es_space_to_width(wchar_t *buf,int wide);
 void es_format_run_count(DWORD run_count,wchar_buf_t *wcbuf);
-int es_check_option_wchar_string_name(const wchar_t *argv,const wchar_t *s);
-int es_check_param_ascii(const wchar_t *s,const char *search);
+static BOOL es_check_option_utf8_string_name(const wchar_t *argv,const ES_UTF8 *s);
+static BOOL es_check_param_utf8_string(const wchar_t *s,const ES_UTF8 *search);
 void es_flush(void);
-void es_fwrite_csv_string(const wchar_t *s);
-void es_fwrite_csv_string_with_optional_quotes(int is_always_double_quote,int separator_ch,const wchar_t *s);
+void es_output_column_csv_string(const wchar_t *s);
+void es_output_column_csv_string_with_optional_quotes(int is_always_double_quote,int separator_ch,const wchar_t *s);
 void es_get_command_argv(wchar_buf_t *wcbuf);
 void es_expect_command_argv(wchar_buf_t *wcbuf);
 void es_get_argv(wchar_buf_t *wcbuf);
 void es_expect_argv(wchar_buf_t *wcbuf);
-void es_fill(int count,int utf8ch);
 int es_is_valid_key(INPUT_RECORD *ir);
 static BOOL _es_save_settings_with_filename(const wchar_t *filename);
 static BOOL _es_save_settings_with_appdata(int is_appdata);
 static BOOL _es_save_settings(void);
 static void _es_load_settings(void);
-void es_append_filter(wchar_buf_t *wcbuf,const wchar_t *filter);
+void es_append_filter(wchar_buf_t *wcbuf,const ES_UTF8 *filter);
 void es_do_run_history_command(void);
 static BOOL es_check_sorts(const wchar_t *argv);
 static void es_wait_for_db_loaded(void);
 static void es_wait_for_db_not_busy(void);
-static int es_is_literal_switch(const wchar_t *s);
-static int _es_should_quote(int separator_ch,const wchar_t *s);
-static int _es_is_unbalanced_quotes(const wchar_t *s);
+static BOOL es_is_literal_switch(const wchar_t *s);
+static BOOL _es_should_quote(int separator_ch,const wchar_t *s);
+static BOOL _es_is_unbalanced_quotes(const wchar_t *s);
 static void es_get_pipe_name(wchar_buf_t *wcbuf);
 static BYTE *es_copy_len_vlq(BYTE *buf,SIZE_T value);
 static BYTE *es_copy_dword(BYTE *buf,DWORD value);
@@ -308,7 +311,6 @@ static BOOL es_read_pipe(HANDLE pipe_handle,void *buf,SIZE_T buf_size);
 static BOOL es_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size);
 static int es_property_name_to_id_compare(const char *a,const char *name);
 //static DWORD es_property_id_from_name(const char *name);
-static BOOL es_column_is_right_aligned(DWORD property_id);
 static BOOL es_check_color_param(const wchar_t *argv,int *out_basic_property_name_i);
 static BOOL es_check_column_param(const wchar_t *argv);
 static int es_get_ipc_sort_type_from_property_id(DWORD property_id,int sort_ascending);
@@ -346,8 +348,6 @@ static DWORD es_offset = 0;
 static DWORD es_max_results = EVERYTHING_IPC_ALLRESULTS;
 static DWORD es_ret = ES_ERROR_SUCCESS;
 static const wchar_t *es_command_line = 0;
-static WORD es_last_color;
-static char es_is_last_color = 0;
 static BYTE es_size_format = 1; // 0 = auto, 1=bytes, 2=kb
 static BYTE es_date_format = 0; // 0 = system format, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
 static CHAR_INFO *es_cibuf = 0;
@@ -358,10 +358,9 @@ static int es_console_size_high = 25;
 static int es_console_window_x = 0;
 static int es_console_window_y = 0;
 static char es_pause = 0; 
-static int es_cibuf_attributes = 0x07;
 static int es_cibuf_hscroll = 0;
-static int es_cibuf_x = 0;
-static int es_cibuf_y = 0;
+static int es_output_cibuf_x = 0;
+static int es_output_cibuf_y = 0;
 static char es_empty_search_help = 0;
 static char es_hide_empty_search_results = 0;
 static char es_save = 0;
@@ -379,7 +378,7 @@ static DWORD es_run_history_count = 0; // run count command
 static int es_run_history_command = 0;
 static SIZE_T es_run_history_size = 0;
 static DWORD es_ipc_version = 0xffffffff; // allow all ipc versions
-static char es_header = 1;
+static char es_header = 0; // 0 == resolve based on export type; >0 == show; <0 == hide.
 static char es_double_quote = 0; // always use double quotes for filenames.
 static char es_csv_double_quote = 1; // always use double quotes for CSV for consistancy.
 static char es_get_everything_version = 0;
@@ -388,6 +387,10 @@ static wchar_buf_t *es_instance_name_wcbuf = NULL;
 static wchar_buf_t *es_search_wcbuf = NULL;
 static HWND es_reply_hwnd = 0;
 static char es_loaded_appdata_ini = 0; // loaded settings from appdata, we should save to appdata.
+static column_t *es_output_column = NULL; // current output column
+static SIZE_T es_output_column_overflow = 0;
+static char es_is_in_header = 0;
+static char es_output_did_first_json_object;
 
 // load unicode for windows 95/98
 HMODULE LoadUnicowsProc(void);
@@ -1192,97 +1195,58 @@ void DECLSPEC_NORETURN es_fatal(int error_code)
 	ExitProcess(error_code);
 }
 
-static void es_write_wchar_string(const wchar_t *text)
+static void es_console_fill(SIZE_T count,int ascii_ch)
 {
-	SIZE_T length_in_wchars;
-	
-	length_in_wchars = wchar_string_get_length_in_wchars(text);
-	
 	if (es_cibuf)
 	{
 		SIZE_T i;
 		
-		for(i=0;i<length_in_wchars;i++)
+		for(i=0;i<count;i++)
 		{
-			if ((int)i + es_cibuf_x >= es_console_wide)
+			if ((int)i + es_output_cibuf_x >= es_console_wide)
 			{
 				break;
 			}
 
-			if (i + es_cibuf_x >= 0)
+			if ((int)i + es_output_cibuf_x >= 0)
 			{
-				es_cibuf[i+es_cibuf_x].Attributes = es_cibuf_attributes;
-				es_cibuf[i+es_cibuf_x].Char.UnicodeChar = text[i];
+				es_cibuf[(int)i+es_output_cibuf_x].Attributes = es_default_attributes;
+				es_cibuf[(int)i+es_output_cibuf_x].Char.UnicodeChar = ascii_ch;
 			}
 		}
 		
-		es_cibuf_x += (int)length_in_wchars;
+		es_output_cibuf_x += (int)count;
 	}
 	else
+	if (es_output_is_char)
 	{
-		// pipe?
-		if (es_output_is_char)
-		{
-			if (length_in_wchars <= ES_DWORD_MAX)
-			{
-				DWORD numwritten;
-				
-				WriteConsole(es_output_handle,text,(DWORD)length_in_wchars,&numwritten,0);
-			}
-		}
-		else
-		{
-			if (length_in_wchars <= INT_MAX)
-			{
-				int len;
-				
-				len = WideCharToMultiByte(es_cp,0,text,(int)length_in_wchars,0,0,0,0);
-				if (len)
-				{
-					DWORD numwritten;
-					utf8_buf_t cbuf;
-
-					utf8_buf_init(&cbuf);
-
-					utf8_buf_grow_size(&cbuf,len);
-
-					WideCharToMultiByte(es_cp,0,text,(int)length_in_wchars,cbuf.buf,len,0,0);
-					
-					WriteFile(es_output_handle,cbuf.buf,len,&numwritten,0);
-					
-					utf8_buf_kill(&cbuf);
-				}
-			}
-		}
-	}
-}
-
-void es_fill(int count,int utf8ch)
-{
-	if (es_cibuf)
-	{
+		wchar_buf_t wcbuf;
+		wchar_t *d;
+		DWORD numwritten;
 		int i;
+		
+		wchar_buf_init(&wcbuf);
+
+		wchar_buf_grow_size(&wcbuf,count);
+
+		d = wcbuf.buf;
 		
 		for(i=0;i<count;i++)
 		{
-			if (i + es_cibuf_x >= es_console_wide)
-			{
-				break;
-			}
+			*d++ = ascii_ch;
+		}
 
-			if (i + es_cibuf_x >= 0)
-			{
-				es_cibuf[i+es_cibuf_x].Attributes = es_cibuf_attributes;
-				es_cibuf[i+es_cibuf_x].Char.UnicodeChar = utf8ch;
-			}
+		if (count <= ES_DWORD_MAX)
+		{
+			WriteConsole(es_output_handle,wcbuf.buf,(DWORD)count,&numwritten,0);
 		}
 		
-		es_cibuf_x += count;
+		wchar_buf_kill(&wcbuf);
 	}
 	else
 	{
 		utf8_buf_t cbuf;
-		BYTE *p;
+		BYTE *d;
 		DWORD numwritten;
 		int i;
 		
@@ -1290,118 +1254,285 @@ void es_fill(int count,int utf8ch)
 
 		utf8_buf_grow_size(&cbuf,count);
 
-		p = cbuf.buf;
+		d = cbuf.buf;
 		
 		for(i=0;i<count;i++)
 		{
-			*p++ = utf8ch;
+			*d++ = ascii_ch;
 		}
 
- 		WriteFile(es_output_handle,cbuf.buf,count,&numwritten,0);
+		if (count <= ES_DWORD_MAX)
+		{
+			WriteFile(es_output_handle,cbuf.buf,(DWORD)count,&numwritten,0);
+		}
 		
 		utf8_buf_kill(&cbuf);
 	}
 }
 
-void es_write_wchar(wchar_t ch)
+static void es_console_write_wchar_string(const wchar_t *text)
 {
-	wchar_t buf[2];
+	SIZE_T length_in_wchars;
+	int is_right_aligned;
+	SIZE_T column_width;
+		
+	length_in_wchars = wchar_string_get_length_in_wchars(text);
+	is_right_aligned = property_is_right_aligned(es_output_column->property_id);
+	column_width = column_width_get(es_output_column->property_id);
 	
-	buf[0] = ch;
-	buf[1] = 0;
-	
-	es_fwrite_n(buf,1);
-}
-
-// set wlen to -1 for null terminated text.
-void es_fwrite_n(const wchar_t *text,int wlen)
-{
-	if (wlen)
+	// don't fill with CSV/TSV/EFU/TXT/M3U
+	if (es_export_type == ES_EXPORT_TYPE_NONE)
 	{
-		if (es_export_file != INVALID_HANDLE_VALUE)
+		if (es_output_column != column_order_last)
+		{
+			if (is_right_aligned)
+			{
+				if (length_in_wchars < column_width)
+				{
+					SIZE_T fill_length;
+					
+					fill_length = column_width - length_in_wchars;
+
+					if (es_output_column_overflow)
+					{
+						if (fill_length > es_output_column_overflow)
+						{
+							fill_length -= es_output_column_overflow;
+							es_output_column_overflow = 0;
+						}
+						else
+						{
+							es_output_column_overflow -= fill_length;
+							fill_length = 0;
+						}
+					}
+					
+					es_console_fill(fill_length,' ');
+				}
+			}
+		}
+	}
+
+	// pipe? console? cibuf?
+	if (es_cibuf)
+	{
+		SIZE_T i;
+		column_color_t *column_color;
+		
+		column_color = column_color_find(es_output_column->property_id);
+		
+		for(i=0;i<length_in_wchars;i++)
+		{
+			if ((int)i + es_output_cibuf_x >= es_console_wide)
+			{
+				break;
+			}
+
+			if ((int)i + es_output_cibuf_x >= 0)
+			{
+				es_cibuf[(int)i+es_output_cibuf_x].Attributes = column_color ? column_color->color : es_default_attributes;
+				es_cibuf[(int)i+es_output_cibuf_x].Char.UnicodeChar = text[i];
+			}
+		}
+		
+		es_output_cibuf_x += (int)length_in_wchars;
+	}
+	else
+	if (es_output_is_char)
+	{
+		column_color_t *column_color;
+		int did_set_color;
+		
+		column_color = column_color_find(es_output_column->property_id);
+		did_set_color = 0;
+		
+		if (column_color)
+		{
+			SetConsoleTextAttribute(es_output_handle,column_color->color);
+
+			did_set_color = 1;
+		}
+		
+		if (length_in_wchars <= ES_DWORD_MAX)
+		{
+			DWORD numwritten;
+			
+			WriteConsole(es_output_handle,text,(DWORD)length_in_wchars,&numwritten,0);
+		}
+		
+		// restore color
+		if (did_set_color)
+		{
+			SetConsoleTextAttribute(es_output_handle,es_default_attributes);
+		}
+
+	}
+	else
+	{
+		if (length_in_wchars <= INT_MAX)
 		{
 			int len;
-			DWORD numwritten;
-			int cp;
-			utf8_buf_t cbuf;
 			
-			cp = CP_UTF8;
-			utf8_buf_init(&cbuf);
+			len = WideCharToMultiByte(es_cp,0,text,(int)length_in_wchars,0,0,0,0);
+			if (len)
+			{
+				DWORD numwritten;
+				utf8_buf_t cbuf;
 
-			if (es_export_type == ES_EXPORT_TYPE_M3U)		
-			{
-				cp = CP_ACP;
-			}
-			
-			len = WideCharToMultiByte(cp,0,text,wlen,0,0,0,0);
-			
-			utf8_buf_grow_size(&cbuf,len);
+				utf8_buf_init(&cbuf);
 
-			len = WideCharToMultiByte(cp,0,text,wlen,cbuf.buf,len,0,0);
-			
-			if (wlen < 0)
-			{
-				// remove null from len.
-				if (len) 
-				{
-					len--;
-				}
-			}
-			
-			if (len > es_export_remaining)
-			{
-				es_flush();
+				utf8_buf_grow_size(&cbuf,len);
+
+				WideCharToMultiByte(es_cp,0,text,(int)length_in_wchars,cbuf.buf,len,0,0);
 				
-				if (len >= ES_EXPORT_BUF_SIZE)
+				WriteFile(es_output_handle,cbuf.buf,len,&numwritten,0);
+				
+				utf8_buf_kill(&cbuf);
+			}
+		}	
+	}
+
+	// don't fill with CSV/TSV/EFU/TXT/M3U
+	if (es_export_type == ES_EXPORT_TYPE_NONE)
+	{
+		if (es_output_column != column_order_last)
+		{
+			if (!is_right_aligned)
+			{
+				if (length_in_wchars < column_width)
 				{
-					WriteFile(es_export_file,cbuf.buf,len,&numwritten,0);
+					SIZE_T fill_length;
 					
-					goto copied;
+					fill_length = column_width - length_in_wchars;
+
+					if (es_output_column_overflow)
+					{
+						if (fill_length > es_output_column_overflow)
+						{
+							fill_length -= es_output_column_overflow;
+							es_output_column_overflow = 0;
+						}
+						else
+						{
+							es_output_column_overflow -= fill_length;
+							fill_length = 0;
+						}
+					}
+					
+					es_console_fill(fill_length,' ');
 				}
 			}
-
-			es_export_remaining -= len;
-			os_copy_memory(es_export_p,cbuf.buf,len);
-			es_export_p += len;
-
-	copied:
-			
-			utf8_buf_kill(&cbuf);
 		}
-		else
+	
+		if (length_in_wchars > column_width)
 		{
-			es_write_wchar_string(text);
+			es_output_column_overflow += length_in_wchars - column_width;
 		}
 	}
 }
 
-void es_fwrite_wchar_string(const wchar_t *text)
+void es_output_wchar(wchar_t ch)
 {
-	es_fwrite_n(text,-1);
+	wchar_t wbuf[2];
+	
+	wbuf[0] = ch;
+	wbuf[1] = 0;
+	
+	es_output_column_wchar_string(wbuf);
 }
 
-void es_fwrite_utf8_string(const ES_UTF8 *text)
+static void es_export_write_wchar_string_n(const wchar_t *text,SIZE_T wlen)
+{
+	if (wlen <= ES_DWORD_MAX)
+	{
+		int len;
+		DWORD numwritten;
+		int cp;
+		utf8_buf_t cbuf;
+		
+		cp = CP_UTF8;
+		utf8_buf_init(&cbuf);
+
+		if (es_export_type == ES_EXPORT_TYPE_M3U)		
+		{
+			cp = CP_ACP;
+		}
+		
+		len = WideCharToMultiByte(cp,0,text,(DWORD)wlen,0,0,0,0);
+		
+		utf8_buf_grow_size(&cbuf,len);
+
+		len = WideCharToMultiByte(cp,0,text,(DWORD)wlen,cbuf.buf,len,0,0);
+		
+		if (wlen < 0)
+		{
+			// remove null from len.
+			if (len) 
+			{
+				len--;
+			}
+		}
+		
+		if (len > es_export_remaining)
+		{
+			es_flush();
+			
+			if (len >= ES_EXPORT_BUF_SIZE)
+			{
+				WriteFile(es_export_file,cbuf.buf,len,&numwritten,0);
+				
+				goto copied;
+			}
+		}
+
+		es_export_remaining -= len;
+		os_copy_memory(es_export_p,cbuf.buf,len);
+		es_export_p += len;
+
+	copied:
+		
+		utf8_buf_kill(&cbuf);
+	}
+}
+
+void es_output_column_wchar_string(const wchar_t *text)
+{
+	if (es_export_file != INVALID_HANDLE_VALUE)
+	{
+		es_export_write_wchar_string_n(text,wchar_string_get_length_in_wchars(text));
+	}
+	else
+	{
+		es_console_write_wchar_string(text);
+	}
+}
+
+void es_output_column_utf8_string(const ES_UTF8 *text)
 {
 	wchar_buf_t wcbuf;
 
 	wchar_buf_init(&wcbuf);
+
+	wchar_buf_copy_utf8_string(&wcbuf,text);
 	
 	if (wcbuf.length_in_wchars <= INT_MAX)
 	{
-		es_fwrite_n(wcbuf.buf,(int)wcbuf.length_in_wchars);
+		es_output_column_wchar_string(wcbuf.buf);
 	}
 
 	wchar_buf_kill(&wcbuf);
 }
 
-void es_fwrite_csv_string(const wchar_t *s)
+void es_output_column_csv_string(const wchar_t *s)
 {
+	wchar_buf_t wcbuf;
 	const wchar_t *start;
 	const wchar_t *p;
 	
-	es_fwrite_utf8_string("\"");
+	wchar_buf_init(&wcbuf);
+
+	wchar_buf_cat_wchar(&wcbuf,'"');
 	
-	// escape double quotes with double double quotes.
 	start = s;
 	p = s;
 	
@@ -1409,11 +1540,11 @@ void es_fwrite_csv_string(const wchar_t *s)
 	{
 		if (*p == '"')
 		{
-			es_fwrite_n(start,(int)(p-start));
+			wchar_buf_cat_wchar_string_n(&wcbuf,start,p-start);
 
 			// escape double quotes with double double quotes.
-			es_fwrite_utf8_string("\"");
-			es_fwrite_utf8_string("\"");
+			wchar_buf_cat_wchar(&wcbuf,'"');
+			wchar_buf_cat_wchar(&wcbuf,'"');
 			
 			start = p + 1;
 		}
@@ -1421,13 +1552,17 @@ void es_fwrite_csv_string(const wchar_t *s)
 		p++;
 	}
 
-	es_fwrite_n(start,(int)(p-start));
+	wchar_buf_cat_wchar_string_n(&wcbuf,start,p-start);
+
+	wchar_buf_cat_wchar(&wcbuf,'"');
 	
-	es_fwrite_utf8_string("\"");
+	es_output_column_wchar_string(wcbuf.buf);
+
+	wchar_buf_kill(&wcbuf);
 }
 
 // should a TSV/CSV string value be quoted.
-static int _es_should_quote(int separator_ch,const wchar_t *s)
+static BOOL _es_should_quote(int separator_ch,const wchar_t *s)
 {
 	const wchar_t *p;
 	
@@ -1437,30 +1572,30 @@ static int _es_should_quote(int separator_ch,const wchar_t *s)
 	{
 		if ((*p == separator_ch) || (*p == '"') || (*p == '\r') || (*p == '\n'))
 		{
-			return 1;
+			return TRUE;
 		}
 		
 		p++;
 	}
 	
-	return 0;
+	return FALSE;
 }
 
-void es_fwrite_csv_string_with_optional_quotes(int is_always_double_quote,int separator_ch,const wchar_t *s)
+void es_output_column_csv_string_with_optional_quotes(int is_always_double_quote,int separator_ch,const wchar_t *s)
 {
 	if (!is_always_double_quote)
 	{
 		if (!_es_should_quote(separator_ch,s))
 		{
 			// no quotes required..
-			es_fwrite_wchar_string(s);
+			es_output_column_wchar_string(s);
 			
 			return;
 		}
 	}
 
 	// write with quotes..
-	es_fwrite_csv_string(s);
+	es_output_column_csv_string(s);
 }
 
 void es_flush(void)
@@ -1481,6 +1616,7 @@ void es_flush(void)
 
 void es_write_highlighted(const wchar_t *text)
 {
+/*
 	if (es_cibuf)
 	{
 		const wchar_t *p;
@@ -1529,19 +1665,19 @@ void es_write_highlighted(const wchar_t *text)
 		
 			for(i=0;i<wlen;i++)
 			{
-				if (i + es_cibuf_x >= es_console_wide)
+				if (i + es_output_cibuf_x >= es_console_wide)
 				{
 					break;
 				}
 
-				if (i + es_cibuf_x >= 0)
+				if (i + es_output_cibuf_x >= 0)
 				{
-					es_cibuf[i+es_cibuf_x].Attributes = es_cibuf_attributes;
-					es_cibuf[i+es_cibuf_x].Char.UnicodeChar = start[i];
+					es_cibuf[i+es_output_cibuf_x].Attributes = es_cibuf_attributes;
+					es_cibuf[i+es_output_cibuf_x].Char.UnicodeChar = start[i];
 				}
 			}
 			
-			es_cibuf_x += wlen;
+			es_output_cibuf_x += wlen;
 
 			// skip *				
 			if (toggle_highlight)
@@ -1666,6 +1802,7 @@ void es_write_highlighted(const wchar_t *text)
 			}
 		}
 	}
+	*/
 }
 
 void es_write_UINT64(ES_UINT64 value)
@@ -1694,7 +1831,7 @@ void es_write_UINT64(ES_UINT64 value)
 		*--d = '0';
 	}	
 	
-	es_write_wchar_string(d);
+	es_console_write_wchar_string(d);
 }
 
 void es_write_dword(DWORD value)
@@ -1708,40 +1845,395 @@ static void es_write_result_count(DWORD result_count)
 	es_write_utf8_string("\r\n");
 }
 
-static void es_output_text_property(const wchar_t *value)
+static void es_output_column_text_property(const wchar_t *value)
 {
+	if (es_is_in_header)
+	{
+		// no quotes
+		es_output_column_wchar_string(value);
+
+		return;
+	}
+
 	if ((es_export_type == ES_EXPORT_TYPE_CSV) || (es_export_type == ES_EXPORT_TYPE_TSV))
 	{
-		es_fwrite_csv_string_with_optional_quotes((es_export_type == ES_EXPORT_TYPE_CSV) ? es_csv_double_quote : es_double_quote,(es_export_type == ES_EXPORT_TYPE_CSV) ? ',' : '\t',value);
+		es_output_column_csv_string_with_optional_quotes((es_export_type == ES_EXPORT_TYPE_CSV) ? es_csv_double_quote : es_double_quote,(es_export_type == ES_EXPORT_TYPE_CSV) ? ',' : '\t',value);
+	}
+	else
+	if (es_export_type == ES_EXPORT_TYPE_EFU)
+	{
+		// always double quote.
+		es_output_column_csv_string(value);
+	}
+	else
+	if (es_export_type == ES_EXPORT_TYPE_JSON)
+	{
+		// always double quote.
+		wchar_buf_t property_name_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+
+		property_get_name(es_output_column->property_id,&property_name_wcbuf);
+		
+		es_output_column_printf("\"%S\":\"%S\"",property_name_wcbuf.buf,value);
+
+		wchar_buf_kill(&property_name_wcbuf);
 	}
 	else
 	{
-		es_write_wchar_string(value);
+		if (es_double_quote)
+		{
+			//TODO: optimize
+			wchar_buf_t wcbuf;
+
+			wchar_buf_init(&wcbuf);
+
+			wchar_buf_printf(&wcbuf,"\"%S\"",value);
+
+			es_console_write_wchar_string(wcbuf.buf);
+
+			wchar_buf_kill(&wcbuf);
+		}
+		else
+		{
+			es_console_write_wchar_string(value);
+		}
 	}
 }
 
-static void es_output_attributes(DWORD file_attributes)
+static void es_output_column_size_property(int is_dir,ES_UINT64 value)
 {
-//TODO:
-	es_write_dword(file_attributes);
-//	es_write_wchar_string(value);
+	if (value == ES_UINT64_MAX)
+	{
+		// unknown size.
+		if (es_export_type == ES_EXPORT_TYPE_NONE)
+		{
+			if (is_dir)
+			{
+				es_output_column_utf8_string("<DIR>");
+			}
+		}
+	}
+	else
+	{
+		if (es_export_type == ES_EXPORT_TYPE_NONE)
+		{
+			wchar_buf_t wcbuf;
+
+			wchar_buf_init(&wcbuf);
+
+			es_format_size(value,&wcbuf);
+			
+			es_output_column_wchar_string(wcbuf.buf);
+			
+			wchar_buf_kill(&wcbuf);
+		}
+		else
+		if (es_export_type == ES_EXPORT_TYPE_JSON)
+		{
+			// always double quote.
+			wchar_buf_t property_name_wcbuf;
+			
+			wchar_buf_init(&property_name_wcbuf);
+
+			property_get_name(es_output_column->property_id,&property_name_wcbuf);
+			
+			es_output_column_printf("\"%S\":%I64u",property_name_wcbuf.buf,value);
+
+			wchar_buf_kill(&property_name_wcbuf);
+		}
+		else
+		{
+			// raw size.
+			es_output_column_printf("%I64u",value);
+		}
+	}
 }
 
-static void es_output_separator(void)
+static void es_output_column_filetime_property(ES_UINT64 value)
 {
+	if (value == ES_UINT64_MAX)
+	{
+		// unknown filetime.
+	}
+	else
+	{
+		if (es_export_type == ES_EXPORT_TYPE_NONE)
+		{
+			wchar_buf_t wcbuf;
+
+			wchar_buf_init(&wcbuf);
+
+			es_format_filetime(value,&wcbuf);
+			
+			es_output_column_wchar_string(wcbuf.buf);
+			
+			wchar_buf_kill(&wcbuf);
+		}
+		else
+		if (es_export_type == ES_EXPORT_TYPE_JSON)
+		{
+			// always double quote.
+			wchar_buf_t property_name_wcbuf;
+			
+			wchar_buf_init(&property_name_wcbuf);
+
+			property_get_name(es_output_column->property_id,&property_name_wcbuf);
+			
+			es_output_column_printf("\"%S\":%I64u",property_name_wcbuf.buf,value);
+
+			wchar_buf_kill(&property_name_wcbuf);
+		}
+		else
+		{
+			// raw filetime.
+			es_output_column_printf("%I64u",value);
+		}
+	}
+}
+
+static void es_output_column_attribute_property(DWORD file_attributes)
+{
+	if (es_export_type == ES_EXPORT_TYPE_NONE)
+	{
+		wchar_buf_t wcbuf;
+
+		wchar_buf_init(&wcbuf);
+
+		es_format_attributes(file_attributes,&wcbuf);
+		
+		es_output_column_wchar_string(wcbuf.buf);
+		
+		wchar_buf_kill(&wcbuf);
+	}
+	else
+	if (es_export_type == ES_EXPORT_TYPE_JSON)
+	{
+		// always double quote.
+		wchar_buf_t property_name_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+
+		property_get_name(es_output_column->property_id,&property_name_wcbuf);
+		
+		es_output_column_printf("\"%S\":0x%08x",property_name_wcbuf.buf,file_attributes);
+
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	{
+		// raw filetime.
+		es_output_column_printf("%u",file_attributes);
+	}
+	
+}
+
+static void es_output_column_separator(void)
+{
+	const wchar_t *separator_text;
+	
 	if ((es_export_type == ES_EXPORT_TYPE_CSV) || (es_export_type == ES_EXPORT_TYPE_TSV))
 	{
-		es_write_wchar((es_export_type == ES_EXPORT_TYPE_CSV) ? ',' : '\t');
+		separator_text = (es_export_type == ES_EXPORT_TYPE_CSV) ? L"," : L"\t";
+	}
+	else
+	if (es_export_type == ES_EXPORT_TYPE_EFU)
+	{
+		separator_text = L",";
+	}
+	else
+	if (es_export_type == ES_EXPORT_TYPE_JSON)
+	{
+		separator_text = L",";
+	}
+	else
+	{
+		separator_text = L" ";
+	}
+	
+	es_output_noncolumn_wchar_string(separator_text);
+}
+
+static void es_output_noncolumn_wchar_string(const wchar_t *text)
+{
+	SIZE_T length_in_wchars;
+	
+	length_in_wchars = wchar_string_get_length_in_wchars(text);
+	
+	if (es_export_file != INVALID_HANDLE_VALUE)
+	{
+	//OPTIMIZE:
+		es_export_write_wchar_string_n(text,length_in_wchars);
+	}
+	else
+	{
+		if (es_cibuf)
+		{
+			SIZE_T i;
+		
+			for(i=0;i<length_in_wchars;i++)
+			{
+				if ((int)i + es_output_cibuf_x >= es_console_wide)
+				{
+					break;
+				}
+
+				if ((int)i + es_output_cibuf_x >= 0)
+				{
+					es_cibuf[(int)i+es_output_cibuf_x].Attributes = es_default_attributes;
+					es_cibuf[(int)i+es_output_cibuf_x].Char.UnicodeChar = text[i];
+				}
+			}
+			
+			es_output_cibuf_x += (int)length_in_wchars;	
+		}
+		else
+		{
+			if (es_output_is_char)
+			{
+				if (length_in_wchars <= ES_DWORD_MAX)
+				{
+					DWORD numwritten;
+				
+					WriteConsole(es_output_handle,text,(DWORD)length_in_wchars,&numwritten,0);
+				}
+			}
+			else
+			{
+				if (length_in_wchars <= INT_MAX)
+				{
+					int len;
+					
+					len = WideCharToMultiByte(es_cp,0,text,(int)length_in_wchars,0,0,0,0);
+					if (len)
+					{
+						DWORD numwritten;
+						utf8_buf_t cbuf;
+
+						utf8_buf_init(&cbuf);
+
+						utf8_buf_grow_size(&cbuf,len);
+
+						WideCharToMultiByte(es_cp,0,text,(int)length_in_wchars,cbuf.buf,len,0,0);
+						
+						WriteFile(es_output_handle,cbuf.buf,len,&numwritten,0);
+						
+						utf8_buf_kill(&cbuf);
+					}
+				}	
+			}
+		}
 	}
 }
 
-static void es_output_newline(void)
+static void es_output_column_newline(void)
 {
-	es_write_utf8_string("\r\n");
+	if (es_pause)
+	{
+		// fill right side of screen
+		if (es_cibuf)
+		{
+			int wlen;
+			
+			if (es_output_cibuf_x)
+			{
+				if (es_output_cibuf_x + es_cibuf_hscroll > es_max_wide)
+				{
+					es_max_wide = es_output_cibuf_x + es_cibuf_hscroll;
+				}
+			}
+	
+			wlen = es_console_wide - es_output_cibuf_x;
+			
+			if (wlen > 0)
+			{
+				int bufi;
+				
+				for(bufi=0;bufi<wlen;bufi++)
+				{
+					if (bufi + es_output_cibuf_x >= es_console_wide)
+					{
+						break;
+					}
+
+					if (bufi + es_output_cibuf_x >= 0)
+					{
+						es_cibuf[bufi+es_output_cibuf_x].Attributes = es_default_attributes;
+						es_cibuf[bufi+es_output_cibuf_x].Char.UnicodeChar = ' ';
+					}
+				}
+			}
+			
+			// draw buffer line.
+			{
+				COORD buf_size;
+				COORD buf_pos;
+				SMALL_RECT write_rect;
+				
+				buf_size.X = es_console_wide;
+				buf_size.Y = 1;
+				
+				buf_pos.X = 0;
+				buf_pos.Y = 0;
+				
+				write_rect.Left = es_console_window_x;
+				write_rect.Top = es_console_window_y + es_output_cibuf_y;
+				write_rect.Right = es_console_window_x + es_console_wide;
+				write_rect.Bottom = es_console_window_y + es_output_cibuf_y + 1;
+				
+				WriteConsoleOutput(es_output_handle,es_cibuf,buf_size,buf_pos,&write_rect);
+				
+				es_output_cibuf_x += wlen;				
+			}
+		}			
+	}
+	
+	
+	if (es_export_type == ES_EXPORT_TYPE_JSON)
+	{
+		if (es_output_did_first_json_object)
+		{
+		}
+		else
+		{
+			es_output_did_first_json_object = 1;
+		}
+	}
+	
+	if (es_cibuf)
+	{
+		// output nothing.
+		es_output_cibuf_y++;
+	}
+	else
+	{
+		es_output_noncolumn_wchar_string(L"\r\n");
+	}
+	
+	es_output_column_overflow = 0;
+}
+
+static void es_output_column_printf(ES_UTF8 *format,...)
+{
+	va_list argptr;
+	utf8_buf_t cbuf;
+
+	va_start(argptr,format);
+	utf8_buf_init(&cbuf);
+
+	utf8_buf_vprintf(&cbuf,format,argptr);
+	
+	//TODO: optimize;
+	es_output_column_utf8_string(cbuf.buf);
+
+	utf8_buf_kill(&cbuf);
+	va_end(argptr);
 }
 
 void es_listresultsW(EVERYTHING_IPC_LIST *list)
 {
+	es_output_cibuf_y = 0;
+
 	if (es_no_result_error)
 	{
 		if (list->totitems == 0)
@@ -1803,47 +2295,47 @@ void es_listresultsW(EVERYTHING_IPC_LIST *list)
 
 				while(run)
 				{
-					column_t *column;
 					int done_first;
 					
 					done_first = 0;
-					column = column_order_start;
+					es_output_cibuf_x = -es_cibuf_hscroll;
+					es_output_column = column_order_start;
 					
-					while(column)
+					while(es_output_column)
 					{
 						if (done_first)
 						{
-							es_output_separator();
+							es_output_column_separator();
 						}
 						else
 						{
 							done_first = 1;
 						}
 						
-						switch(column->property_id)
+						switch(es_output_column->property_id)
 						{
 							case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
-								es_output_attributes(((*indexes_p)->flags & EVERYTHING_IPC_FOLDER) ? FILE_ATTRIBUTE_DIRECTORY : 0);
+								es_output_column_attribute_property(((*indexes_p)->flags & EVERYTHING_IPC_FOLDER) ? FILE_ATTRIBUTE_DIRECTORY : 0);
 								break;
 								
 							case EVERYTHING3_PROPERTY_ID_FULL_PATH:
 								wchar_buf_path_cat_filename(EVERYTHING_IPC_ITEMPATH(list,*indexes_p),EVERYTHING_IPC_ITEMFILENAME(list,*indexes_p),&filename_wcbuf);
-								es_output_text_property(filename_wcbuf.buf);
+								es_output_column_text_property(filename_wcbuf.buf);
 								break;
 
 							case EVERYTHING3_PROPERTY_ID_PATH:
-								es_output_text_property(EVERYTHING_IPC_ITEMPATH(list,*indexes_p));
+								es_output_column_text_property(EVERYTHING_IPC_ITEMPATH(list,*indexes_p));
 								break;
 								
 							case EVERYTHING3_PROPERTY_ID_NAME:
-								es_output_text_property(EVERYTHING_IPC_ITEMFILENAME(list,*indexes_p));
+								es_output_column_text_property(EVERYTHING_IPC_ITEMFILENAME(list,*indexes_p));
 								break;
 						}
 						
-						column = column->order_next;
+						es_output_column = es_output_column->order_next;
 					}									
 					
-					es_output_newline();
+					es_output_column_newline();
 					
 					indexes_p++;
 					run--;
@@ -1863,47 +2355,48 @@ void es_listresultsW(EVERYTHING_IPC_LIST *list)
 			
 			for(i=0;i<list->numitems;i++)
 			{
-				column_t *column;
+				column_t *es_output_column;
 				int done_first;
 				
 				done_first = 0;
-				column = column_order_start;
+				es_output_cibuf_x = -es_cibuf_hscroll;
+				es_output_column = column_order_start;
 				
-				while(column)
+				while(es_output_column)
 				{
 					if (done_first)
 					{
-						es_output_separator();
+						es_output_column_separator();
 					}
 					else
 					{
 						done_first = 1;
 					}
 					
-					switch(column->property_id)
+					switch(es_output_column->property_id)
 					{
 						case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
-							es_output_attributes((list->items[i].flags & EVERYTHING_IPC_FOLDER) ? FILE_ATTRIBUTE_DIRECTORY : 0);
+							es_output_column_attribute_property((list->items[i].flags & EVERYTHING_IPC_FOLDER) ? FILE_ATTRIBUTE_DIRECTORY : 0);
 							break;
 							
 						case EVERYTHING3_PROPERTY_ID_FULL_PATH:
 							wchar_buf_path_cat_filename(EVERYTHING_IPC_ITEMPATH(list,&list->items[i]),EVERYTHING_IPC_ITEMFILENAME(list,&list->items[i]),&filename_wcbuf);
-							es_output_text_property(filename_wcbuf.buf);
+							es_output_column_text_property(filename_wcbuf.buf);
 							break;
 
 						case EVERYTHING3_PROPERTY_ID_PATH:
-							es_output_text_property(EVERYTHING_IPC_ITEMPATH(list,&list->items[i]));
+							es_output_column_text_property(EVERYTHING_IPC_ITEMPATH(list,&list->items[i]));
 							break;
 							
 						case EVERYTHING3_PROPERTY_ID_NAME:
-							es_output_text_property(EVERYTHING_IPC_ITEMFILENAME(list,&list->items[i]));
+							es_output_column_text_property(EVERYTHING_IPC_ITEMFILENAME(list,&list->items[i]));
 							break;
 					}
 					
-					column = column->order_next;
+					es_output_column = es_output_column->order_next;
 				}									
 				
-				es_output_newline();
+				es_output_column_newline();
 				
 			}
 			
@@ -1923,561 +2416,106 @@ void es_listresults2W(EVERYTHING_IPC_LIST2 *list,int index_start,int count)
 	wchar_buf_init(&column_wcbuf);			
 	items = (EVERYTHING_IPC_ITEM2 *)(list + 1);
 
-	es_cibuf_y = 0;
+	es_output_cibuf_y = 0;
 	i = index_start;
 	
 	while(count)
 	{
+		int done_first;
+		
 		if (i >= list->numitems)
 		{
 			break;
 		}
 	
-		es_cibuf_x = -es_cibuf_hscroll;
+		es_output_cibuf_x = -es_cibuf_hscroll;
 		
-		if ((es_export_type == ES_EXPORT_TYPE_CSV) || (es_export_type == ES_EXPORT_TYPE_TSV))
-		{
-			column_t *column;
-			int csv_double_quote;
-			int separator_ch;
-			int done_first;
+		done_first = 0;
+		es_output_column = column_order_start;
 			
-			// Like Excel, avoid quoting unless we really need to with TSV
-			// CSV should always quote for consistancy.
-			csv_double_quote = (es_export_type == ES_EXPORT_TYPE_CSV) ? es_csv_double_quote : es_double_quote;
-			
-			separator_ch = (es_export_type == ES_EXPORT_TYPE_CSV) ? ',' : '\t';
-			
-			done_first = 0;
-			column = column_order_start;
-			
-			while(column)
-			{
-				void *data;
-				
-				if (done_first)
-				{
-					es_write_wchar(separator_ch);
-				}
-				else
-				{
-					done_first = 1;
-				}
-				
-				data = es_get_column_data(list,i,column->property_id,0);
-				if (data)
-				{
-					switch(column->property_id)
-					{
-						case EVERYTHING3_PROPERTY_ID_NAME:
-						case EVERYTHING3_PROPERTY_ID_PATH:
-						case EVERYTHING3_PROPERTY_ID_FULL_PATH:
-						case EVERYTHING3_PROPERTY_ID_EXTENSION:
-						case EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME:
-							es_fwrite_csv_string_with_optional_quotes(csv_double_quote,separator_ch,(wchar_t *)((char *)data+sizeof(DWORD)));
-							break;
-							
-						case EVERYTHING3_PROPERTY_ID_SIZE:
-
-							{
-								if ((items[i].flags & EVERYTHING_IPC_FOLDER) && (*(ES_UINT64 *)data == 0xffffffffffffffffI64))
-								{
-								}
-								else
-								{
-									wchar_buf_printf(&column_wcbuf,"%I64u",*(ES_UINT64 *)data);
-									es_fwrite_wchar_string(column_wcbuf.buf);
-								}
-							}
-							
-							break;
-
-						case EVERYTHING3_PROPERTY_ID_DATE_MODIFIED:
-						case EVERYTHING3_PROPERTY_ID_DATE_CREATED:
-						case EVERYTHING3_PROPERTY_ID_DATE_ACCESSED:
-						case EVERYTHING3_PROPERTY_ID_DATE_RUN:
-						case EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED:
-						
-							{
-								es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
-								es_fwrite_wchar_string(column_wcbuf.buf);
-							}
-
-							break;
-
-						case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
-
-							{
-								es_format_attributes(*(DWORD *)data,&column_wcbuf);
-								es_fwrite_wchar_string(column_wcbuf.buf);
-							}
-							
-							break;
-
-						
-						case EVERYTHING3_PROPERTY_ID_RUN_COUNT:
-						
-							{
-								wchar_buf_print_UINT64(&column_wcbuf,*(DWORD *)data);
-								es_fwrite_wchar_string(column_wcbuf.buf);
-							}	
-
-							break;
-					}
-				}
-				
-				column = column->order_next;
-			}
-
-			es_fwrite_utf8_string("\r\n");
-		}
-		else
-		if (es_export_type == ES_EXPORT_TYPE_EFU)
-		{
-			void *data;
-				
-			// Filename
-			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_FULL_PATH,0);
-			if (data)
-			{
-				es_fwrite_csv_string((wchar_t *)((char *)data+sizeof(DWORD)));
-			}
-
-			es_fwrite_utf8_string(",");
-			
-			// size
-			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_SIZE,0);
-			if (data)
-			{
-				if (*(ES_UINT64 *)data != 0xffffffffffffffffI64)
-				{
-					wchar_buf_print_UINT64(&column_wcbuf,*(ES_UINT64 *)data);
-					es_fwrite_wchar_string(column_wcbuf.buf);
-				}
-			}
-
-			es_fwrite_utf8_string(",");
-
-			// date modified
-			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_DATE_MODIFIED,0);
-			if (data)
-			{
-				if ((*(ES_UINT64 *)data != 0xffffffffffffffffI64))
-				{
-					wchar_buf_print_UINT64(&column_wcbuf,*(ES_UINT64 *)data);
-					es_fwrite_wchar_string(column_wcbuf.buf);
-				}
-			}
-
-			es_fwrite_utf8_string(",");
-
-			// date created
-			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_DATE_CREATED,0);
-			if (data)
-			{
-				if ((*(ES_UINT64 *)data != 0xffffffffffffffffI64))
-				{
-					wchar_buf_print_UINT64(&column_wcbuf,*(ES_UINT64 *)data);
-					es_fwrite_wchar_string(column_wcbuf.buf);
-				}
-			}
-
-			es_fwrite_utf8_string(",");
-
-			// date created
-			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_ATTRIBUTES,0);
-			if (data)
-			{
-				wchar_buf_print_UINT64(&column_wcbuf,*(DWORD *)data);
-				es_fwrite_wchar_string(column_wcbuf.buf);
-			}
-			else
-			{
-				DWORD file_attributes;
-				
-				// add file/folder attributes.
-				if (items[i].flags & EVERYTHING_IPC_FOLDER)
-				{
-					file_attributes = FILE_ATTRIBUTE_DIRECTORY;
-				}
-				else
-				{
-					file_attributes = 0;
-				}
-
-				wchar_buf_print_UINT64(&column_wcbuf,file_attributes);
-				es_fwrite_wchar_string(column_wcbuf.buf);
-			}
-
-			es_fwrite_utf8_string("\r\n");
-		}
-		else
-		if ((es_export_type == ES_EXPORT_TYPE_TXT) || (es_export_type == ES_EXPORT_TYPE_M3U) || (es_export_type == ES_EXPORT_TYPE_M3U8))
+		while(es_output_column)
 		{
 			void *data;
 			
-			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_FULL_PATH,0);
-			
-			if (es_double_quote)
+			if (done_first)
 			{
-				es_fwrite_utf8_string("\"");
-			}
-			
-			if (data)
-			{
-				es_fwrite_wchar_string((wchar_t *)((char *)data+sizeof(DWORD)));
-			}
-
-			if (es_double_quote)
-			{
-				es_fwrite_utf8_string("\"");
-			}
-			
-			es_fwrite_utf8_string("\r\n");
-		}
-		else
-		{
-			column_t *column;
-			int did_set_color;
-			int tot_column_text_len;
-			int tot_column_width;
-			int done_first;
-			
-			tot_column_text_len = 0;
-			tot_column_width = 0;
-			done_first = 0;
-			
-			column = column_order_start;
-
-			while(column)
-			{
-				void *data;
-				const wchar_t *column_text;
-				int column_is_highlighted;
-				int column_is_double_quote;
-				
-				if (done_first)
-				{
-					es_write_utf8_string(" ");
-					tot_column_text_len++;
-					tot_column_width++;
-				}
-				else
-				{
-					done_first = 1;
-				}
-				
-				data = es_get_column_data(list,i,column->property_id,column->flags & COLUMN_FLAG_HIGHLIGHT);
-
-				es_is_last_color = 0;
-				did_set_color = 0;
-				
-				column_text = L"";
-				column_is_highlighted = 0;
-
-				if (column->flags & COLUMN_FLAG_HIGHLIGHT)
-				{
-					column_is_highlighted = 1;
-				}
-
-				column_is_double_quote = 0;
-
-				if (data)
-				{
-					if (es_output_is_char)
-					{
-						column_color_t *column_color;
-						
-						column_color = column_color_find(column->property_id);
-						if (column_color)
-						{
-							es_cibuf_attributes = column_color->color;
-							SetConsoleTextAttribute(es_output_handle,es_cibuf_attributes);
-
-							es_last_color = es_cibuf_attributes;
-							es_is_last_color = 1;
-
-							did_set_color = 1;
-						}
-					}
-
-					switch(column->property_id)
-					{
-						case EVERYTHING3_PROPERTY_ID_NAME:
-
-							column_text = (wchar_t *)((char *)data+sizeof(DWORD));
-							column_is_double_quote = es_double_quote;
-
-							break;
-							
-						case EVERYTHING3_PROPERTY_ID_PATH:
-
-							column_text = (wchar_t *)((char *)data+sizeof(DWORD));
-							column_is_double_quote = es_double_quote;
-
-							break;
-							
-						case EVERYTHING3_PROPERTY_ID_FULL_PATH:
-
-							column_text = (wchar_t *)((char *)data+sizeof(DWORD));
-							column_is_double_quote = es_double_quote;
-
-							break;
-							
-						case EVERYTHING3_PROPERTY_ID_EXTENSION:
-
-							column_text = (wchar_t *)((char *)data+sizeof(DWORD));
-							break;
-							
-						case EVERYTHING3_PROPERTY_ID_SIZE:
-							
-							if ((items[i].flags & EVERYTHING_IPC_FOLDER) && (*(ES_UINT64 *)data == 0xffffffffffffffffI64))
-							{
-								es_format_dir(&column_wcbuf);
-							}
-							else
-							{
-								es_format_size(*(ES_UINT64 *)data,&column_wcbuf);
-							}
-
-							column_text = column_wcbuf.buf;
-
-							break;
-
-						case EVERYTHING3_PROPERTY_ID_DATE_CREATED:
-
-							es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
-
-							column_text = column_wcbuf.buf;
-							break;
-						
-						case EVERYTHING3_PROPERTY_ID_DATE_MODIFIED:
-
-							es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
-							column_text = column_wcbuf.buf;
-							break;
-						
-						case EVERYTHING3_PROPERTY_ID_DATE_ACCESSED:
-
-							es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
-							column_text = column_wcbuf.buf;
-							break;
-						
-						case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
-
-							es_format_attributes(*(DWORD *)data,&column_wcbuf);
-							column_text = column_wcbuf.buf;
-							break;
-
-						case EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME:
-
-							column_text = (wchar_t *)((char *)data+sizeof(DWORD));
-							break;
-						
-						case EVERYTHING3_PROPERTY_ID_RUN_COUNT:
-
-							es_format_run_count(*(DWORD *)data,&column_wcbuf);
-							column_text = column_wcbuf.buf;
-							break;
-											
-						case EVERYTHING3_PROPERTY_ID_DATE_RUN:
-
-							es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
-							column_text = column_wcbuf.buf;
-							break;
-															
-						case EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED:
-
-							es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
-							column_text = column_wcbuf.buf;
-							break;
-					}
-
-					//es_column_widths
-					
-					{
-						int column_text_len;
-						int fill;
-						int column_width;
-						int is_right_aligned;
-						
-						is_right_aligned = es_column_is_right_aligned(column->property_id);
-						
-						if (is_right_aligned)
-						{
-							// check for right aligned dir
-							// and make it left aligned.
-							if (*column_text == '<')
-							{
-								is_right_aligned = 0;
-							}
-						}
-						
-						if (column_is_highlighted)
-						{
-							column_text_len = safe_int_from_size(wchar_string_get_highlighted_length(column_text));
-						}
-						else
-						{
-							column_text_len = safe_int_from_size(wchar_string_get_length_in_wchars(column_text));
-						}
-						
-						if (column_is_double_quote)
-						{
-							column_text_len += 2;
-						}
-						
-						column_width = column_width_get(column->property_id);
-						
-						// left fill
-						if (is_right_aligned)
-						{
-							if (tot_column_width + column_width > (tot_column_text_len + column_text_len))
-							{
-								int fillch;
-								
-								fill = tot_column_width + column_width - (tot_column_text_len + column_text_len);
-
-								fillch = ' ';
-								
-								if (!es_digit_grouping)
-								{
-									if (column->property_id == EVERYTHING3_PROPERTY_ID_SIZE)
-									{
-										fillch = es_size_leading_zero ? '0' : ' ';
-									}
-									else
-									if (column->property_id == EVERYTHING3_PROPERTY_ID_RUN_COUNT)
-									{
-										fillch = es_run_count_leading_zero ? '0' : ' ';
-									}
-								}
-							
-								// left spaces.
-								es_fill(fill,fillch);
-								tot_column_text_len += fill;
-							}
-						}
-
-						if (column_is_double_quote)
-						{
-							es_write_utf8_string("\"");
-						}
-
-						// write text.
-						if (column_is_highlighted)
-						{
-							es_write_highlighted(column_text);
-						}
-						else
-						{
-							es_write_wchar_string(column_text);
-						}
-				
-						if (column_is_double_quote)
-						{
-							es_write_utf8_string("\"");
-						}
-
-						// right fill
-						if (!is_right_aligned)
-						{
-							if (tot_column_width + column_width > (tot_column_text_len + column_text_len))
-							{
-								fill = tot_column_width + column_width - (tot_column_text_len + column_text_len);
-
-								// dont right fill last column.
-								if (column != column_order_last)
-								{
-									// right spaces.
-									es_fill(fill,' ');
-									tot_column_text_len += fill;
-								}
-							}
-						}
-							
-									
-						tot_column_text_len += column_text_len;
-						tot_column_width += column_width;
-					}
-
-					// restore color
-					if (did_set_color)
-					{
-						es_cibuf_attributes = es_default_attributes;
-						SetConsoleTextAttribute(es_output_handle,es_default_attributes);
-					}
-				}
-				
-				column = column->order_next;
-			}
-			
-			if (es_pause)
-			{
-				// fill right side of screen
-				if (es_cibuf)
-				{
-					int wlen;
-					
-					if (es_cibuf_x)
-					{
-						if (es_cibuf_x + es_cibuf_hscroll > es_max_wide)
-						{
-							es_max_wide = es_cibuf_x + es_cibuf_hscroll;
-						}
-					}
-			
-					wlen = es_console_wide - es_cibuf_x;
-					
-					if (wlen > 0)
-					{
-						int bufi;
-						
-						for(bufi=0;bufi<wlen;bufi++)
-						{
-							if (bufi + es_cibuf_x >= es_console_wide)
-							{
-								break;
-							}
-
-							if (bufi + es_cibuf_x >= 0)
-							{
-								es_cibuf[bufi+es_cibuf_x].Attributes = es_cibuf_attributes;
-								es_cibuf[bufi+es_cibuf_x].Char.UnicodeChar = ' ';
-							}
-						}
-					}
-					
-					// draw buffer line.
-					{
-						COORD buf_size;
-						COORD buf_pos;
-						SMALL_RECT write_rect;
-						
-						buf_size.X = es_console_wide;
-						buf_size.Y = 1;
-						
-						buf_pos.X = 0;
-						buf_pos.Y = 0;
-						
-						write_rect.Left = es_console_window_x;
-						write_rect.Top = es_console_window_y + es_cibuf_y;
-						write_rect.Right = es_console_window_x + es_console_wide;
-						write_rect.Bottom = es_console_window_y + es_cibuf_y + 1;
-						
-						WriteConsoleOutput(es_output_handle,es_cibuf,buf_size,buf_pos,&write_rect);
-						
-						es_cibuf_x += wlen;				
-					}
-				}			
+				es_output_column_separator();
 			}
 			else
 			{
-				es_write_utf8_string("\r\n");
+				done_first = 1;
 			}
+			
+			data = es_get_column_data(list,i,es_output_column->property_id,0);
+			if (data)
+			{
+				switch(es_output_column->property_id)
+				{
+					case EVERYTHING3_PROPERTY_ID_NAME:
+					case EVERYTHING3_PROPERTY_ID_PATH:
+					case EVERYTHING3_PROPERTY_ID_FULL_PATH:
+					case EVERYTHING3_PROPERTY_ID_EXTENSION:
+					case EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME:
+						es_output_column_text_property((wchar_t *)((char *)data+sizeof(DWORD)));
+						break;
+						
+					case EVERYTHING3_PROPERTY_ID_SIZE:
+
+						{
+							ES_UINT64 size;
+							
+							os_copy_memory(&size,data,sizeof(ES_UINT64));
+
+							es_output_column_size_property((items[i].flags & EVERYTHING_IPC_FOLDER) ? 1 : 0,size);
+						}
+						
+						break;
+
+					case EVERYTHING3_PROPERTY_ID_DATE_MODIFIED:
+					case EVERYTHING3_PROPERTY_ID_DATE_CREATED:
+					case EVERYTHING3_PROPERTY_ID_DATE_ACCESSED:
+					case EVERYTHING3_PROPERTY_ID_DATE_RUN:
+					case EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED:
+					
+						{
+							ES_UINT64 filetime;
+							
+							os_copy_memory(&filetime,data,sizeof(ES_UINT64));
+
+							es_output_column_filetime_property(filetime);
+						}
+						
+						break;
+
+					case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
+
+						{
+							DWORD attributes;
+							
+							os_copy_memory(&attributes,data,sizeof(DWORD));
+
+							es_output_column_attribute_property(attributes);
+						}
+						
+						break;
+
+					
+					case EVERYTHING3_PROPERTY_ID_RUN_COUNT:
+					
+						{
+							wchar_buf_print_UINT64(&column_wcbuf,*(DWORD *)data);
+							es_output_column_wchar_string(column_wcbuf.buf);
+						}	
+
+						break;
+				}
+			}
+			
+			es_output_column = es_output_column->order_next;
 		}
 
-		es_cibuf_y++;
+		es_output_column_newline();
+
 		count--;
 		i++;
 	}
@@ -3134,7 +3172,6 @@ return 0;
 				
 				es_console_size_high = csbi.dwSize.Y;
 				
-				es_cibuf_attributes = csbi.wAttributes;
 				es_default_attributes = csbi.wAttributes;
 			}
 		}
@@ -3364,6 +3401,11 @@ return 0;
 					es_export_type = ES_EXPORT_TYPE_TSV;
 				}
 				else				
+				if (es_check_option_utf8_string(argv_wcbuf.buf,"json"))
+				{
+					es_export_type = ES_EXPORT_TYPE_JSON;
+				}
+				else				
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"export-csv"))
 				{
 					es_expect_command_argv(&argv_wcbuf);
@@ -3387,6 +3429,21 @@ return 0;
 					if (es_export_file != INVALID_HANDLE_VALUE)
 					{
 						es_export_type = ES_EXPORT_TYPE_TSV;
+					}
+					else
+					{
+						es_fatal(ES_ERROR_CREATE_FILE);
+					}
+				}
+				else		
+				if (es_check_option_utf8_string(argv_wcbuf.buf,"export-json"))
+				{
+					es_expect_command_argv(&argv_wcbuf);
+					
+					es_export_file = os_create_file(argv_wcbuf.buf);
+					if (es_export_file != INVALID_HANDLE_VALUE)
+					{
+						es_export_type = ES_EXPORT_TYPE_JSON;
 					}
 					else
 					{
@@ -3764,15 +3821,15 @@ return 0;
 				else
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"sort"))
 				{	
-					wchar_buf_t sort_name_wcbuf;
+					utf8_buf_t sort_name_cbuf;
 					int basic_property_name_i;
 					
-					wchar_buf_init(&sort_name_wcbuf);
+					utf8_buf_init(&sort_name_cbuf);
 					es_expect_command_argv(&argv_wcbuf);
 
 					for(basic_property_name_i=0;basic_property_name_i<PROPERTY_BASIC_COUNT;basic_property_name_i++)
 					{
-						if (es_check_param_ascii(argv_wcbuf.buf,property_basic_name_to_id_array[basic_property_name_i].name))
+						if (es_check_param_utf8_string(argv_wcbuf.buf,property_basic_name_to_id_array[basic_property_name_i].name))
 						{
 							es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 
@@ -3780,9 +3837,9 @@ return 0;
 						}
 						else
 						{
-							wchar_buf_printf(&sort_name_wcbuf,"%s-ascending",property_basic_name_to_id_array[basic_property_name_i].name);
+							utf8_buf_printf(&sort_name_cbuf,"%s-ascending",property_basic_name_to_id_array[basic_property_name_i].name);
 
-							if (es_check_option_wchar_string_name(argv_wcbuf.buf,sort_name_wcbuf.buf))
+							if (es_check_option_utf8_string_name(argv_wcbuf.buf,sort_name_cbuf.buf))
 							{
 								es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 								es_sort_ascending = 1;
@@ -3791,9 +3848,9 @@ return 0;
 							}
 							else
 							{
-								wchar_buf_printf(&sort_name_wcbuf,"%s-descending",property_basic_name_to_id_array[basic_property_name_i].name);
+								utf8_buf_printf(&sort_name_cbuf,"%s-descending",property_basic_name_to_id_array[basic_property_name_i].name);
 								
-								if (es_check_option_wchar_string_name(argv_wcbuf.buf,sort_name_wcbuf.buf))
+								if (es_check_option_utf8_string_name(argv_wcbuf.buf,sort_name_cbuf.buf))
 								{
 									es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 									es_sort_ascending = -1;
@@ -3809,7 +3866,7 @@ return 0;
 						es_fatal(ES_ERROR_EXPECTED_SWITCH_PARAMETER);
 					}
 
-					wchar_buf_kill(&sort_name_wcbuf);
+					utf8_buf_kill(&sort_name_cbuf);
 				}
 				else
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"ipc1"))
@@ -3834,7 +3891,7 @@ return 0;
 				else
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"no-header"))
 				{	
-					es_header = 0; 
+					es_header = -1; 
 				}
 				else
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"double-quote"))
@@ -3953,13 +4010,13 @@ return 0;
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"ad"))
 				{	
 					// add folder:
-					es_append_filter(&filter_wcbuf,L"folder:");
+					es_append_filter(&filter_wcbuf,"folder:");
 				}
 				else
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"a-d"))
 				{	
 					// add folder:
-					es_append_filter(&filter_wcbuf,L"file:");
+					es_append_filter(&filter_wcbuf,"file:");
 				}
 				else
 				if (es_check_option_utf8_string(argv_wcbuf.buf,"get-result-count"))
@@ -4385,41 +4442,16 @@ return 0;
 			
 			if ((es_export_type == ES_EXPORT_TYPE_CSV) || (es_export_type == ES_EXPORT_TYPE_TSV))
 			{
-//TODO: we have to output header later, as it might change with ipc3 or ipc1.
-				if (es_header)
+				if (!es_header)
 				{
-					const column_t **column_p;
-					SIZE_T column_run;
-					int done_first;
-//					es_buf_t name_cbuf;
-//					es_buf_init(&name_cbuf);
-					
-					done_first = 0;
-					
-					column_p = (const column_t **)local_column_array.indexes;
-					column_run = local_column_array.count;
-					
-					while(column_run)
-					{
-						if (done_first)
-						{
-							es_fwrite_utf8_string((es_export_type == ES_EXPORT_TYPE_CSV) ? "," : "\t");
-						}
-						else
-						{
-							done_first = 1;
-						}
-
-//TODO:
-//						es_column_get_name();
-//						es_fwrite_wchar_string(es_column_names[es_columns[columni]]);
-
-						column_p++;
-						column_run--;
-					}
-
-					es_fwrite_utf8_string("\r\n");
+					es_header = 1;
 				}
+			}
+			else
+			if (es_export_type == ES_EXPORT_TYPE_JSON)
+			{
+				// no header
+				es_header = -1;
 			}
 			else
 			if (es_export_type == ES_EXPORT_TYPE_EFU)
@@ -4488,10 +4520,10 @@ return 0;
 				{
 					column_add(EVERYTHING3_PROPERTY_ID_ATTRIBUTES);
 				}
-
-				if (es_header)
+				
+				if (!es_header)
 				{
-					es_fwrite_utf8_string("Filename,Size,Date Modified,Date Created,Attributes\r\n");
+					es_header = 1;
 				}
 			}
 			else
@@ -4505,7 +4537,63 @@ return 0;
 				// reset columns and force Filename.
 				column_clear_all();
 				column_add(EVERYTHING3_PROPERTY_ID_FULL_PATH);
+				
+				if (es_export_type == ES_EXPORT_TYPE_TXT)
+				{
+					// don't show header unless user wants it.
+				}
+				else
+				{
+					// never show header.
+					es_header = -1;
+				}
 			}
+		}
+		
+		if (es_header > 0)
+		{
+			int done_first;
+			wchar_buf_t property_name_wcbuf;
+
+			wchar_buf_init(&property_name_wcbuf);
+			
+			es_is_in_header = 1;
+			done_first = 0;
+			
+			es_output_column = column_order_start;
+			
+			while(es_output_column)
+			{
+				if (done_first)
+				{
+					es_output_column_separator();
+				}
+				else
+				{
+					done_first = 1;
+				}
+
+				if (es_output_column->property_id == EVERYTHING3_PROPERTY_ID_FULL_PATH)
+				{
+					// use Filename instead of Full Path
+					wchar_buf_copy_utf8_string(&property_name_wcbuf,"Filename");
+				}
+				else
+				{
+					property_get_name(es_output_column->property_id,&property_name_wcbuf);
+				}
+//TODO: this will break pause: -header -pause
+//TODO: never quote header for EFU.
+				es_output_column_text_property(property_name_wcbuf.buf);
+
+				es_output_column = es_output_column->order_next;
+			}
+
+			es_output_column_newline();
+
+			es_is_in_header = 0;
+			
+			wchar_buf_kill(&property_name_wcbuf);
 		}
 
 		// fix search filter
@@ -4904,9 +4992,8 @@ static void es_wait_for_db_not_busy(void)
 	wchar_buf_kill(&window_class_wcbuf);
 }
 
-// check if param is 
-// check if s matches param.
-int es_check_option_wchar_string(const wchar_t *argv,const wchar_t *s)
+//TODO: optimize.
+int es_check_option_utf8_string(const wchar_t *argv,const ES_UTF8 *s)
 {
 	const wchar_t *argv_p;
 	
@@ -4922,63 +5009,55 @@ int es_check_option_wchar_string(const wchar_t *argv,const wchar_t *s)
 			argv_p++;
 		}
 		
-		return es_check_option_wchar_string_name(argv_p,s);
+		return es_check_option_utf8_string_name(argv_p,s);
 	}
 	
 	return 0;
 }
 
-//TODO: optimize.
-int es_check_option_utf8_string(const wchar_t *argv,const ES_UTF8 *s)
+BOOL es_check_option_utf8_string_name(const wchar_t *param,const ES_UTF8 *s)
 {
-	int ret;
-	wchar_buf_t wcbuf;
-
-	wchar_buf_init(&wcbuf);
-
-	wchar_buf_copy_utf8_string(&wcbuf,s);
+	const wchar_t *p1;
+	const ES_UTF8 *p2;
 	
-	ret = es_check_option_wchar_string(argv,wcbuf.buf);
+	p1 = param;
+	p2 = s;
 	
-	wchar_buf_kill(&wcbuf);
-	
-	return ret;
-}
-
-int es_check_option_wchar_string_name(const wchar_t *param,const wchar_t *s)
-{
-	while(*s)
+	while(*p2)
 	{
-		if (*s == '-')
+		if (*p2 == '-')
 		{
-			if (*param == '-')
+			if (*p1 == '-')
 			{
-				param++;
+				p1++;
 			}
 		
-			s++;
+			p2++;
 		}
 		else
 		{
-			if (*param != *s)
-			{
-				return 0;
-			}
+			int c1;
+			int c2;
+			
+			WCHAR_STRING_GET_CHAR(p1,c1);
+			UTF8_STRING_GET_CHAR(p2,c2);
 		
-			param++;
-			s++;
+			if (c1 != c2)
+			{
+				return FALSE;
+			}
 		}
 	}
 	
-	if (*param)
+	if (*p1)
 	{
-		return 0;
+		return FALSE;
 	}
 	
-	return 1;
+	return TRUE;
 }
 
-int es_check_param_ascii(const wchar_t *s,const char *search)
+BOOL es_check_param_utf8_string(const wchar_t *s,const ES_UTF8 *search)
 {
 	const wchar_t *p1;
 	const char *p2;
@@ -4988,6 +5067,9 @@ int es_check_param_ascii(const wchar_t *s,const char *search)
 	
 	while(*p2)
 	{
+		int c1;
+		int c2;
+		
 		if (*p1 == '-')
 		{
 			if (*p2 == '-')
@@ -4999,32 +5081,32 @@ int es_check_param_ascii(const wchar_t *s,const char *search)
 			continue;
 		}
 
-		if (*p1 != *p2)
-		{
-			return 0;
-		}
+		WCHAR_STRING_GET_CHAR(p1,c1);
+		UTF8_STRING_GET_CHAR(p2,c2);
 	
-		p1++;
-		p2++;
+		if (c1 != c2)
+		{
+			return FALSE;
+		}
 	}
 	
 	if (*p1)
 	{
-		return 0;
+		return FALSE;
 	}
 	
-	return 1;
+	return TRUE;
 }
 
 // TODO: FIXME: unaligned access...
 void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,DWORD property_highlight)
 {	
-	char *p;
+	BYTE *p;
 	EVERYTHING_IPC_ITEM2 *items;
 	
 	items = (EVERYTHING_IPC_ITEM2 *)(list + 1);
 	
-	p = ((char *)list) + items[index].data_offset;
+	p = ((BYTE *)list) + items[index].data_offset;
 
 	if (list->request_flags & EVERYTHING_IPC_QUERY2_REQUEST_NAME)
 	{
@@ -5035,7 +5117,7 @@ void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,
 			return p;
 		}
 		
-		len = *(DWORD *)p;
+		os_copy_memory(&len,p,sizeof(DWORD));
 		p += sizeof(DWORD);
 		
 		p += (len + 1) * sizeof(wchar_t);
@@ -5050,7 +5132,7 @@ void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,
 			return p;
 		}
 		
-		len = *(DWORD *)p;
+		os_copy_memory(&len,p,sizeof(DWORD));
 		p += sizeof(DWORD);
 		
 		p += (len + 1) * sizeof(wchar_t);
@@ -5065,7 +5147,7 @@ void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,
 			return p;
 		}
 		
-		len = *(DWORD *)p;
+		os_copy_memory(&len,p,sizeof(DWORD));
 		p += sizeof(DWORD);
 
 		p += (len + 1) * sizeof(wchar_t);
@@ -5080,7 +5162,7 @@ void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,
 			return p;
 		}
 		
-		len = *(DWORD *)p;
+		os_copy_memory(&len,p,sizeof(DWORD));
 		p += sizeof(DWORD);
 		
 		p += (len + 1) * sizeof(wchar_t);
@@ -5145,7 +5227,7 @@ void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,
 			return p;
 		}
 		
-		len = *(DWORD *)p;
+		os_copy_memory(&len,p,sizeof(DWORD));
 		p += sizeof(DWORD);
 		
 		p += (len + 1) * sizeof(wchar_t);
@@ -5190,7 +5272,7 @@ void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,
 			return p;
 		}
 		
-		len = *(DWORD *)p;
+		os_copy_memory(&len,p,sizeof(DWORD));
 		p += sizeof(DWORD);
 		
 		p += (len + 1) * sizeof(wchar_t);
@@ -5205,7 +5287,7 @@ void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,
 			return p;
 		}
 		
-		len = *(DWORD *)p;
+		os_copy_memory(&len,p,sizeof(DWORD));
 		p += sizeof(DWORD);
 		
 		p += (len + 1) * sizeof(wchar_t);
@@ -5220,18 +5302,13 @@ void *es_get_column_data(EVERYTHING_IPC_LIST2 *list,int index,DWORD property_id,
 			return p;
 		}
 		
-		len = *(DWORD *)p;
+		os_copy_memory(&len,p,sizeof(DWORD));
 		p += sizeof(DWORD);
 		
 		p += (len + 1) * sizeof(wchar_t);
 	}			
 	
 	return 0;
-}
-
-void es_format_dir(wchar_buf_t *wcbuf)
-{
-	wchar_buf_copy_utf8_string(wcbuf,"<DIR>");
 }
 
 void es_format_size(ES_UINT64 size,wchar_buf_t *wcbuf)
@@ -5505,7 +5582,7 @@ void es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf)
 					case 2: val1 = st.wYear; val2 = st.wMonth; val3 = st.wDay; break; // Year-Month-Day
 				}
 				
-				wchar_buf_printf(wcbuf,"%02d/%02d/%02d %02d:%02d",val1,val2,val3,st.wHour,st.wMinute);
+				wchar_buf_printf(wcbuf,"%02d/%02d/%02d %02d:%02d:%02d",val1,val2,val3,st.wHour,st.wMinute,st.wSecond);
 //TODO:
 	//seconds		wsprintf(buf,L"%02d/%02d/%02d %02d:%02d:%02d",val1,val2,val3,st.wHour,st.wMinute,st.wSecond);
 				break;
@@ -6206,14 +6283,14 @@ static void _es_load_settings(void)
 	}
 }
 
-void es_append_filter(wchar_buf_t *wcbuf,const wchar_t *filter)
+void es_append_filter(wchar_buf_t *wcbuf,const ES_UTF8 *filter)
 {
 	if (wcbuf->length_in_wchars)
 	{
 		wchar_buf_cat_wchar(wcbuf,' ');
 	}
 	
-	wchar_buf_cat_wchar_string(wcbuf,filter);
+	wchar_buf_cat_utf8_string(wcbuf,filter);
 }
 
 void es_do_run_history_command(void)
@@ -6256,17 +6333,17 @@ void es_do_run_history_command(void)
 static BOOL es_check_sorts(const wchar_t *argv)
 {
 	BOOL ret;
-	wchar_buf_t sort_name_wcbuf;
+	utf8_buf_t sort_name_cbuf;
 	int basic_property_name_i;
 	
 	ret = FALSE;
-	wchar_buf_init(&sort_name_wcbuf);
+	utf8_buf_init(&sort_name_cbuf);
 	
 	for(basic_property_name_i=0;basic_property_name_i<PROPERTY_BASIC_COUNT;basic_property_name_i++)
 	{
-		wchar_buf_printf(&sort_name_wcbuf,"sort-%s-ascending",property_basic_name_to_id_array[basic_property_name_i].name);
+		utf8_buf_printf(&sort_name_cbuf,"sort-%s-ascending",property_basic_name_to_id_array[basic_property_name_i].name);
 		
-		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
+		if (es_check_option_utf8_string(argv,sort_name_cbuf.buf))
 		{
 			es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 			es_sort_ascending = 1;
@@ -6275,9 +6352,9 @@ static BOOL es_check_sorts(const wchar_t *argv)
 			break;
 		}
 		
-		wchar_buf_printf(&sort_name_wcbuf,"sort-%s-descending",property_basic_name_to_id_array[basic_property_name_i].name);
+		utf8_buf_printf(&sort_name_cbuf,"sort-%s-descending",property_basic_name_to_id_array[basic_property_name_i].name);
 		
-		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
+		if (es_check_option_utf8_string(argv,sort_name_cbuf.buf))
 		{
 			es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 			es_sort_ascending = -1;
@@ -6286,9 +6363,9 @@ static BOOL es_check_sorts(const wchar_t *argv)
 			break;
 		}
 		
-		wchar_buf_printf(&sort_name_wcbuf,"sort-%s",property_basic_name_to_id_array[basic_property_name_i].name);
+		utf8_buf_printf(&sort_name_cbuf,"sort-%s",property_basic_name_to_id_array[basic_property_name_i].name);
 		
-		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
+		if (es_check_option_utf8_string(argv,sort_name_cbuf.buf))
 		{
 			es_sort_property_id = property_basic_name_to_id_array[basic_property_name_i].id;
 
@@ -6297,12 +6374,12 @@ static BOOL es_check_sorts(const wchar_t *argv)
 		}
 	}
 	
-	wchar_buf_kill(&sort_name_wcbuf);
+	utf8_buf_kill(&sort_name_cbuf);
 
 	return ret;
 }
 
-static int es_is_literal_switch(const wchar_t *s)
+static BOOL es_is_literal_switch(const wchar_t *s)
 {
 	const wchar_t *p;
 	
@@ -6322,19 +6399,19 @@ static int es_is_literal_switch(const wchar_t *s)
 	// expect end of switch.
 	if (*p)
 	{
-		return 0;
+		return FALSE;
 	}
 	
-	return 1;
+	return TRUE;
 }
 
-static int _es_is_unbalanced_quotes(const wchar_t *s)
+static BOOL _es_is_unbalanced_quotes(const wchar_t *s)
 {
 	const wchar_t *p;
-	int in_quote;
+	BOOL in_quote;
 	
 	p = s;
-	in_quote = 0;
+	in_quote = FALSE;
 	
 	while(*p)
 	{
@@ -6923,16 +7000,6 @@ static BOOL es_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size)
 	return 1;
 }
 
-static BOOL es_column_is_right_aligned(DWORD property_id)
-{
-	if (property_format_to_right_align[property_get_format(property_id)])
-	{
-		return TRUE;
-	}
-	
-	return FALSE;
-}
-
 static void es_write_utf8_string(const ES_UTF8 *text)
 {
 	wchar_buf_t wcbuf;
@@ -6941,7 +7008,7 @@ static void es_write_utf8_string(const ES_UTF8 *text)
 
 	wchar_buf_copy_utf8_string(&wcbuf,text);
 	
-	es_write_wchar_string(wcbuf.buf);
+	es_console_write_wchar_string(wcbuf.buf);
 
 	wchar_buf_kill(&wcbuf);
 }
@@ -6949,18 +7016,17 @@ static void es_write_utf8_string(const ES_UTF8 *text)
 static BOOL es_check_color_param(const wchar_t *argv,int *out_basic_property_name_i)
 {
 	BOOL ret;
-	wchar_buf_t sort_name_wcbuf;
+	utf8_buf_t sort_name_cbuf;
 	int basic_property_name_i;
 
 	ret = FALSE;
-	wchar_buf_init(&sort_name_wcbuf);
+	utf8_buf_init(&sort_name_cbuf);
 	
 	for(basic_property_name_i=0;basic_property_name_i<PROPERTY_BASIC_COUNT;basic_property_name_i++)
 	{
-		wchar_buf_copy_utf8_string(&sort_name_wcbuf,property_basic_name_to_id_array[basic_property_name_i].name);
-		wchar_buf_cat_utf8_string(&sort_name_wcbuf,"-color");
+		utf8_buf_printf(&sort_name_cbuf,"%s-color",property_basic_name_to_id_array[basic_property_name_i].name);
 
-		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
+		if (es_check_option_utf8_string(argv,sort_name_cbuf.buf))
 		{
 			*out_basic_property_name_i = basic_property_name_i;
 			
@@ -6969,7 +7035,7 @@ static BOOL es_check_color_param(const wchar_t *argv,int *out_basic_property_nam
 		}
 	}
 	
-	wchar_buf_kill(&sort_name_wcbuf);
+	utf8_buf_kill(&sort_name_cbuf);
 	
 	return ret;
 }
@@ -6977,17 +7043,15 @@ static BOOL es_check_color_param(const wchar_t *argv,int *out_basic_property_nam
 static BOOL es_check_column_param(const wchar_t *argv)
 {
 	BOOL ret;
-	wchar_buf_t sort_name_wcbuf;
+	utf8_buf_t sort_name_cbuf;
 	int basic_property_name_i;
 	
 	ret = FALSE;
-	wchar_buf_init(&sort_name_wcbuf);
+	utf8_buf_init(&sort_name_cbuf);
 	
 	for(basic_property_name_i=0;basic_property_name_i<PROPERTY_BASIC_COUNT;basic_property_name_i++)
 	{
-		wchar_buf_copy_utf8_string(&sort_name_wcbuf,property_basic_name_to_id_array[basic_property_name_i].name);
-		
-		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
+		if (es_check_option_utf8_string(argv,property_basic_name_to_id_array[basic_property_name_i].name))
 		{
 			column_add(property_basic_name_to_id_array[basic_property_name_i].id);
 			
@@ -6995,9 +7059,9 @@ static BOOL es_check_column_param(const wchar_t *argv)
 			break;
 		}
 
-		wchar_buf_printf(&sort_name_wcbuf,"no-%s",property_basic_name_to_id_array[basic_property_name_i].name);
+		utf8_buf_printf(&sort_name_cbuf,"no-%s",property_basic_name_to_id_array[basic_property_name_i].name);
 		
-		if (es_check_option_wchar_string(argv,sort_name_wcbuf.buf))
+		if (es_check_option_utf8_string(argv,sort_name_cbuf.buf))
 		{
 			column_remove(property_basic_name_to_id_array[basic_property_name_i].id);
 			
@@ -7006,7 +7070,7 @@ static BOOL es_check_column_param(const wchar_t *argv)
 		}
 	}
 	
-	wchar_buf_kill(&sort_name_wcbuf);
+	utf8_buf_kill(&sort_name_cbuf);
 
 	return ret;
 }
@@ -7271,3 +7335,446 @@ static void es_get_reply_window(void)
 	}
 }
 
+
+
+/*
+		else
+		if (es_export_type == ES_EXPORT_TYPE_EFU)
+		{
+			void *data;
+				
+			// Filename
+			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_FULL_PATH,0);
+			if (data)
+			{
+				es_output_column_csv_string((wchar_t *)((char *)data+sizeof(DWORD)));
+			}
+
+			es_output_column_utf8_string(",");
+			
+			// size
+			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_SIZE,0);
+			if (data)
+			{
+				if (*(ES_UINT64 *)data != 0xffffffffffffffffI64)
+				{
+					wchar_buf_print_UINT64(&column_wcbuf,*(ES_UINT64 *)data);
+					es_output_column_wchar_string(column_wcbuf.buf);
+				}
+			}
+
+			es_output_column_utf8_string(",");
+
+			// date modified
+			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_DATE_MODIFIED,0);
+			if (data)
+			{
+				if ((*(ES_UINT64 *)data != 0xffffffffffffffffI64))
+				{
+					wchar_buf_print_UINT64(&column_wcbuf,*(ES_UINT64 *)data);
+					es_output_column_wchar_string(column_wcbuf.buf);
+				}
+			}
+
+			es_output_column_utf8_string(",");
+
+			// date created
+			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_DATE_CREATED,0);
+			if (data)
+			{
+				if ((*(ES_UINT64 *)data != 0xffffffffffffffffI64))
+				{
+					wchar_buf_print_UINT64(&column_wcbuf,*(ES_UINT64 *)data);
+					es_output_column_wchar_string(column_wcbuf.buf);
+				}
+			}
+
+			es_output_column_utf8_string(",");
+
+			// date created
+			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_ATTRIBUTES,0);
+			if (data)
+			{
+				wchar_buf_print_UINT64(&column_wcbuf,*(DWORD *)data);
+				es_output_column_wchar_string(column_wcbuf.buf);
+			}
+			else
+			{
+				DWORD file_attributes;
+				
+				// add file/folder attributes.
+				if (items[i].flags & EVERYTHING_IPC_FOLDER)
+				{
+					file_attributes = FILE_ATTRIBUTE_DIRECTORY;
+				}
+				else
+				{
+					file_attributes = 0;
+				}
+
+				wchar_buf_print_UINT64(&column_wcbuf,file_attributes);
+				es_output_column_wchar_string(column_wcbuf.buf);
+			}
+
+			es_output_column_utf8_string("\r\n");
+		}
+		else
+		if ((es_export_type == ES_EXPORT_TYPE_TXT) || (es_export_type == ES_EXPORT_TYPE_M3U) || (es_export_type == ES_EXPORT_TYPE_M3U8))
+		{
+			void *data;
+			
+			data = es_get_column_data(list,i,EVERYTHING3_PROPERTY_ID_FULL_PATH,0);
+			
+			if (es_double_quote)
+			{
+				es_output_column_utf8_string("\"");
+			}
+			
+			if (data)
+			{
+				es_output_column_wchar_string((wchar_t *)((char *)data+sizeof(DWORD)));
+			}
+
+			if (es_double_quote)
+			{
+				es_output_column_utf8_string("\"");
+			}
+			
+			es_output_column_utf8_string("\r\n");
+		}
+		else
+		{
+			column_t *column;
+			int did_set_color;
+			int tot_column_text_len;
+			int tot_column_width;
+			int done_first;
+			
+			tot_column_text_len = 0;
+			tot_column_width = 0;
+			done_first = 0;
+			
+			column = column_order_start;
+
+			while(column)
+			{
+				void *data;
+				const wchar_t *column_text;
+				int column_is_highlighted;
+				int column_is_double_quote;
+				
+				if (done_first)
+				{
+					es_write_utf8_string(" ");
+					tot_column_text_len++;
+					tot_column_width++;
+				}
+				else
+				{
+					done_first = 1;
+				}
+				
+				data = es_get_column_data(list,i,column->property_id,column->flags & COLUMN_FLAG_HIGHLIGHT);
+
+				es_is_last_color = 0;
+				did_set_color = 0;
+				
+				column_text = L"";
+				column_is_highlighted = 0;
+
+				if (column->flags & COLUMN_FLAG_HIGHLIGHT)
+				{
+					column_is_highlighted = 1;
+				}
+
+				column_is_double_quote = 0;
+
+				if (data)
+				{
+					if (es_output_is_char)
+					{
+						column_color_t *column_color;
+						
+						column_color = column_color_find(column->property_id);
+						if (column_color)
+						{
+							
+						}
+					}
+
+					switch(column->property_id)
+					{
+						case EVERYTHING3_PROPERTY_ID_NAME:
+
+							column_text = (wchar_t *)((char *)data+sizeof(DWORD));
+							column_is_double_quote = es_double_quote;
+
+							break;
+							
+						case EVERYTHING3_PROPERTY_ID_PATH:
+
+							column_text = (wchar_t *)((char *)data+sizeof(DWORD));
+							column_is_double_quote = es_double_quote;
+
+							break;
+							
+						case EVERYTHING3_PROPERTY_ID_FULL_PATH:
+
+							column_text = (wchar_t *)((char *)data+sizeof(DWORD));
+							column_is_double_quote = es_double_quote;
+
+							break;
+							
+						case EVERYTHING3_PROPERTY_ID_EXTENSION:
+
+							column_text = (wchar_t *)((char *)data+sizeof(DWORD));
+							break;
+							
+						case EVERYTHING3_PROPERTY_ID_SIZE:
+							
+							if ((items[i].flags & EVERYTHING_IPC_FOLDER) && (*(ES_UINT64 *)data == 0xffffffffffffffffI64))
+							{
+								es_output_size_dir(&column_wcbuf);
+							}
+							else
+							{
+								es_format_size(*(ES_UINT64 *)data,&column_wcbuf);
+							}
+
+							column_text = column_wcbuf.buf;
+
+							break;
+
+						case EVERYTHING3_PROPERTY_ID_DATE_CREATED:
+
+							es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
+
+							column_text = column_wcbuf.buf;
+							break;
+						
+						case EVERYTHING3_PROPERTY_ID_DATE_MODIFIED:
+
+							es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
+							column_text = column_wcbuf.buf;
+							break;
+						
+						case EVERYTHING3_PROPERTY_ID_DATE_ACCESSED:
+
+							es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
+							column_text = column_wcbuf.buf;
+							break;
+						
+						case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
+
+							es_format_attributes(*(DWORD *)data,&column_wcbuf);
+							column_text = column_wcbuf.buf;
+							break;
+
+						case EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME:
+
+							column_text = (wchar_t *)((char *)data+sizeof(DWORD));
+							break;
+						
+						case EVERYTHING3_PROPERTY_ID_RUN_COUNT:
+
+							es_format_run_count(*(DWORD *)data,&column_wcbuf);
+							column_text = column_wcbuf.buf;
+							break;
+											
+						case EVERYTHING3_PROPERTY_ID_DATE_RUN:
+
+							es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
+							column_text = column_wcbuf.buf;
+							break;
+															
+						case EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED:
+
+							es_format_filetime(*(ES_UINT64 *)data,&column_wcbuf);
+							column_text = column_wcbuf.buf;
+							break;
+					}
+
+					//es_column_widths
+					
+					{
+						int column_text_len;
+						int fill;
+						int column_width;
+						int is_right_aligned;
+						
+						is_right_aligned = es_column_is_right_aligned(column->property_id);
+						
+						if (is_right_aligned)
+						{
+							// check for right aligned dir
+							// and make it left aligned.
+							if (*column_text == '<')
+							{
+								is_right_aligned = 0;
+							}
+						}
+						
+						if (column_is_highlighted)
+						{
+							column_text_len = safe_int_from_size(wchar_string_get_highlighted_length(column_text));
+						}
+						else
+						{
+							column_text_len = safe_int_from_size(wchar_string_get_length_in_wchars(column_text));
+						}
+						
+						if (column_is_double_quote)
+						{
+							column_text_len += 2;
+						}
+						
+						column_width = column_width_get(column->property_id);
+						
+						// left fill
+						if (is_right_aligned)
+						{
+							if (tot_column_width + column_width > (tot_column_text_len + column_text_len))
+							{
+								int fillch;
+								
+								fill = tot_column_width + column_width - (tot_column_text_len + column_text_len);
+
+								fillch = ' ';
+								
+								if (!es_digit_grouping)
+								{
+									if (column->property_id == EVERYTHING3_PROPERTY_ID_SIZE)
+									{
+										fillch = es_size_leading_zero ? '0' : ' ';
+									}
+									else
+									if (column->property_id == EVERYTHING3_PROPERTY_ID_RUN_COUNT)
+									{
+										fillch = es_run_count_leading_zero ? '0' : ' ';
+									}
+								}
+							
+								// left spaces.
+								es_fill(fill,fillch);
+								tot_column_text_len += fill;
+							}
+						}
+
+						if (column_is_double_quote)
+						{
+							es_write_utf8_string("\"");
+						}
+
+						// write text.
+						if (column_is_highlighted)
+						{
+							es_write_highlighted(column_text);
+						}
+						else
+						{
+							es_console_write_wchar_string(column_text);
+						}
+				
+						if (column_is_double_quote)
+						{
+							es_write_utf8_string("\"");
+						}
+
+						// right fill
+						if (!is_right_aligned)
+						{
+							if (tot_column_width + column_width > (tot_column_text_len + column_text_len))
+							{
+								fill = tot_column_width + column_width - (tot_column_text_len + column_text_len);
+
+								// dont right fill last column.
+								if (column != column_order_last)
+								{
+									// right spaces.
+									es_fill(fill,' ');
+									tot_column_text_len += fill;
+								}
+							}
+						}
+							
+									
+						tot_column_text_len += column_text_len;
+						tot_column_width += column_width;
+					}
+
+				}
+				
+				column = column->order_next;
+			}
+			
+			if (es_pause)
+			{
+				// fill right side of screen
+				if (es_cibuf)
+				{
+					int wlen;
+					
+					if (es_output_cibuf_x)
+					{
+						if (es_output_cibuf_x + es_cibuf_hscroll > es_max_wide)
+						{
+							es_max_wide = es_output_cibuf_x + es_cibuf_hscroll;
+						}
+					}
+			
+					wlen = es_console_wide - es_output_cibuf_x;
+					
+					if (wlen > 0)
+					{
+						int bufi;
+						
+						for(bufi=0;bufi<wlen;bufi++)
+						{
+							if (bufi + es_output_cibuf_x >= es_console_wide)
+							{
+								break;
+							}
+
+							if (bufi + es_output_cibuf_x >= 0)
+							{
+								es_cibuf[bufi+es_output_cibuf_x].Attributes = es_cibuf_attributes;
+								es_cibuf[bufi+es_output_cibuf_x].Char.UnicodeChar = ' ';
+							}
+						}
+					}
+					
+					// draw buffer line.
+					{
+						COORD buf_size;
+						COORD buf_pos;
+						SMALL_RECT write_rect;
+						
+						buf_size.X = es_console_wide;
+						buf_size.Y = 1;
+						
+						buf_pos.X = 0;
+						buf_pos.Y = 0;
+						
+						write_rect.Left = es_console_window_x;
+						write_rect.Top = es_console_window_y + es_output_cibuf_y;
+						write_rect.Right = es_console_window_x + es_console_wide;
+						write_rect.Bottom = es_console_window_y + es_output_cibuf_y + 1;
+						
+						WriteConsoleOutput(es_output_handle,es_cibuf,buf_size,buf_pos,&write_rect);
+						
+						es_output_cibuf_x += wlen;				
+					}
+				}			
+			}
+			else
+			{
+				es_write_utf8_string("\r\n");
+			}
+		}
+
+		es_output_cibuf_y++;
+		count--;
+		i++;
+	}
+
+*/
