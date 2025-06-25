@@ -40,7 +40,11 @@ typedef BYTE ES_UTF8;
 #include "column.h"
 #include "column_color.h"
 #include "column_width.h"
+#include "secondary_sort.h"
 #include "os.h"
 #include "debug.h"
+#include "ipc3.h"
 
 void DECLSPEC_NORETURN es_fatal(int error_code);
+
+extern wchar_buf_t *es_instance_name_wcbuf;

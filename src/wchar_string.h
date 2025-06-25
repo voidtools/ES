@@ -15,6 +15,7 @@ else \
 } 
 
 int wchar_string_to_int(const wchar_t *s);
+DWORD wchar_string_to_dword(const wchar_t *s);
 SIZE_T wchar_string_get_length_in_wchars(const wchar_t *s);
 SIZE_T wchar_string_get_highlighted_length(const wchar_t *s);
 void wchar_string_copy_wchar_string_n(wchar_t *buf,const wchar_t *s,SIZE_T slength_in_wchars);
@@ -24,3 +25,6 @@ wchar_t *wchar_string_alloc_wchar_string_n(const wchar_t *s,SIZE_T slength_in_wc
 BOOL wchar_string_is_trailing_path_separator_n(const wchar_t *s,SIZE_T slength_in_wchars);
 int wchar_string_get_path_separator_from_root(const wchar_t *s);
 int wchar_string_compare(const wchar_t *a,const wchar_t *b);
+const wchar_t *wchar_string_parse_list_item(const wchar_t *s,struct wchar_buf_s *out_wcbuf);
+const wchar_t *wchar_string_parse_utf8_string(const wchar_t *s,const ES_UTF8 *search);
+const wchar_t *wchar_string_parse_int(const wchar_t *s,int *out_value);

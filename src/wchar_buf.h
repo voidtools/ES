@@ -43,3 +43,4 @@ void wchar_buf_cat_printf(wchar_buf_t *wcbuf,const ES_UTF8 *format,...);
 void wchar_buf_cat_print_UINT64(wchar_buf_t *wcbuf,ES_UINT64 value);
 void wchar_buf_path_cat_filename(const wchar_t *path,const wchar_t *name,wchar_buf_t *wcbuf);
 void wchar_buf_cat_path_separator(wchar_buf_t *wcbuf);
+void wchar_buf_cat_list_wchar_string_n(wchar_buf_t *wcbuf,const wchar_t *s,SIZE_T slength_in_wchars);

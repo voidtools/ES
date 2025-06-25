@@ -25,6 +25,9 @@
 //
 
 #include "es.h"
+
+static int _property_name_compare(const ES_UTF8 *name,const wchar_t *search);
+
 /*
 #define _CONFIG_VAR_MACRO(id,flags,name)										flags,
 #define _CONFIG_VAR_MACRO_WITH_DEFAULT_VALUE(id,flags,name,default_value_index)	flags,
@@ -52,14 +55,437 @@ const property_basic_name_to_id_t property_basic_name_to_id_array[PROPERTY_BASIC
 
 // property canonical names
 // sorted by ID.
-#define _PROPERTY_MACRO(name,property_id)	name,
-
 const ES_UTF8 *property_name_array[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] = 
 {
-	#include "property_macro.h"
+	"Name",
+	"Path",
+	"Size",
+	"Extension",
+	"Type",
+	"Date Modified",
+	"Date Created",
+	"Date Accessed",
+	"Attributes",
+	"Date Recently Changed",
+	"Run Count",
+	"Date Run",
+	"File List Filename",
+	"Width",
+	"Height",
+	"Dimensions",
+	"Aspect Ratio",
+	"Bit Depth",
+	"Length",
+	"Audio Sample Rate",
+	"Audio Channels",
+	"Audio Bits Per Sample",
+	"Audio Bit Rate",
+	"Audio Format",
+	"File Signature",
+	"Title",
+	"Artist",
+	"Album",
+	"Year",
+	"Comment",
+	"Track",
+	"Genre",
+	"Frame Rate",
+	"Video Bit Rate",
+	"Video Format",
+	"Rating",
+	"Tags",
+	"MD5",
+	"SHA-1",
+	"SHA-256",
+	"CRC-32",
+	"Size on Disk",
+	"Description",
+	"Version",
+	"Product Name",
+	"Product Version",
+	"Company",
+	"Kind",
+	"Name Length",
+	"Full Path Length",
+	"Subject",
+	"Authors",
+	"Date Taken",
+	"Software",
+	"Date Acquired",
+	"Copyright",
+	"Image ID",
+	"Horizontal Resolution",
+	"Vertical Resolution",
+	"Compression",
+	"Resolution Unit",
+	"Color Representation",
+	"Compressed Bits Per Pixel",
+	"Camera Maker",
+	"Camera Model",
+	"F-Stop",
+	"Exposure Time",
+	"ISO Speed",
+	"Exposure Bias",
+	"Focal Length",
+	"Max Aperture",
+	"Metering Mode",
+	"Subject Distance",
+	"Flash Mode",
+	"Flash Energy",
+	"35mm Focal Length",
+	"Lens Maker",
+	"Lens Model",
+	"Flash Maker",
+	"Flash Model",
+	"Camera Serial Number",
+	"Contrast",
+	"Brightness",
+	"Light Source",
+	"Exposure Program",
+	"Saturation",
+	"Sharpness",
+	"White Balance",
+	"Photometric Interpretation",
+	"Digital Zoom",
+	"Exif Version",
+	"Latitude",
+	"Longitude",
+	"Altitude",
+	"Subtitle",
+	"Total Bit Rate",
+	"Director",
+	"Producer",
+	"Writer",
+	"Publisher",
+	"Content Provider",
+	"Media Created",
+	"Encoded By",
+	"Author URL",
+	"Promotion URL",
+	"Offline Availability",
+	"Offline Status",
+	"Shared With",
+	"Owner",
+	"Computer",
+	"Album Artist",
+	"Parental Rating Reason",
+	"Composer",
+	"Conductor",
+	"Group Description",
+	"Mood",
+	"Part of Set",
+	"Initial Key",
+	"Beats Per Minute",
+	"Protected",
+	"Part of a Compilation",
+	"Parental Rating",
+	"Period",
+	"People",
+	"Category",
+	"Content Status",
+	"Document Content Type",
+	"Page Count",
+	"Word Count",
+	"Character Count",
+	"Line Count",
+	"Paragraph Count",
+	"Template",
+	"Scale",
+	"Links Dirty",
+	"Language",
+	"Last Author",
+	"Revision Number",
+	"Version Number",
+	"Manager",
+	"Content Created",
+	"Date Saved",
+	"Date Printed",
+	"Total Editing Time",
+	"Original Filename",
+	"Date Released",
+	"Slide Count",
+	"Note Count",
+	"Hidden Slide Count",
+	"Presentation Format",
+	"Trademarks",
+	"Display Name",
+	"Name UTF-8 Byte Length",
+	"Full Path UTF-8 Byte Length",
+	"Child Count",
+	"Child Folder Count",
+	"Child File Count",
+	"Child Count From Disk",
+	"Child Folder Count From Disk",
+	"Child File Count From Disk",
+	"Folder Depth",
+	"Total Size",
+	"Total Size On Disk",
+	"Date Changed",
+	"Hard Link Count",
+	"Delete Pending",
+	"Is Directory",
+	"Alternate Data Stream Count",
+	"Alternate Data Stream Names",
+	"Total Alternate Data Stream Size",
+	"Total Alternate Data Stream Size On Disk",
+	"Compressed Size",
+	"Compression Format",
+	"Compression Unit Shift",
+	"Compression Chunk Shift",
+	"Compression Cluster Shift",
+	"Compression Ratio",
+	"Reparse Tag",
+	"Remote Protocol",
+	"Remote Protocol Version",
+	"Remote Protocol Flags",
+	"Logical Bytes Per Sector",
+	"Physical Bytes Per Sector For Atomicity",
+	"Physical Bytes Per Sector For Performance",
+	"Effective Physical Bytes Per Sector For Atomicity",
+	"File Storage Info Flags",
+	"Byte Offset For Sector Alignment",
+	"Byte Offset For Partition Alignment",
+	"Alignment Requirement",
+	"Volume Serial Number",
+	"File ID",
+	"Frame Count",
+	"Cluster Size",
+	"Sector Size",
+	"Available Free Disk Size",
+	"Free Disk Size",
+	"Total Disk Size",
+	"UNUSED Volume Label",
+	"Maximum Component Length",
+	"File System Flags",
+	"File System",
+	"Orientation",
+	"End Of File",
+	"Short Name",
+	"Short Full Path",
+	"Encryption Status",
+	"Hard Link Filenames",
+	"Index Type",
+	"Drive Type",
+	"Binary Type",
+	"Regular Expression Match 0",
+	"Regular Expression Match 1",
+	"Regular Expression Match 2",
+	"Regular Expression Match 3",
+	"Regular Expression Match 4",
+	"Regular Expression Match 5",
+	"Regular Expression Match 6",
+	"Regular Expression Match 7",
+	"Regular Expression Match 8",
+	"Regular Expression Match 9",
+	"Sibling Count",
+	"Sibling Folder Count",
+	"Sibling File Count",
+	"Index Number",
+	"Shortcut Target",
+	"Out of Date",
+	"Incur Seek Penalty",
+	"Plain Text Line Count",
+	"Aperture",
+	"Maker Note",
+	"Related Sound File",
+	"Shutter Speed",
+	"Transcoded For Sync",
+	"Case Sensitive Dir",
+	"Date Indexed",
+	"Name Frequency",
+	"Size Frequency",
+	"Extension Frequency",
+	"Regular Expression Matches 1-9",
+	"URL",
+	"Full Path",
+	"Parent File ID",
+	"SHA-512",
+	"SHA-384",
+	"CRC-64",
+	"First Byte",
+	"First 2 Bytes",
+	"First 4 Bytes",
+	"First 8 Bytes",
+	"First 16 Bytes",
+	"First 32 Bytes",
+	"First 64 Bytes",
+	"First 128 Bytes",
+	"Last Byte",
+	"Last 2 Bytes",
+	"Last 4 Bytes",
+	"Last 8 Bytes",
+	"Last 16 Bytes",
+	"Last 32 Bytes",
+	"Last 64 Bytes",
+	"Last 128 Bytes",
+	"Byte Order Mark",
+	"Volume Label",
+	"File List Full Path",
+	"Display Full Path",
+	"Parse Name",
+	"Parse Full Path",
+	"Stem",
+	"Shell Attributes",
+	"Is Folder",
+	"Valid UTF-8",
+	"Stem Length",
+	"Extension Length",
+	"Path Length",
+	"Date Modified Time",
+	"Date Created Time",
+	"Date Accessed Time",
+	"Date Modified Date",
+	"Date Created Date",
+	"Date Accessed Date",
+	"Parent Name",
+	"Reparse Target",
+	"Descendant Count",
+	"Descendant Folder Count",
+	"Descendant File Count",
+	"From",
+	"To",
+	"Date Received",
+	"Date Sent",
+	"Container Filenames",
+	"Container File Count",
+	"Custom Property 0",
+	"Custom Property 1",
+	"Custom Property 2",
+	"Custom Property 3",
+	"Custom Property 4",
+	"Custom Property 5",
+	"Custom Property 6",
+	"Custom Property 7",
+	"Custom Property 8",
+	"Custom Property 9",
+	"Allocation Size",
+	"SFV CRC-32",
+	"md5sum MD5",
+	"sha1sum SHA-1",
+	"sha256sum SHA-256",
+	"SFV Pass",
+	"md5sum Pass",
+	"sha1sum Pass",
+	"sha256sum Pass",
+	"Alternate Data Stream ANSI",
+	"Alternate Data Stream UTF-8",
+	"Alternate Data Stream UTF-16",
+	"Alternate Data Stream UTF-16BE",
+	"Alternate Data Stream Text/Plain",
+	"Alternate Data Stream Hex",
+	"Perceived Type",
+	"Content Type",
+	"Opened By",
+	"Target Machine",
+	"sha512sum SHA-512",
+	"sha512sum Pass",
+	"Parent Path",
+	"First 256 Bytes",
+	"First 512 Bytes",
+	"Last 256 Bytes",
+	"Last 512 Bytes",
+	"Online",
+	"Column 0",
+	"Column 1",
+	"Column 2",
+	"Column 3",
+	"Column 4",
+	"Column 5",
+	"Column 6",
+	"Column 7",
+	"Column 8",
+	"Column 9",
+	"Column A",
+	"Column B",
+	"Column C",
+	"Column D",
+	"Column E",
+	"Column F",
+	"Zone ID",
+	"Referrer URL",
+	"Host URL",
+	"Character Encoding",
+	"Root Name",
+	"Used Disk Size",
+	"Volume Path",
+	"Max Child Depth",
+	"Total Child Size",
+	"Row",
+	"Child Occurrence Count",
+	"Volume Name",
+	"Descendant Occurrence Count",
+	"Object ID",
+	"Birth Volume ID",
+	"Birth Object ID",
+	"Domain ID",
+	"Folder Data CRC-32",
+	"Folder Data CRC-64",
+	"Folder Data MD5",
+	"Folder Data SHA-1",
+	"Folder Data SHA-256",
+	"Folder Data SHA-512",
+	"Folder Data and Names CRC-32",
+	"Folder Data and Names CRC-64",
+	"Folder Data and Names MD5",
+	"Folder Data and Names SHA-1",
+	"Folder Data and Names SHA-256",
+	"Folder Data and Names SHA-512",
+	"Folder Names CRC-32",
+	"Folder Names CRC-64",
+	"Folder Names MD5",
+	"Folder Names SHA-1",
+	"Folder Names SHA-256",
+	"Folder Names SHA-512",
+	"Folder Data CRC-32 From Disk",
+	"Folder Data CRC-64 From Disk",
+	"Folder Data MD5 From Disk",
+	"Folder Data SHA-1 From Disk",
+	"Folder Data SHA-256 From Disk",
+	"Folder Data SHA-512 From Disk",
+	"Folder Data and Names CRC-32 From Disk",
+	"Folder Data and Names CRC-64 From Disk",
+	"Folder Data and Names MD5 From Disk",
+	"Folder Data and Names SHA-1 From Disk",
+	"Folder Data and Names SHA-256 From Disk",
+	"Folder Data and Names SHA-512 From Disk",
+	"Folder Names CRC-32 From Disk",
+	"Folder Names CRC-64 From Disk",
+	"Folder Names MD5 From Disk",
+	"Folder Names SHA-1 From Disk",
+	"Folder Names SHA-256 From Disk",
+	"Folder Names SHA-512 From Disk",
+	"Long Name",
+	"Long Full Path",
+	"Digital Signature Name",
+	"Digital Signature Timestamp",
+	"Audio Track Count",
+	"Video Track Count",
+	"Subtitle Track Count",
+	"Network Index Host",
+	"Original Location",
+	"Date Deleted",
+	"Status",
+	"Vorbis Comment",
+	"QuickTime Metadata",
+	"Parent Size",
+	"Root Size",
+	"Opens With",
+	"Randomize",
+	"Icon",
+	"Thumbnail",
+	"Content",
+	"-",
 };
 
-#undef _PROPERTY_MACRO
+// IPC2 sort properties (ES_COLUMN_FILENAME => EVERYTHING3_PROPERTY_ID_FULL_PATH)
+#define _PROPERTY_OLD_COLUMN_MACRO(property_id)	property_id,
+
+const DWORD property_old_column_id_to_property_id_array[PROPERTY_OLD_COLUMN_COUNT] = 
+{
+	#include "property_old_column_macro.h"
+};
+
+#undef _PROPERTY_OLD_COLUMN_MACRO
 
 // property name to IDs are sorted alphabetically.
 // the '-' in the name is ignored when sorting.
@@ -67,530 +493,6 @@ const ES_UTF8 *property_name_array[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 /*
 const es_property_name_to_id_t es_property_name_to_id_array[] =
 {
-	{"0",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_0},
-	{"1",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_1},
-	{"2",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_2},
-	{"3",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_3},
-	{"35mm-focal-length",EVERYTHING3_PROPERTY_ID_35MM_FOCAL_LENGTH},
-	{"4",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_4},
-	{"5",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_5},
-	{"6",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_6},
-	{"7",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_7},
-	{"8",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_8},
-	{"9",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_9},
-	{"a",EVERYTHING3_PROPERTY_ID_COLUMN_A},
-	{"ads-ansi",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_ANSI},
-	{"ads-count",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_COUNT},
-	{"ads-hex",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_HEX},
-	{"ads-names",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_NAMES},
-	{"ads-text-plain",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_TEXT_PLAIN},
-	{"ads-utf-16",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF16LE},
-	{"ads-utf-16be",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF16BE},
-	{"ads-utf-8",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF8},
-	{"album",EVERYTHING3_PROPERTY_ID_ALBUM},
-	{"album-artist",EVERYTHING3_PROPERTY_ID_ALBUM_ARTIST},
-	{"alignment-requirement",EVERYTHING3_PROPERTY_ID_ALIGNMENT_REQUIREMENT},
-	{"allocation-size",EVERYTHING3_PROPERTY_ID_ALLOCATION_SIZE},
-	{"alternate-data-stream-ansi",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_ANSI},
-	{"alternate-data-stream-count",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_COUNT},
-	{"alternate-data-stream-hex",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_HEX},
-	{"alternate-data-stream-names",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_NAMES},
-	{"alternate-data-stream-text-plain",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_TEXT_PLAIN},
-	{"alternate-data-stream-utf-16",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF16LE},
-	{"alternate-data-stream-utf-16be",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF16BE},
-	{"alternate-data-stream-utf-8",EVERYTHING3_PROPERTY_ID_ALTERNATE_DATA_STREAM_UTF8},
-	{"altitude",EVERYTHING3_PROPERTY_ID_ALTITUDE},
-	{"aperture",EVERYTHING3_PROPERTY_ID_APERTURE},
-	{"artist",EVERYTHING3_PROPERTY_ID_ARTIST},
-	{"aspect-ratio",EVERYTHING3_PROPERTY_ID_ASPECT_RATIO},
-	{"attr",EVERYTHING3_PROPERTY_ID_ATTRIBUTES},
-	{"attrib",EVERYTHING3_PROPERTY_ID_ATTRIBUTES},
-	{"attributes",EVERYTHING3_PROPERTY_ID_ATTRIBUTES},
-	{"audio-bit-rate",EVERYTHING3_PROPERTY_ID_AUDIO_BIT_RATE},
-	{"audio-bits-per-sample",EVERYTHING3_PROPERTY_ID_AUDIO_BITS_PER_SAMPLE},
-	{"audio-channels",EVERYTHING3_PROPERTY_ID_AUDIO_CHANNELS},
-	{"audio-format",EVERYTHING3_PROPERTY_ID_AUDIO_FORMAT},
-	{"audio-sample-rate",EVERYTHING3_PROPERTY_ID_AUDIO_SAMPLE_RATE},
-	{"audio-track-count",EVERYTHING3_PROPERTY_ID_AUDIO_TRACK_COUNT},
-	{"author",EVERYTHING3_PROPERTY_ID_AUTHORS},
-	{"authors",EVERYTHING3_PROPERTY_ID_AUTHORS},
-	{"author-url",EVERYTHING3_PROPERTY_ID_AUTHOR_URL},
-	{"available-free-disk-size",EVERYTHING3_PROPERTY_ID_AVAILABLE_FREE_DISK_SIZE},
-	{"b",EVERYTHING3_PROPERTY_ID_COLUMN_B},
-	{"base-name",EVERYTHING3_PROPERTY_ID_NAME},
-	{"beats-per-minute",EVERYTHING3_PROPERTY_ID_BEATS_PER_MINUTE},
-	{"binary-type",EVERYTHING3_PROPERTY_ID_BINARY_TYPE},
-	{"birth-object-id",EVERYTHING3_PROPERTY_ID_BIRTH_OBJECT_ID},
-	{"birth-volume-id",EVERYTHING3_PROPERTY_ID_BIRTH_VOLUME_ID},
-	{"bit-depth",EVERYTHING3_PROPERTY_ID_BIT_DEPTH},
-	{"bit-rate",EVERYTHING3_PROPERTY_ID_TOTAL_BIT_RATE},
-	{"bom",EVERYTHING3_PROPERTY_ID_BYTE_ORDER_MARK},
-	{"brightness",EVERYTHING3_PROPERTY_ID_BRIGHTNESS},
-	{"byte-offset-for-partition-alignment",EVERYTHING3_PROPERTY_ID_BYTE_OFFSET_FOR_PARTITION_ALIGNMENT},
-	{"byte-offset-for-sector-alignment",EVERYTHING3_PROPERTY_ID_BYTE_OFFSET_FOR_SECTOR_ALIGNMENT},
-	{"byte-order-mark",EVERYTHING3_PROPERTY_ID_BYTE_ORDER_MARK},
-	{"c",EVERYTHING3_PROPERTY_ID_COLUMN_C},
-	{"camera-maker",EVERYTHING3_PROPERTY_ID_CAMERA_MAKER},
-	{"camera-model",EVERYTHING3_PROPERTY_ID_CAMERA_MODEL},
-	{"camera-serial-number",EVERYTHING3_PROPERTY_ID_CAMERA_SERIAL_NUMBER},
-	{"case-sensitive-dir",EVERYTHING3_PROPERTY_ID_CASE_SENSITIVE_DIR},
-	{"category",EVERYTHING3_PROPERTY_ID_CATEGORY},
-	{"character-count",EVERYTHING3_PROPERTY_ID_CHARACTER_COUNT},
-	{"character-encoding",EVERYTHING3_PROPERTY_ID_CHARACTER_ENCODING},
-	{"child-count",EVERYTHING3_PROPERTY_ID_CHILD_COUNT},
-	{"child-count-from-disk",EVERYTHING3_PROPERTY_ID_CHILD_COUNT_FROM_DISK},
-	{"child-file-count",EVERYTHING3_PROPERTY_ID_CHILD_FILE_COUNT},
-	{"child-file-count-from-disk",EVERYTHING3_PROPERTY_ID_CHILD_FILE_COUNT_FROM_DISK},
-	{"child-folder-count",EVERYTHING3_PROPERTY_ID_CHILD_FOLDER_COUNT},
-	{"child-folder-count-from-disk",EVERYTHING3_PROPERTY_ID_CHILD_FOLDER_COUNT_FROM_DISK},
-	{"child-occurrence-count",EVERYTHING3_PROPERTY_ID_CHILD_OCCURRENCE_COUNT},
-	{"cluster-size",EVERYTHING3_PROPERTY_ID_CLUSTER_SIZE},
-	{"col-0",EVERYTHING3_PROPERTY_ID_COLUMN_0},
-	{"col-1",EVERYTHING3_PROPERTY_ID_COLUMN_1},
-	{"col-2",EVERYTHING3_PROPERTY_ID_COLUMN_2},
-	{"col-3",EVERYTHING3_PROPERTY_ID_COLUMN_3},
-	{"col-4",EVERYTHING3_PROPERTY_ID_COLUMN_4},
-	{"col-5",EVERYTHING3_PROPERTY_ID_COLUMN_5},
-	{"col-6",EVERYTHING3_PROPERTY_ID_COLUMN_6},
-	{"col-7",EVERYTHING3_PROPERTY_ID_COLUMN_7},
-	{"col-8",EVERYTHING3_PROPERTY_ID_COLUMN_8},
-	{"col-9",EVERYTHING3_PROPERTY_ID_COLUMN_9},
-	{"col-a",EVERYTHING3_PROPERTY_ID_COLUMN_A},
-	{"col-b",EVERYTHING3_PROPERTY_ID_COLUMN_B},
-	{"col-c",EVERYTHING3_PROPERTY_ID_COLUMN_C},
-	{"col-d",EVERYTHING3_PROPERTY_ID_COLUMN_D},
-	{"col-e",EVERYTHING3_PROPERTY_ID_COLUMN_E},
-	{"col-f",EVERYTHING3_PROPERTY_ID_COLUMN_F},
-	{"color-representation",EVERYTHING3_PROPERTY_ID_COLOR_REPRESENTATION},
-	{"column-0",EVERYTHING3_PROPERTY_ID_COLUMN_0},
-	{"column-1",EVERYTHING3_PROPERTY_ID_COLUMN_1},
-	{"column-2",EVERYTHING3_PROPERTY_ID_COLUMN_2},
-	{"column-3",EVERYTHING3_PROPERTY_ID_COLUMN_3},
-	{"column-4",EVERYTHING3_PROPERTY_ID_COLUMN_4},
-	{"column-5",EVERYTHING3_PROPERTY_ID_COLUMN_5},
-	{"column-6",EVERYTHING3_PROPERTY_ID_COLUMN_6},
-	{"column-7",EVERYTHING3_PROPERTY_ID_COLUMN_7},
-	{"column-8",EVERYTHING3_PROPERTY_ID_COLUMN_8},
-	{"column-9",EVERYTHING3_PROPERTY_ID_COLUMN_9},
-	{"column-a",EVERYTHING3_PROPERTY_ID_COLUMN_A},
-	{"column-b",EVERYTHING3_PROPERTY_ID_COLUMN_B},
-	{"column-c",EVERYTHING3_PROPERTY_ID_COLUMN_C},
-	{"column-d",EVERYTHING3_PROPERTY_ID_COLUMN_D},
-	{"column-e",EVERYTHING3_PROPERTY_ID_COLUMN_E},
-	{"column-f",EVERYTHING3_PROPERTY_ID_COLUMN_F},
-	{"comment",EVERYTHING3_PROPERTY_ID_COMMENT},
-	{"company",EVERYTHING3_PROPERTY_ID_COMPANY},
-	{"composer",EVERYTHING3_PROPERTY_ID_COMPOSER},
-	{"compressed-bits-per-pixel",EVERYTHING3_PROPERTY_ID_COMPRESSED_BITS_PER_PIXEL},
-	{"compressed-size",EVERYTHING3_PROPERTY_ID_COMPRESSED_SIZE},
-	{"compression",EVERYTHING3_PROPERTY_ID_COMPRESSION},
-	{"compression-chunk-shift",EVERYTHING3_PROPERTY_ID_COMPRESSION_CHUNK_SHIFT},
-	{"compression-cluster-shift",EVERYTHING3_PROPERTY_ID_COMPRESSION_CLUSTER_SHIFT},
-	{"compression-format",EVERYTHING3_PROPERTY_ID_COMPRESSION_FORMAT},
-	{"compression-ratio",EVERYTHING3_PROPERTY_ID_COMPRESSION_RATIO},
-	{"compression-unit-shift",EVERYTHING3_PROPERTY_ID_COMPRESSION_UNIT_SHIFT},
-	{"computer",EVERYTHING3_PROPERTY_ID_COMPUTER},
-	{"conductor",EVERYTHING3_PROPERTY_ID_CONDUCTOR},
-	{"container-file-count",EVERYTHING3_PROPERTY_ID_CONTAINER_FILE_COUNT},
-	{"container-filenames",EVERYTHING3_PROPERTY_ID_CONTAINER_FILENAMES},
-	{"content",EVERYTHING3_PROPERTY_ID_CONTENT},
-	{"content-created",EVERYTHING3_PROPERTY_ID_DATE_CONTENT_CREATED},
-	{"content-provider",EVERYTHING3_PROPERTY_ID_CONTENT_DISTRIBUTOR},
-	{"content-status",EVERYTHING3_PROPERTY_ID_CONTENT_STATUS},
-	{"content-type",EVERYTHING3_PROPERTY_ID_CONTENT_TYPE},
-	{"contrast",EVERYTHING3_PROPERTY_ID_CONTRAST},
-	{"copyright",EVERYTHING3_PROPERTY_ID_COPYRIGHT},
-	{"crc-32",EVERYTHING3_PROPERTY_ID_CRC32},
-	{"crc-64",EVERYTHING3_PROPERTY_ID_CRC64},
-	{"custom-property-0",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_0},
-	{"custom-property-1",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_1},
-	{"custom-property-2",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_2},
-	{"custom-property-3",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_3},
-	{"custom-property-4",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_4},
-	{"custom-property-5",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_5},
-	{"custom-property-6",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_6},
-	{"custom-property-7",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_7},
-	{"custom-property-8",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_8},
-	{"custom-property-9",EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_9},
-	{"d",EVERYTHING3_PROPERTY_ID_COLUMN_D},
-	{"da",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED},
-	{"da-date",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_DATE},
-	{"date-accessed",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED},
-	{"date-accessed-date",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_DATE},
-	{"date-accessed-time",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_TIME},
-	{"date-acquired",EVERYTHING3_PROPERTY_ID_DATE_ACQUIRED},
-	{"date-changed",EVERYTHING3_PROPERTY_ID_DATE_CHANGED},
-	{"date-created",EVERYTHING3_PROPERTY_ID_DATE_CREATED},
-	{"date-created-date",EVERYTHING3_PROPERTY_ID_DATE_CREATED_DATE},
-	{"date-created-time",EVERYTHING3_PROPERTY_ID_DATE_CREATED_TIME},
-	{"date-deleted",EVERYTHING3_PROPERTY_ID_DATE_DELETED},
-	{"date-encoded",EVERYTHING3_PROPERTY_ID_DATE_ENCODED},
-	{"date-indexed",EVERYTHING3_PROPERTY_ID_DATE_INDEXED},
-	{"date-media-created",EVERYTHING3_PROPERTY_ID_DATE_ENCODED},
-	{"date-modified",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED},
-	{"date-modified-date",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_DATE},
-	{"date-modified-time",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_TIME},
-	{"date-printed",EVERYTHING3_PROPERTY_ID_DATE_PRINTED},
-	{"date-received",EVERYTHING3_PROPERTY_ID_DATE_RECEIVED},
-	{"date-recently-changed",EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED},
-	{"date-released",EVERYTHING3_PROPERTY_ID_DATE_RELEASED},
-	{"date-run",EVERYTHING3_PROPERTY_ID_DATE_RUN},
-	{"date-saved",EVERYTHING3_PROPERTY_ID_DATE_SAVED},
-	{"date-sent",EVERYTHING3_PROPERTY_ID_DATE_SENT},
-	{"date-taken",EVERYTHING3_PROPERTY_ID_DATE_TAKEN},
-	{"da-time",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_TIME},
-	{"day-accessed",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_DATE},
-	{"day-created",EVERYTHING3_PROPERTY_ID_DATE_CREATED_DATE},
-	{"day-modified",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_DATE},
-	{"dc",EVERYTHING3_PROPERTY_ID_DATE_CREATED},
-	{"dc-date",EVERYTHING3_PROPERTY_ID_DATE_CREATED_DATE},
-	{"dc-time",EVERYTHING3_PROPERTY_ID_DATE_CREATED_TIME},
-	{"delete-pending",EVERYTHING3_PROPERTY_ID_DELETE_PENDING},
-	{"descendant-count",EVERYTHING3_PROPERTY_ID_DESCENDANT_COUNT},
-	{"descendant-file-count",EVERYTHING3_PROPERTY_ID_DESCENDANT_FILE_COUNT},
-	{"descendant-folder-count",EVERYTHING3_PROPERTY_ID_DESCENDANT_FOLDER_COUNT},
-	{"descendant-occurrence-count",EVERYTHING3_PROPERTY_ID_DESCENDANT_OCCURRENCE_COUNT},
-	{"description",EVERYTHING3_PROPERTY_ID_DESCRIPTION},
-	{"digital-signature-name",EVERYTHING3_PROPERTY_ID_DIGITAL_SIGNATURE_NAME},
-	{"digital-signature-timestamp",EVERYTHING3_PROPERTY_ID_DIGITAL_SIGNATURE_TIMESTAMP},
-	{"digital-zoom",EVERYTHING3_PROPERTY_ID_DIGITAL_ZOOM},
-	{"dimensions",EVERYTHING3_PROPERTY_ID_DIMENSIONS},
-	{"director",EVERYTHING3_PROPERTY_ID_DIRECTORS},
-	{"display-full-path",EVERYTHING3_PROPERTY_ID_DISPLAY_FULL_PATH},
-	{"display-name",EVERYTHING3_PROPERTY_ID_DISPLAY_NAME},
-	{"dm",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED},
-	{"dm-date",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_DATE},
-	{"dm-time",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_TIME},
-	{"document-content-type",EVERYTHING3_PROPERTY_ID_DOCUMENT_CONTENT_TYPE},
-	{"domain-id",EVERYTHING3_PROPERTY_ID_DOMAIN_ID},
-	{"drive-type",EVERYTHING3_PROPERTY_ID_DRIVE_TYPE},
-	{"duration",EVERYTHING3_PROPERTY_ID_LENGTH},
-	{"e",EVERYTHING3_PROPERTY_ID_COLUMN_E},
-	{"effective-physical-bytes-per-sector-for-atomicity",EVERYTHING3_PROPERTY_ID_EFFECTIVE_PHYSICAL_BYTES_PER_SECTOR_FOR_ATOMICITY},
-	{"encoded-by",EVERYTHING3_PROPERTY_ID_ENCODED_BY},
-	{"encryption-status",EVERYTHING3_PROPERTY_ID_ENCRYPTION_STATUS},
-	{"end-of-file",EVERYTHING3_PROPERTY_ID_END_OF_FILE},
-	{"exif-version",EVERYTHING3_PROPERTY_ID_EXIF_VERSION},
-	{"exposure-bias",EVERYTHING3_PROPERTY_ID_EXPOSURE_BIAS},
-	{"exposure-program",EVERYTHING3_PROPERTY_ID_EXPOSURE_PROGRAM},
-	{"exposure-time",EVERYTHING3_PROPERTY_ID_EXPOSURE_TIME},
-	{"ext",EVERYTHING3_PROPERTY_ID_EXTENSION},
-	{"extension",EVERYTHING3_PROPERTY_ID_EXTENSION},
-	{"extension-frequency",EVERYTHING3_PROPERTY_ID_EXTENSION_FREQUENCY},
-	{"extension-length",EVERYTHING3_PROPERTY_ID_EXTENSION_LENGTH},
-	{"f",EVERYTHING3_PROPERTY_ID_COLUMN_F},
-	{"file-id",EVERYTHING3_PROPERTY_ID_FILE_ID},
-	{"file-list-filename",EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME},
-	{"file-list-full-path",EVERYTHING3_PROPERTY_ID_FILE_LIST_FULL_PATH},
-	{"file-name",EVERYTHING3_PROPERTY_ID_FULL_PATH},
-	{"file-signature",EVERYTHING3_PROPERTY_ID_FILE_SIGNATURE},
-	{"file-storage-info-flags",EVERYTHING3_PROPERTY_ID_FILE_STORAGE_INFO_FLAGS},
-	{"file-system",EVERYTHING3_PROPERTY_ID_FILE_SYSTEM},
-	{"file-system-flags",EVERYTHING3_PROPERTY_ID_FILE_SYSTEM_FLAGS},
-	{"first-128-bytes",EVERYTHING3_PROPERTY_ID_FIRST_128_BYTES},
-	{"first-16-bytes",EVERYTHING3_PROPERTY_ID_FIRST_16_BYTES},
-	{"first-256-bytes",EVERYTHING3_PROPERTY_ID_FIRST_256_BYTES},
-	{"first-2-bytes",EVERYTHING3_PROPERTY_ID_FIRST_2_BYTES},
-	{"first-32-bytes",EVERYTHING3_PROPERTY_ID_FIRST_32_BYTES},
-	{"first-4-bytes",EVERYTHING3_PROPERTY_ID_FIRST_4_BYTES},
-	{"first-512-bytes",EVERYTHING3_PROPERTY_ID_FIRST_512_BYTES},
-	{"first-64-bytes",EVERYTHING3_PROPERTY_ID_FIRST_64_BYTES},
-	{"first-8-bytes",EVERYTHING3_PROPERTY_ID_FIRST_8_BYTES},
-	{"first-byte",EVERYTHING3_PROPERTY_ID_FIRST_BYTE},
-	{"flash-energy",EVERYTHING3_PROPERTY_ID_FLASH_ENERGY},
-	{"flash-maker",EVERYTHING3_PROPERTY_ID_FLASH_MAKER},
-	{"flash-mode",EVERYTHING3_PROPERTY_ID_FLASH_MODE},
-	{"flash-model",EVERYTHING3_PROPERTY_ID_FLASH_MODEL},
-	{"focal-length",EVERYTHING3_PROPERTY_ID_FOCAL_LENGTH},
-	{"folder-data-and-names-crc-32",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC32},
-	{"folder-data-and-names-crc-32-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC32_FROM_DISK},
-	{"folder-data-and-names-crc-64",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC64},
-	{"folder-data-and-names-crc-64-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_CRC64_FROM_DISK},
-	{"folder-data-and-names-md5",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_MD5},
-	{"folder-data-and-names-md5-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_MD5_FROM_DISK},
-	{"folder-data-and-names-sha-1",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA1},
-	{"folder-data-and-names-sha-1-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA1_FROM_DISK},
-	{"folder-data-and-names-sha-256",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA256},
-	{"folder-data-and-names-sha-256-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA256_FROM_DISK},
-	{"folder-data-and-names-sha-512",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA512},
-	{"folder-data-and-names-sha-512-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_AND_NAMES_SHA512_FROM_DISK},
-	{"folder-data-crc-32",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC32},
-	{"folder-data-crc-32-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC32_FROM_DISK},
-	{"folder-data-crc-64",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC64},
-	{"folder-data-crc-64-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_CRC64_FROM_DISK},
-	{"folder-data-md5",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_MD5},
-	{"folder-data-md5-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_MD5_FROM_DISK},
-	{"folder-data-sha-1",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA1},
-	{"folder-data-sha-1-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA1_FROM_DISK},
-	{"folder-data-sha-256",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA256},
-	{"folder-data-sha-256-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA256_FROM_DISK},
-	{"folder-data-sha-512",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA512},
-	{"folder-data-sha-512-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_DATA_SHA512_FROM_DISK},
-	{"folder-depth",EVERYTHING3_PROPERTY_ID_FOLDER_DEPTH},
-	{"folder-names-crc-32",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC32},
-	{"folder-names-crc-32-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC32_FROM_DISK},
-	{"folder-names-crc-64",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC64},
-	{"folder-names-crc-64-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_CRC64_FROM_DISK},
-	{"folder-names-md5",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_MD5},
-	{"folder-names-md5-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_MD5_FROM_DISK},
-	{"folder-names-sha-1",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA1},
-	{"folder-names-sha-1-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA1_FROM_DISK},
-	{"folder-names-sha-256",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA256},
-	{"folder-names-sha-256-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA256_FROM_DISK},
-	{"folder-names-sha-512",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA512},
-	{"folder-names-sha-512-from-disk",EVERYTHING3_PROPERTY_ID_FOLDER_NAMES_SHA512_FROM_DISK},
-	{"frame-count",EVERYTHING3_PROPERTY_ID_FRAME_COUNT},
-	{"frame-rate",EVERYTHING3_PROPERTY_ID_FRAME_RATE},
-	{"free-disk-size",EVERYTHING3_PROPERTY_ID_FREE_DISK_SIZE},
-	{"frn",EVERYTHING3_PROPERTY_ID_FILE_ID},
-	{"from",EVERYTHING3_PROPERTY_ID_FROM},
-	{"f-stop",EVERYTHING3_PROPERTY_ID_F_STOP},
-	{"full-path",EVERYTHING3_PROPERTY_ID_FULL_PATH},
-	{"full-path-len",EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH},
-	{"full-path-length",EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH},
-	{"full-path-utf-8-byte-length",EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH_IN_UTF8_BYTES},
-	{"genre",EVERYTHING3_PROPERTY_ID_GENRE},
-	{"group-description",EVERYTHING3_PROPERTY_ID_CONTENT_GROUP_DESCRIPTION},
-	{"hard-link-count",EVERYTHING3_PROPERTY_ID_HARD_LINK_COUNT},
-	{"hard-link-filenames",EVERYTHING3_PROPERTY_ID_HARD_LINK_FILE_NAMES},
-	{"height",EVERYTHING3_PROPERTY_ID_HEIGHT},
-	{"hidden-slide-count",EVERYTHING3_PROPERTY_ID_HIDDEN_SLIDE_COUNT},
-	{"horizontal-resolution",EVERYTHING3_PROPERTY_ID_HORIZONTAL_RESOLUTION},
-	{"host-url",EVERYTHING3_PROPERTY_ID_HOST_URL},
-	{"icon",EVERYTHING3_PROPERTY_ID_ICON},
-	{"image-id",EVERYTHING3_PROPERTY_ID_IMAGE_ID},
-	{"incur-seek-penalty",EVERYTHING3_PROPERTY_ID_INCUR_SEEK_PENALTY},
-	{"index-number",EVERYTHING3_PROPERTY_ID_INDEX_NUMBER},
-	{"index-type",EVERYTHING3_PROPERTY_ID_INDEX_TYPE},
-	{"initial-key",EVERYTHING3_PROPERTY_ID_INITIAL_KEY},
-	{"is-directory",EVERYTHING3_PROPERTY_ID_IS_DIRECTORY},
-	{"is-folder",EVERYTHING3_PROPERTY_ID_IS_FOLDER},
-	{"iso-speed",EVERYTHING3_PROPERTY_ID_ISO_SPEED},
-	{"keyword",EVERYTHING3_PROPERTY_ID_TAGS},
-	{"keywords",EVERYTHING3_PROPERTY_ID_TAGS},
-	{"kind",EVERYTHING3_PROPERTY_ID_KIND},
-	{"language",EVERYTHING3_PROPERTY_ID_LANGUAGE},
-	{"last-128-bytes",EVERYTHING3_PROPERTY_ID_LAST_128_BYTES},
-	{"last-16-bytes",EVERYTHING3_PROPERTY_ID_LAST_16_BYTES},
-	{"last-256-bytes",EVERYTHING3_PROPERTY_ID_LAST_256_BYTES},
-	{"last-2-bytes",EVERYTHING3_PROPERTY_ID_LAST_2_BYTES},
-	{"last-32-bytes",EVERYTHING3_PROPERTY_ID_LAST_32_BYTES},
-	{"last-4-bytes",EVERYTHING3_PROPERTY_ID_LAST_4_BYTES},
-	{"last-512-bytes",EVERYTHING3_PROPERTY_ID_LAST_512_BYTES},
-	{"last-64-bytes",EVERYTHING3_PROPERTY_ID_LAST_64_BYTES},
-	{"last-8-bytes",EVERYTHING3_PROPERTY_ID_LAST_8_BYTES},
-	{"last-author",EVERYTHING3_PROPERTY_ID_LAST_AUTHOR},
-	{"last-byte",EVERYTHING3_PROPERTY_ID_LAST_BYTE},
-	{"latitude",EVERYTHING3_PROPERTY_ID_LATITUDE},
-	{"len",EVERYTHING3_PROPERTY_ID_FILE_NAME_LENGTH},
-	{"length",EVERYTHING3_PROPERTY_ID_LENGTH},
-	{"lens-maker",EVERYTHING3_PROPERTY_ID_LENS_MAKER},
-	{"lens-model",EVERYTHING3_PROPERTY_ID_LENS_MODEL},
-	{"light-source",EVERYTHING3_PROPERTY_ID_LIGHT_SOURCE},
-	{"line-count",EVERYTHING3_PROPERTY_ID_LINE_COUNT},
-	{"links-dirty",EVERYTHING3_PROPERTY_ID_LINKS_DIRTY},
-	{"loc",EVERYTHING3_PROPERTY_ID_PATH},
-	{"location",EVERYTHING3_PROPERTY_ID_PATH},
-	{"logical-bytes-per-sector",EVERYTHING3_PROPERTY_ID_LOGICAL_BYTES_PER_SECTOR},
-	{"long-full-path",EVERYTHING3_PROPERTY_ID_LONG_FULL_PATH},
-	{"longitude",EVERYTHING3_PROPERTY_ID_LONGITUDE},
-	{"long-name",EVERYTHING3_PROPERTY_ID_LONG_NAME},
-	{"machine-target",EVERYTHING3_PROPERTY_ID_TARGET_MACHINE},
-	{"maker-note",EVERYTHING3_PROPERTY_ID_MAKER_NOTE},
-	{"manager",EVERYTHING3_PROPERTY_ID_MANAGER},
-	{"max-aperture",EVERYTHING3_PROPERTY_ID_MAX_APERTURE},
-	{"max-child-depth",EVERYTHING3_PROPERTY_ID_MAX_CHILD_DEPTH},
-	{"maximum-component-length",EVERYTHING3_PROPERTY_ID_MAXIMUM_COMPONENT_LENGTH},
-	{"md5",EVERYTHING3_PROPERTY_ID_MD5},
-	{"md5sum-md5",EVERYTHING3_PROPERTY_ID_MD5SUM_MD5},
-	{"md5sum-pass",EVERYTHING3_PROPERTY_ID_MD5SUM_PASS},
-	{"media-created",EVERYTHING3_PROPERTY_ID_DATE_ENCODED},
-	{"metering-mode",EVERYTHING3_PROPERTY_ID_METERING_MODE},
-	{"mood",EVERYTHING3_PROPERTY_ID_MOOD},
-	{"name",EVERYTHING3_PROPERTY_ID_NAME},
-	{"name-frequency",EVERYTHING3_PROPERTY_ID_NAME_FREQUENCY},
-	{"name-len",EVERYTHING3_PROPERTY_ID_FILE_NAME_LENGTH},
-	{"name-length",EVERYTHING3_PROPERTY_ID_FILE_NAME_LENGTH},
-	{"name-utf-8-byte-length",EVERYTHING3_PROPERTY_ID_FILE_NAME_LENGTH_IN_UTF8_BYTES},
-	{"network-index-host",EVERYTHING3_PROPERTY_ID_NETWORK_INDEX_HOST},
-	{"note-count",EVERYTHING3_PROPERTY_ID_NOTE_COUNT},
-	{"object-id",EVERYTHING3_PROPERTY_ID_OBJECT_ID},
-	{"offline-availability",EVERYTHING3_PROPERTY_ID_OFFLINE_AVAILABILITY},
-	{"offline-status",EVERYTHING3_PROPERTY_ID_OFFLINE_STATUS},
-	{"online",EVERYTHING3_PROPERTY_ID_INDEX_ONLINE},
-	{"opened-by",EVERYTHING3_PROPERTY_ID_OPENED_BY},
-	{"opens-with",EVERYTHING3_PROPERTY_ID_OPENS_WITH},
-	{"orientation",EVERYTHING3_PROPERTY_ID_ORIENTATION},
-	{"original-filename",EVERYTHING3_PROPERTY_ID_ORIGINAL_FILE_NAME},
-	{"original-location",EVERYTHING3_PROPERTY_ID_ORIGINAL_LOCATION},
-	{"out-of-date",EVERYTHING3_PROPERTY_ID_OUT_OF_DATE},
-	{"owner",EVERYTHING3_PROPERTY_ID_OWNER},
-	{"page-count",EVERYTHING3_PROPERTY_ID_PAGE_COUNT},
-	{"paragraph-count",EVERYTHING3_PROPERTY_ID_PARAGRAPH_COUNT},
-	{"parental-rating",EVERYTHING3_PROPERTY_ID_PARENTAL_RATING},
-	{"parental-rating-reason",EVERYTHING3_PROPERTY_ID_PARENTAL_RATING_REASON},
-	{"parent-file-id",EVERYTHING3_PROPERTY_ID_PARENT_FILE_ID},
-	{"parent-name",EVERYTHING3_PROPERTY_ID_PARENT_NAME},
-	{"parent-path",EVERYTHING3_PROPERTY_ID_PARENT_PATH},
-	{"parent-size",EVERYTHING3_PROPERTY_ID_PARENT_SIZE},
-	{"parse-full-path",EVERYTHING3_PROPERTY_ID_PARSE_FULL_PATH},
-	{"parse-name",EVERYTHING3_PROPERTY_ID_PARSE_NAME},
-	{"part-of-a-compilation",EVERYTHING3_PROPERTY_ID_PART_OF_A_COMPILATION},
-	{"part-of-set",EVERYTHING3_PROPERTY_ID_PART_OF_SET},
-	{"path",EVERYTHING3_PROPERTY_ID_PATH},
-	{"path-len",EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH},
-	{"path-length",EVERYTHING3_PROPERTY_ID_PATH_PART_LENGTH},
-	{"path-part",EVERYTHING3_PROPERTY_ID_PATH},
-	{"people",EVERYTHING3_PROPERTY_ID_PEOPLE},
-	{"perceived-type",EVERYTHING3_PROPERTY_ID_PERCEIVED_TYPE},
-	{"period",EVERYTHING3_PROPERTY_ID_PERIOD},
-	{"photometric-interpretation",EVERYTHING3_PROPERTY_ID_PHOTOMETRIC_INTERPRETATION},
-	{"physical-bytes-per-sector-for-atomicity",EVERYTHING3_PROPERTY_ID_PHYSICAL_BYTES_PER_SECTOR_FOR_ATOMICITY},
-	{"physical-bytes-per-sector-for-performance",EVERYTHING3_PROPERTY_ID_PHYSICAL_BYTES_PER_SECTOR_FOR_PERFORMANCE},
-	{"plain-text-line-count",EVERYTHING3_PROPERTY_ID_PLAIN_TEXT_LINE_COUNT},
-	{"pp",EVERYTHING3_PROPERTY_ID_PATH},
-	{"presentation-format",EVERYTHING3_PROPERTY_ID_PRESENTATION_FORMAT},
-	{"producer",EVERYTHING3_PROPERTY_ID_PRODUCERS},
-	{"product-name",EVERYTHING3_PROPERTY_ID_PRODUCT_NAME},
-	{"product-version",EVERYTHING3_PROPERTY_ID_PRODUCT_VERSION},
-	{"promotion-url",EVERYTHING3_PROPERTY_ID_PROMOTION_URL},
-	{"protected",EVERYTHING3_PROPERTY_ID_PROTECTED},
-	{"publisher",EVERYTHING3_PROPERTY_ID_PUBLISHER},
-	{"quicktime-metadata",EVERYTHING3_PROPERTY_ID_QUICKTIME_METADATA},
-	{"rand",EVERYTHING3_PROPERTY_ID_RANDOMIZE},
-	{"random",EVERYTHING3_PROPERTY_ID_RANDOMIZE},
-	{"randomize",EVERYTHING3_PROPERTY_ID_RANDOMIZE},
-	{"rating",EVERYTHING3_PROPERTY_ID_RATING},
-	{"rc",EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED},
-	{"recent-change",EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED},
-	{"referrer-url",EVERYTHING3_PROPERTY_ID_REFERRER_URL},
-	{"regex-match-0",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_0},
-	{"regex-match-1",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_1},
-	{"regex-match-2",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_2},
-	{"regex-match-3",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_3},
-	{"regex-match-4",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_4},
-	{"regex-match-5",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_5},
-	{"regex-match-6",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_6},
-	{"regex-match-7",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_7},
-	{"regex-match-8",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_8},
-	{"regex-match-9",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_9},
-	{"regex-matches",EVERYTHING3_PROPERTY_ID_REGEX_MATCHES},
-	{"reg-match-0",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_0},
-	{"reg-match-1",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_1},
-	{"reg-match-2",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_2},
-	{"reg-match-3",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_3},
-	{"reg-match-4",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_4},
-	{"reg-match-5",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_5},
-	{"reg-match-6",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_6},
-	{"reg-match-7",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_7},
-	{"reg-match-8",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_8},
-	{"reg-match-9",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_9},
-	{"reg-matches",EVERYTHING3_PROPERTY_ID_REGEX_MATCHES},
-	{"regular-expression-match-0",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_0},
-	{"regular-expression-match-1",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_1},
-	{"regular-expression-match-2",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_2},
-	{"regular-expression-match-3",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_3},
-	{"regular-expression-match-4",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_4},
-	{"regular-expression-match-5",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_5},
-	{"regular-expression-match-6",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_6},
-	{"regular-expression-match-7",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_7},
-	{"regular-expression-match-8",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_8},
-	{"regular-expression-match-9",EVERYTHING3_PROPERTY_ID_REGEX_MATCH_9},
-	{"regular-expression-matches-1-9",EVERYTHING3_PROPERTY_ID_REGEX_MATCHES},
-	{"related-sound-file",EVERYTHING3_PROPERTY_ID_RELATED_SOUND_FILE},
-	{"remote-protocol",EVERYTHING3_PROPERTY_ID_REMOTE_PROTOCOL},
-	{"remote-protocol-flags",EVERYTHING3_PROPERTY_ID_REMOTE_PROTOCOL_FLAGS},
-	{"remote-protocol-version",EVERYTHING3_PROPERTY_ID_REMOTE_PROTOCOL_VERSION},
-	{"reparse-tag",EVERYTHING3_PROPERTY_ID_REPARSE_TAG},
-	{"reparse-target",EVERYTHING3_PROPERTY_ID_REPARSE_TARGET},
-	{"resolution-unit",EVERYTHING3_PROPERTY_ID_RESOLUTION_UNIT},
-	{"revision-number",EVERYTHING3_PROPERTY_ID_REVISION_NUMBER},
-	{"root-name",EVERYTHING3_PROPERTY_ID_ROOT_NAME},
-	{"root-size",EVERYTHING3_PROPERTY_ID_ROOT_SIZE},
-	{"row",EVERYTHING3_PROPERTY_ID_ROW},
-	{"run-count",EVERYTHING3_PROPERTY_ID_RUN_COUNT},
-	{"saturation",EVERYTHING3_PROPERTY_ID_SATURATION},
-	{"scale",EVERYTHING3_PROPERTY_ID_SCALE},
-	{"sector-size",EVERYTHING3_PROPERTY_ID_SECTOR_SIZE},
-	{"sfv-crc-32",EVERYTHING3_PROPERTY_ID_SFV_CRC32},
-	{"sfv-pass",EVERYTHING3_PROPERTY_ID_SFV_PASS},
-	{"sha-1",EVERYTHING3_PROPERTY_ID_SHA1},
-	{"sha1sum-pass",EVERYTHING3_PROPERTY_ID_SHA1SUM_PASS},
-	{"sha1sum-sha-1",EVERYTHING3_PROPERTY_ID_SHA1SUM_SHA1},
-	{"sha-256",EVERYTHING3_PROPERTY_ID_SHA256},
-	{"sha256sum-pass",EVERYTHING3_PROPERTY_ID_SHA256SUM_PASS},
-	{"sha256sum-sha-256",EVERYTHING3_PROPERTY_ID_SHA256SUM_SHA256},
-	{"sha-384",EVERYTHING3_PROPERTY_ID_SHA384},
-	{"sha-512",EVERYTHING3_PROPERTY_ID_SHA512},
-	{"sha512sum-pass",EVERYTHING3_PROPERTY_ID_SHA512SUM_PASS},
-	{"sha512sum-sha-512",EVERYTHING3_PROPERTY_ID_SHA512SUM_SHA512},
-	{"shared-with",EVERYTHING3_PROPERTY_ID_SHARED_WITH},
-	{"sharpness",EVERYTHING3_PROPERTY_ID_SHARPNESS},
-	{"shell-attributes",EVERYTHING3_PROPERTY_ID_SHELL_ATTRIBUTES},
-	{"shortcut-target",EVERYTHING3_PROPERTY_ID_SHORTCUT_TARGET},
-	{"short-full-path",EVERYTHING3_PROPERTY_ID_SHORT_FULL_PATH},
-	{"short-name",EVERYTHING3_PROPERTY_ID_SHORT_NAME},
-	{"shutter-speed",EVERYTHING3_PROPERTY_ID_SHUTTER_SPEED},
-	{"sibling-count",EVERYTHING3_PROPERTY_ID_SIBLING_COUNT},
-	{"sibling-file-count",EVERYTHING3_PROPERTY_ID_SIBLING_FILE_COUNT},
-	{"sibling-folder-count",EVERYTHING3_PROPERTY_ID_SIBLING_FOLDER_COUNT},
-	{"size",EVERYTHING3_PROPERTY_ID_SIZE},
-	{"size-frequency",EVERYTHING3_PROPERTY_ID_SIZE_FREQUENCY},
-	{"size-on-disk",EVERYTHING3_PROPERTY_ID_SIZE_ON_DISK},
-	{"slide-count",EVERYTHING3_PROPERTY_ID_SLIDE_COUNT},
-	{"software",EVERYTHING3_PROPERTY_ID_SOFTWARE},
-	{"status",EVERYTHING3_PROPERTY_ID_STATUS},
-	{"stem",EVERYTHING3_PROPERTY_ID_STEM},
-	{"stem-length",EVERYTHING3_PROPERTY_ID_STEM_LENGTH},
-	{"subject",EVERYTHING3_PROPERTY_ID_SUBJECT},
-	{"subject-distance",EVERYTHING3_PROPERTY_ID_SUBJECT_DISTANCE},
-	{"subtitle",EVERYTHING3_PROPERTY_ID_SUBTITLE},
-	{"subtitle-track-count",EVERYTHING3_PROPERTY_ID_SUBTITLE_TRACK_COUNT},
-	{"sz",EVERYTHING3_PROPERTY_ID_SIZE},
-	{"tag",EVERYTHING3_PROPERTY_ID_TAGS},
-	{"tags",EVERYTHING3_PROPERTY_ID_TAGS},
-	{"target-machine",EVERYTHING3_PROPERTY_ID_TARGET_MACHINE},
-	{"template",EVERYTHING3_PROPERTY_ID_TEMPLATE},
-	{"text-plain-line-count",EVERYTHING3_PROPERTY_ID_PLAIN_TEXT_LINE_COUNT},
-	{"thumbnail",EVERYTHING3_PROPERTY_ID_THUMBNAIL},
-	{"time-accessed",EVERYTHING3_PROPERTY_ID_DATE_ACCESSED_TIME},
-	{"time-created",EVERYTHING3_PROPERTY_ID_DATE_CREATED_TIME},
-	{"time-modified",EVERYTHING3_PROPERTY_ID_DATE_MODIFIED_TIME},
-	{"title",EVERYTHING3_PROPERTY_ID_TITLE},
-	{"to",EVERYTHING3_PROPERTY_ID_TO},
-	{"total-alternate-data-stream-size",EVERYTHING3_PROPERTY_ID_TOTAL_ALTERNATE_DATA_STREAM_SIZE},
-	{"total-alternate-data-stream-size-on-disk",EVERYTHING3_PROPERTY_ID_TOTAL_ALTERNATE_DATA_STREAM_SIZE_ON_DISK},
-	{"total-bit-rate",EVERYTHING3_PROPERTY_ID_TOTAL_BIT_RATE},
-	{"total-child-size",EVERYTHING3_PROPERTY_ID_TOTAL_CHILD_SIZE},
-	{"total-disk-size",EVERYTHING3_PROPERTY_ID_TOTAL_DISK_SIZE},
-	{"total-editing-time",EVERYTHING3_PROPERTY_ID_TOTAL_EDITING_TIME},
-	{"total-size",EVERYTHING3_PROPERTY_ID_TOTAL_SIZE},
-	{"total-size-on-disk",EVERYTHING3_PROPERTY_ID_TOTAL_SIZE_ON_DISK},
-	{"track",EVERYTHING3_PROPERTY_ID_TRACK},
-	{"trademark",EVERYTHING3_PROPERTY_ID_TRADEMARKS},
-	{"trademarks",EVERYTHING3_PROPERTY_ID_TRADEMARKS},
-	{"transcoded-for-sync",EVERYTHING3_PROPERTY_ID_TRANSCODED_FOR_SYNC},
-	{"type",EVERYTHING3_PROPERTY_ID_TYPE},
-	{"url",EVERYTHING3_PROPERTY_ID_URL},
-	{"used-disk-size",EVERYTHING3_PROPERTY_ID_USED_DISK_SIZE},
-	{"valid-utf-8",EVERYTHING3_PROPERTY_ID_VALID_UTF8},
-	{"version",EVERYTHING3_PROPERTY_ID_VERSION},
-	{"version-number",EVERYTHING3_PROPERTY_ID_VERSION_NUMBER},
-	{"vertical-resolution",EVERYTHING3_PROPERTY_ID_VERTICAL_RESOLUTION},
-	{"video-bit-rate",EVERYTHING3_PROPERTY_ID_VIDEO_BIT_RATE},
-	{"video-format",EVERYTHING3_PROPERTY_ID_VIDEO_FORMAT},
-	{"video-track-count",EVERYTHING3_PROPERTY_ID_VIDEO_TRACK_COUNT},
-	{"volume-label",EVERYTHING3_PROPERTY_ID_VOLUME_LABEL},
-	{"volume-name",EVERYTHING3_PROPERTY_ID_VOLUME_NAME},
-	{"volume-path",EVERYTHING3_PROPERTY_ID_VOLUME_PATH},
-	{"volume-serial-number",EVERYTHING3_PROPERTY_ID_VOLUME_SERIAL_NUMBER},
-	{"vorbis-comment",EVERYTHING3_PROPERTY_ID_VORBIS_COMMENT},
-	{"white-balance",EVERYTHING3_PROPERTY_ID_WHITE_BALANCE},
-	{"width",EVERYTHING3_PROPERTY_ID_WIDTH},
-	{"word-count",EVERYTHING3_PROPERTY_ID_WORD_COUNT},
-	{"writer",EVERYTHING3_PROPERTY_ID_WRITERS},
-	{"year",EVERYTHING3_PROPERTY_ID_YEAR},
-	{"zone-id",EVERYTHING3_PROPERTY_ID_ZONE_ID},
 };
 
 #define ES_PROPERTY_NAME_TO_ID_COUNT (sizeof(es_property_name_to_id_array) / sizeof(es_property_name_to_id_t))
@@ -605,13 +507,13 @@ const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 	PROPERTY_FORMAT_SIZE, 					// EVERYTHING3_PROPERTY_ID_SIZE,
 	PROPERTY_FORMAT_EXTENSION, 				// EVERYTHING3_PROPERTY_ID_EXTENSION,
 	PROPERTY_FORMAT_TEXT30,			 		// EVERYTHING3_PROPERTY_ID_TYPE,
-	PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_MODIFIED,
-	PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_CREATED,
-	PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_ACCESSED,
+	PROPERTY_FORMAT_FILETIME, 					// EVERYTHING3_PROPERTY_ID_DATE_MODIFIED,
+	PROPERTY_FORMAT_FILETIME, 					// EVERYTHING3_PROPERTY_ID_DATE_CREATED,
+	PROPERTY_FORMAT_FILETIME, 					// EVERYTHING3_PROPERTY_ID_DATE_ACCESSED,
 	PROPERTY_FORMAT_ATTRIBUTES, 				// EVERYTHING3_PROPERTY_ID_ATTRIBUTES,
-	PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED,
+	PROPERTY_FORMAT_FILETIME, 					// EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED,
 	PROPERTY_FORMAT_NUMBER6, 					// EVERYTHING3_PROPERTY_ID_RUN_COUNT,
-	PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_RUN,
+	PROPERTY_FORMAT_FILETIME, 					// EVERYTHING3_PROPERTY_ID_DATE_RUN,
 	PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_FILE_LIST_FILENAME,
 	PROPERTY_FORMAT_NUMBER6, 					// EVERYTHING3_PROPERTY_ID_WIDTH,
 	PROPERTY_FORMAT_NUMBER6, 					// EVERYTHING3_PROPERTY_ID_HEIGHT,
@@ -652,9 +554,9 @@ const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 	PROPERTY_FORMAT_NUMBER3, 					// EVERYTHING3_PROPERTY_ID_FULL_PATH_LENGTH,
 	PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_SUBJECT,
 	PROPERTY_FORMAT_TEXT30,			 		// EVERYTHING3_PROPERTY_ID_AUTHORS,
-	PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_TAKEN,
+	PROPERTY_FORMAT_FILETIME, 					// EVERYTHING3_PROPERTY_ID_DATE_TAKEN,
 	PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_SOFTWARE,
-	PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_ACQUIRED,
+	PROPERTY_FORMAT_FILETIME, 					// EVERYTHING3_PROPERTY_ID_DATE_ACQUIRED,
 	PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_COPYRIGHT,
 	PROPERTY_FORMAT_TEXT30, 					// EVERYTHING3_PROPERTY_ID_IMAGE_ID,
 	PROPERTY_FORMAT_NUMBER5, 					// EVERYTHING3_PROPERTY_ID_HORIZONTAL_RESOLUTION,
@@ -701,7 +603,7 @@ const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 	PROPERTY_FORMAT_TEXT30,	// EVERYTHING3_PROPERTY_ID_WRITERS,
 	PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_PUBLISHER,
 	PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CONTENT_DISTRIBUTOR,
-	PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_ENCODED,
+	PROPERTY_FORMAT_FILETIME,					// EVERYTHING3_PROPERTY_ID_DATE_ENCODED,
 	PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_ENCODED_BY,
 	PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_AUTHOR_URL,
 	PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_PROMOTION_URL,
@@ -740,9 +642,9 @@ const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 	PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_REVISION_NUMBER,
 	PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_VERSION_NUMBER,
 	PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_MANAGER,
-	PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_CONTENT_CREATED,
-	PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_SAVED,
-	PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_PRINTED,
+	PROPERTY_FORMAT_FILETIME,					// EVERYTHING3_PROPERTY_ID_DATE_CONTENT_CREATED,
+	PROPERTY_FORMAT_FILETIME,					// EVERYTHING3_PROPERTY_ID_DATE_SAVED,
+	PROPERTY_FORMAT_FILETIME,					// EVERYTHING3_PROPERTY_ID_DATE_PRINTED,
 	PROPERTY_FORMAT_DURATION,					// EVERYTHING3_PROPERTY_ID_TOTAL_EDITING_TIME,	
 	PROPERTY_FORMAT_TEXT47,				// EVERYTHING3_PROPERTY_ID_ORIGINAL_FILE_NAME,
 	PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_DATE_RELEASED,
@@ -763,7 +665,7 @@ const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 	PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_FOLDER_DEPTH,
 	PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_TOTAL_SIZE,
 	PROPERTY_FORMAT_SIZE,					// EVERYTHING3_PROPERTY_ID_TOTAL_SIZE_ON_DISK,
-	PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_CHANGED,
+	PROPERTY_FORMAT_FILETIME,					// EVERYTHING3_PROPERTY_ID_DATE_CHANGED,
 	PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_HARD_LINK_COUNT,
 	PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_DELETE_PENDING,
 	PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_IS_DIRECTORY,
@@ -834,7 +736,7 @@ const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 	PROPERTY_FORMAT_FIXED_Q1K,		// EVERYTHING3_PROPERTY_ID_SHUTTER_SPEED,
 	PROPERTY_FORMAT_YESNO, 			// EVERYTHING3_PROPERTY_ID_TRANSCODED_FOR_SYNC,
 	PROPERTY_FORMAT_YESNO,			// EVERYTHING3_PROPERTY_ID_CASE_SENSITIVE_DIR,
-	PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_INDEXED,
+	PROPERTY_FORMAT_FILETIME,					// EVERYTHING3_PROPERTY_ID_DATE_INDEXED,
 	PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_NAME_FREQUENCY,
 	PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_SIZE_FREQUENCY,
 	PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_EXTENSION_FREQUENCY,
@@ -887,8 +789,8 @@ const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 	PROPERTY_FORMAT_NUMBER,				// EVERYTHING3_PROPERTY_ID_DESCENDANT_FILE_COUNT,
 	PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_FROM,
 	PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_TO,
-	PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_RECEIVED,
-	PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DATE_SENT,
+	PROPERTY_FORMAT_FILETIME,					// EVERYTHING3_PROPERTY_ID_DATE_RECEIVED,
+	PROPERTY_FORMAT_FILETIME,					// EVERYTHING3_PROPERTY_ID_DATE_SENT,
 	PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_CONTAINER_FILENAMES,
 	PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_CONTAINER_FILE_COUNT,
 	PROPERTY_FORMAT_TEXT30,				// EVERYTHING3_PROPERTY_ID_CUSTOM_PROPERTY_0,
@@ -1000,13 +902,13 @@ const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 	PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_LONG_NAME,
 	PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_LONG_FULL_PATH,
 	PROPERTY_FORMAT_TEXT30,					// EVERYTHING3_PROPERTY_ID_DIGITAL_SIGNATURE_NAME,
-	PROPERTY_FORMAT_DATE,					// EVERYTHING3_PROPERTY_ID_DIGITAL_SIGNATURE_TIMESTAMP,
+	PROPERTY_FORMAT_FILETIME,					// EVERYTHING3_PROPERTY_ID_DIGITAL_SIGNATURE_TIMESTAMP,
 	PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_AUDIO_TRACK_COUNT,
 	PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_VIDEO_TRACK_COUNT,
 	PROPERTY_FORMAT_NUMBER,					// EVERYTHING3_PROPERTY_ID_SUBTITLE_TRACK_COUNT,
 	PROPERTY_FORMAT_TEXT30, 				// EVERYTHING3_PROPERTY_ID_NETWORK_INDEX_HOST,
 	PROPERTY_FORMAT_TEXT47, 				// EVERYTHING3_PROPERTY_ID_ORIGINAL_LOCATION,
-	PROPERTY_FORMAT_DATE, 					// EVERYTHING3_PROPERTY_ID_DATE_DELETED,
+	PROPERTY_FORMAT_FILETIME, 					// EVERYTHING3_PROPERTY_ID_DATE_DELETED,
 	PROPERTY_FORMAT_NUMBER, 				// EVERYTHING3_PROPERTY_ID_STATUS,
 	PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_VORBIS_COMMENT,
 	PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_QUICKTIME_METADATA,
@@ -1028,7 +930,7 @@ BYTE property_format_to_column_width[PROPERTY_FORMAT_COUNT] =
 	47, // PROPERTY_FORMAT_TEXT47, // 47 characters
 	14, // PROPERTY_FORMAT_SIZE, // 123456789
 	4, // PROPERTY_FORMAT_EXTENSION, // 4 characters
-	19, // PROPERTY_FORMAT_DATE, // 2025-06-16 21:22:23
+	19, // PROPERTY_FORMAT_FILETIME, // 2025-06-16 21:22:23
 	4, // PROPERTY_FORMAT_ATTRIBUTES, // RASH
 	1, // PROPERTY_FORMAT_NUMBER1, // 1
 	2, // PROPERTY_FORMAT_NUMBER2, // 12
@@ -1055,7 +957,7 @@ BYTE property_format_to_column_width[PROPERTY_FORMAT_COUNT] =
 	257, // PROPERTY_FORMAT_DATA128, // data
 	513, // PROPERTY_FORMAT_DATA256, // data
 	1025, // PROPERTY_FORMAT_DATA512, // data
-	4, // PROPERTY_FORMAT_YESNO, // 30 characters
+	3, // PROPERTY_FORMAT_YESNO, // 3 characters
 };
 
 // default column widths.
@@ -1066,7 +968,7 @@ BYTE property_format_to_right_align[PROPERTY_FORMAT_COUNT] =
 	0, // PROPERTY_FORMAT_TEXT47, // 47 characters
 	1, // PROPERTY_FORMAT_SIZE, // 123456789
 	0, // PROPERTY_FORMAT_EXTENSION, // 4 characters
-	0, // PROPERTY_FORMAT_DATE, // 2025-06-16 21:22:23
+	0, // PROPERTY_FORMAT_FILETIME, // 2025-06-16 21:22:23
 	0, // PROPERTY_FORMAT_ATTRIBUTES, // RASH
 	1, // PROPERTY_FORMAT_NUMBER1, // 1
 	1, // PROPERTY_FORMAT_NUMBER2, // 12
@@ -1096,6 +998,44 @@ BYTE property_format_to_right_align[PROPERTY_FORMAT_COUNT] =
 	0, // PROPERTY_FORMAT_YESNO, // 30 characters
 };
 
+// default column widths.
+BYTE property_format_to_default_sort_ascending[PROPERTY_FORMAT_COUNT] =
+{
+	1, // PROPERTY_FORMAT_NONE,
+	1, // PROPERTY_FORMAT_TEXT30, // 30 characters
+	1, // PROPERTY_FORMAT_TEXT47, // 47 characters
+	0, // PROPERTY_FORMAT_SIZE, // 123456789
+	1, // PROPERTY_FORMAT_EXTENSION, // 4 characters
+	0, // PROPERTY_FORMAT_FILETIME, // 2025-06-16 21:22:23
+	1, // PROPERTY_FORMAT_ATTRIBUTES, // RASH
+	0, // PROPERTY_FORMAT_NUMBER1, // 1
+	0, // PROPERTY_FORMAT_NUMBER2, // 12
+	0, // PROPERTY_FORMAT_NUMBER3, // 123
+	0, // PROPERTY_FORMAT_NUMBER4, // 1234 (no comma)
+	0, // PROPERTY_FORMAT_NUMBER5, // 12345 (no comma)
+	0, // PROPERTY_FORMAT_NUMBER6, // 12,345
+	0, // PROPERTY_FORMAT_NUMBER7, // 123,456
+	0, // PROPERTY_FORMAT_NUMBER,  // 123,456,789
+	0, // PROPERTY_FORMAT_HEX_NUMBER, // 0xdeadbeef
+	0, // PROPERTY_FORMAT_DIMENSIONS, // 9999x9999
+	0, // PROPERTY_FORMAT_FIXED_Q1K, // 9999.123
+	0, // PROPERTY_FORMAT_FIXED_Q1M, // 9999.123456
+	0, // PROPERTY_FORMAT_DURATION, // 1:23:45
+	1, // PROPERTY_FORMAT_DATA1, // data
+	1, // PROPERTY_FORMAT_DATA2, // data
+	1, // PROPERTY_FORMAT_DATA4, // crc
+	1, // PROPERTY_FORMAT_DATA8, // crc64
+	1, // PROPERTY_FORMAT_DATA16, // md5
+	1, // PROPERTY_FORMAT_DATA20, // sha1
+	1, // PROPERTY_FORMAT_DATA32, // sha256
+	1, // PROPERTY_FORMAT_DATA48, // sha384
+	1, // PROPERTY_FORMAT_DATA64, // sha512
+	1, // PROPERTY_FORMAT_DATA128, // data
+	1, // PROPERTY_FORMAT_DATA256, // data
+	1, // PROPERTY_FORMAT_DATA512, // data
+	1, // PROPERTY_FORMAT_YESNO, // 30 characters
+};
+
 // returns a PROPERTY_FORMAT_* type.
 BYTE property_get_format(DWORD property_id)
 {
@@ -1108,185 +1048,6 @@ BYTE property_get_format(DWORD property_id)
 	// treat as text.
 	return PROPERTY_FORMAT_TEXT30;
 }
-
-
-
-
-// name can omit '-'
-// returns the EVERYTHING3_PROPERTY_ID_* property ID.
-// returns EVERYTHING3_INVALID_PROPERTY_ID if not found.
-/*
-static DWORD es_property_id_from_name(const char *name)
-{
-	SIZE_T blo;
-	SIZE_T bhi;
-	
-#ifdef _DEBUG
-	
-	{
-		int i;
-		utf8_buf_t last_cbuf;
-		utf8_buf_t nodash_cbuf;
-		
-		utf8_buf_init(&last_cbuf);
-		utf8_buf_init(&nodash_cbuf);
-		
-		
-		for(i=0;i<PROPERTY_BASIC_COUNT;i++)
-		{
-			utf8_buf_copy_utf8_string(&nodash_cbuf,_db_query_modifier_name_array[i]);
-
-			{
-				utf8_t *d;
-				utf8_t *p;
-				d = nodash_cbuf.buf;
-				p = nodash_cbuf.buf;
-				while(*p)
-				{
-					if (*p == '-')
-					{
-					}
-					else
-					{
-						*d++ = *p;
-					}
-					
-					p++;
-				}
-				*d = 0;
-				nodash_cbuf.len = d - nodash_cbuf.buf;
-			}
-			
-			if (last_cbuf.len)
-			{
-				if (utf8_string_compare(last_cbuf.buf,nodash_cbuf.buf) > 0)
-				{
-					DEBUG_FATAL("property name is not sorted %s > %s\n",last_cbuf.buf,nodash_cbuf.buf);
-				}
-			}
-			
-			utf8_buf_copy_utf8_string_n(&last_cbuf,nodash_cbuf.buf,nodash_cbuf.len);
-		}
-		
-		utf8_buf_kill(&nodash_cbuf);
-		utf8_buf_kill(&last_cbuf);
-	}
-
-#endif
-	
-	// search for name insertion point.
-	blo = 0;
-	bhi = PROPERTY_BASIC_COUNT;
-
-	while(blo < bhi)
-	{
-		SIZE_T bpos;
-		int i;
-		
-		bpos = blo + ((bhi - blo) / 2);
-
-		i = es_property_name_to_id_compare(es_property_name_to_id_array[bpos].name,name);
-// printf("CMP %s %s %d\n",es_property_name_to_id_array[bpos].name,name,i)		;
-		if (i > 0)
-		{
-			bhi = bpos;
-		}
-		else
-		if (!i)
-		{
-			return es_property_name_to_id_array[bpos].id;
-		}
-		else
-		{
-			blo = bpos + 1;
-		}
-	}
-	
-	return EVERYTHING3_INVALID_PROPERTY_ID;
-}
-*/
-
-/*
-// compare property names
-// ignores '-' in a, UNLESS there's also a '-' in name.
-static int es_property_name_to_id_compare(const char *a,const char *name)
-{
-	const utf8_t *search_p;
-	uintptr_t search_run;
-	const utf8_t *name_p;
-	int bad_dash;
-	
-	search_p = search;
-	search_run = search_len;
-	name_p = lowercase_ascii_name;
-	bad_dash = 0;
-	
-	while(search_run)
-	{
-		int c1;
-		
-		UTF8_STRING_GET_CHAR_LOWERCASE(c1,search_p,search_run);
-		
-		if ((c1 == '-') || (c1 == '_') || (c1 == '.'))
-		{
-			if (*name_p == '-')
-			{
-				name_p++;
-				
-				continue;
-			}
-
-			bad_dash = 1;
-			
-			continue;
-		}
-		
-		for(;;)
-		{
-			if (!*name_p)
-			{
-				// name < search
-				return -1;
-			}
-			
-			if (*name_p == '-')
-			{
-				// skip it.
-			}
-			else
-			{
-				break;
-			}
-			
-			name_p++;
-		}
-
-		if (*name_p - c1)
-		{
-			return *name_p - c1;
-		}
-		
-		name_p++;
-	}
-	
-	// name will never end with '-'
-	if (*name_p)		
-	{
-		// name > search
-		return 1;
-	}
-
-	if (bad_dash)
-	{
-		// name < search.
-		return -1;
-	}
-	
-	// match
-	return 0;	
-}
-
-*/
 
 BOOL property_is_right_aligned(DWORD property_id)
 {
@@ -1312,4 +1073,193 @@ void property_get_name(DWORD property_id,wchar_buf_t *out_wcbuf)
 		// property system.
 		wchar_buf_empty(out_wcbuf);
 	}
+}
+
+DWORD property_id_from_old_column_id(int i)
+{
+	if (i < PROPERTY_OLD_COLUMN_COUNT)
+	{
+		return property_old_column_id_to_property_id_array[i];
+	}
+	
+	return EVERYTHING3_INVALID_PROPERTY_ID;
+}
+
+static int _property_name_compare(const ES_UTF8 *name,const wchar_t *search)
+{
+	const ES_UTF8 *name_p;
+	const wchar_t *search_p;
+	int bad_dash;
+	
+	name_p = name;
+	search_p = search;
+	bad_dash = 0;
+	
+	while(*search_p)
+	{
+		int c2;
+		
+		UTF8_STRING_GET_CHAR(search_p,c2);
+		
+		c2 = unicode_ascii_to_lower(c2);
+		
+		if ((c2 == '-') || (c2 == '.') || (c2 == '_') || (c2 == ' '))
+		{
+			if (*name_p == '-')
+			{
+				name_p++;
+				continue;
+			}
+			
+			bad_dash = 1;
+
+			continue;
+		}
+		
+		for(;;)
+		{
+			if (!*name_p)
+			{
+				// name < search
+				return -1;
+			}
+			
+			if (*name_p == '-')
+			{
+				// skip it.
+			}
+			else
+			{
+				break;
+			}
+			
+			name_p++;
+		}
+
+		if (*name_p != c2)
+		{
+			return *name_p - c2;
+		}
+		
+		name_p++;
+	}
+	
+	if (*name_p)
+	{
+		// name > search.
+		return 1;
+	}
+	
+	if (bad_dash)
+	{
+		// name < search.
+		return -1;
+	}
+	
+	// match;
+	return 0;
+}
+
+// search for a property by name
+// searches basic names first.
+// then searches ipc3 names.
+// then finally any aliases.
+DWORD property_find(const wchar_t *s)
+{
+	if (*s)
+	{
+		SIZE_T blo;
+		SIZE_T bhi;
+		
+	#ifdef _DEBUG
+		
+		{
+			int i;
+			utf8_buf_t last_cbuf;
+			utf8_buf_t nodash_cbuf;
+			
+			utf8_buf_init(&last_cbuf);
+			utf8_buf_init(&nodash_cbuf);
+			
+			for(i=0;i<PROPERTY_BASIC_COUNT;i++)
+			{
+				utf8_buf_copy_utf8_string(&nodash_cbuf,property_basic_name_to_id_array[i].name);
+
+				{
+					ES_UTF8 *d;
+					ES_UTF8 *p;
+					d = nodash_cbuf.buf;
+					p = nodash_cbuf.buf;
+					while(*p)
+					{
+						if (*p == '-')
+						{
+						}
+						else
+						{
+							*d++ = *p;
+						}
+						
+						p++;
+					}
+					*d = 0;
+					nodash_cbuf.length_in_bytes = d - nodash_cbuf.buf;
+				}
+				
+				if (last_cbuf.length_in_bytes)
+				{
+					if (utf8_string_compare(last_cbuf.buf,nodash_cbuf.buf) > 0)
+					{
+						DEBUG_FATAL("property name is not sorted %s > %s\n",last_cbuf.buf,nodash_cbuf.buf);
+					}
+				}
+				
+				utf8_buf_copy_utf8_string_n(&last_cbuf,nodash_cbuf.buf,nodash_cbuf.length_in_bytes);
+			}
+			
+			utf8_buf_kill(&nodash_cbuf);
+			utf8_buf_kill(&last_cbuf);
+		}
+
+	#endif
+		
+		// search for name insertion point.
+		blo = 0;
+		bhi = PROPERTY_BASIC_COUNT;
+
+		while(blo < bhi)
+		{
+			SIZE_T bpos;
+			int i;
+			
+			bpos = blo + ((bhi - blo) / 2);
+
+			i = _property_name_compare(property_basic_name_to_id_array[bpos].name,s);
+			if (i > 0)
+			{
+				bhi = bpos;
+			}
+			else
+			if (!i)
+			{
+				return property_basic_name_to_id_array[bpos].id;
+			}
+			else
+			{
+				blo = bpos + 1;
+			}
+		}
+	}
+			
+	return EVERYTHING3_INVALID_PROPERTY_ID;
+}
+
+BOOL property_get_default_sort_ascending(DWORD property_id)
+{
+	if (property_format_to_default_sort_ascending[property_get_format(property_id)])
+	{
+		return TRUE;
+	}
+	
+	return FALSE;
 }

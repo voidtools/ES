@@ -567,3 +567,17 @@ void utf8_buf_printf(utf8_buf_t *cbuf,const ES_UTF8 *format,...)
 	va_end(argptr);
 }
 
+void utf8_buf_copy_utf8_string_n(utf8_buf_t *cbuf,const ES_UTF8 *s,SIZE_T length_in_bytes)
+{
+	utf8_buf_grow_length(cbuf,length_in_bytes);
+
+	os_copy_memory(cbuf->buf,s,length_in_bytes);
+	
+	cbuf->buf[length_in_bytes] = 0;
+}
+
+void utf8_buf_copy_utf8_string(utf8_buf_t *cbuf,const ES_UTF8 *s)
+{
+	utf8_buf_copy_utf8_string_n(cbuf,s,utf8_string_get_length_in_bytes(s));
+}
+

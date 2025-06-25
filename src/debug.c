@@ -60,5 +60,18 @@ void debug_error_printf(const ES_UTF8 *format,...)
 	va_end(argptr);
 }
 
+void debug_fatal2(const ES_UTF8 *format,...)
+{
+	va_list argptr;
+
+	va_start(argptr,format);
+
+	os_error_vprintf(format,argptr);
+	
+	ExitProcess(0);
+
+	va_end(argptr);
+}
+
 #endif
 

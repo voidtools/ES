@@ -70,6 +70,22 @@ void column_insert_order(column_t *column)
 	column->order_next = NULL;
 	column_order_last = column;
 }
+	
+void column_insert_order_at_start(column_t *column)
+{
+	column->order_prev = NULL;
+	column->order_next = column_order_start;
+	column_order_start = column;
+	
+	if (column->order_next)
+	{
+		column->order_next->order_prev = column;
+	}
+	else
+	{
+		column_order_last = column;
+	}
+}
 		
 void column_remove_order(column_t *column)
 {

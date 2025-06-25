@@ -144,6 +144,11 @@ int wchar_string_to_int(const wchar_t *s)
 	return value;
 }
 
+DWORD wchar_string_to_dword(const wchar_t *s)
+{
+	return (DWORD)wchar_string_to_int(s);
+}
+
 void wchar_string_copy_wchar_string_n(wchar_t *buf,const wchar_t *s,SIZE_T slength_in_wchars)
 {
 	os_copy_memory(buf,s,slength_in_wchars * sizeof(wchar_t));
@@ -397,3 +402,120 @@ int wchar_string_compare(const wchar_t *a,const wchar_t *b)
 	
 	return 0;
 }
+
+// get an item from a semicolon (;) delimited list. (also allows ',' lists)
+// returns the next item.
+const wchar_t *wchar_string_parse_list_item(const wchar_t *s,wchar_buf_t *out_wcbuf)
+{
+	const wchar_t *start;
+	const wchar_t *p;
+	SIZE_T len;
+	
+	p = s;
+	
+	if (!*p)
+	{
+		return NULL;
+	}
+	
+	start = p;
+	
+	for(;;)
+	{
+		if (!*p)
+		{
+			len = p - start;
+			break;
+		}
+		
+		if ((*p == ';') || (*p == ','))
+		{
+			len = p - start;
+			p++;
+			break;
+		}
+		
+		p++;
+	}
+	
+	wchar_buf_copy_wchar_string_n(out_wcbuf,start,len);
+	
+	return p;
+}
+
+const wchar_t *wchar_string_parse_utf8_string(const wchar_t *s,const ES_UTF8 *search)
+{
+	const wchar_t *p1;
+	const ES_UTF8 *p2;
+	
+	p1 = s;
+	p2 = search;
+	
+	while(*p2)
+	{
+		int c2;
+		
+		UTF8_STRING_GET_CHAR(p2,c2);
+		
+		if (*p1 != c2)
+		{
+			return NULL;
+		}
+		
+		p1++;
+	}
+	
+	return p1;
+}
+
+const wchar_t *wchar_string_parse_int(const wchar_t *s,int *out_value)
+{
+	const wchar_t *p;
+	int is_sign;
+	int value;
+	int got_digit;
+	
+	p = s;
+	is_sign = 0;
+	value = 0;
+	got_digit = 0;
+	
+	if (*p == '-')
+	{
+		is_sign = 1;
+		p++;
+	}
+	
+	while(*p)
+	{
+		if ((*p >= '0') && (*p <= '9'))
+		{
+			value *= 10;
+			value += *p - '0';
+			got_digit = 1;
+		}
+		else
+		{
+			break;
+		}
+		
+		p++;
+	}
+	
+	if (!got_digit)
+	{
+		return NULL;
+	}
+	
+	if (is_sign)
+	{
+		value = -value;
+	}
+	
+	*out_value = value;
+	
+	return p;
+}
+
+
+

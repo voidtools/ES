@@ -86,6 +86,11 @@ column_width_t *column_width_find(DWORD property_id)
 	return array_find(column_width_array,column_width_compare,(const void *)(uintptr_t)property_id);
 }
 
+column_width_t *column_width_remove(DWORD property_id)
+{
+	return array_remove(column_width_array,column_width_compare,(const void *)(uintptr_t)property_id);
+}
+
 int column_width_get(DWORD property_id)
 {
 	column_width_t *column_width;
@@ -98,5 +103,11 @@ int column_width_get(DWORD property_id)
 	}
 	
 	return property_format_to_column_width[property_get_format(property_id)];
+}
+
+void column_width_clear_all(void)
+{
+	array_empty(column_width_array);
+	pool_empty(column_width_pool);
 }
 

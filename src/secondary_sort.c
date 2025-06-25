@@ -23,76 +23,45 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
-// safe size arithmetic.
+// sorts
 
 #include "es.h"
 
-// safely add two values.
-// SIZE_MAX is used as an invalid value.
-// you will be unable to allocate SIZE_MAX bytes.
-// always use safe_size when allocating memory.
-SIZE_T safe_size_add(SIZE_T a,SIZE_T b)
+// pools must be set in main()
+pool_t *secondary_sort_pool = NULL; // pool of secondary_sort_t
+secondary_sort_t *secondary_sort_start = NULL;
+secondary_sort_t *secondary_sort_last = NULL;
+SIZE_T secondary_sort_count = 0;
+
+void secondary_sort_add(DWORD property_id,int ascending)
 {
-	SIZE_T c;
-	
-	c = a + b;
-	
-	if (c < a) 
+	secondary_sort_t *sort;
+
+	sort = pool_alloc(secondary_sort_pool,sizeof(secondary_sort_t));
+		
+	sort->property_id = property_id;
+	sort->ascending = ascending;
+
+	if (secondary_sort_start)
 	{
-		return SIZE_MAX;
+		secondary_sort_last->next = sort;
+	}
+	else
+	{
+		secondary_sort_start = sort;
 	}
 	
-	return c;
+	secondary_sort_last = sort;
+	sort->next = NULL;
+	secondary_sort_count++;
 }
 
-SIZE_T safe_size_add_one(SIZE_T a)
+void secondary_sort_clear_all(void)
 {
-	return safe_size_add(a,1);
+	pool_empty(secondary_sort_pool);
+
+	secondary_sort_start = NULL;
+	secondary_sort_last = NULL;
+	secondary_sort_count = 0;
 }
 
-SIZE_T safe_size_mul_sizeof_pointer(SIZE_T a)
-{
-	SIZE_T c;
-	
-	c = safe_size_add(a,a); // x2
-	c = safe_size_add(c,c); // x4
-	
-#if SIZE_MAX == 0xFFFFFFFFFFFFFFFFUI64
-
-	c = safe_size_add(c,c); // x8
-
-#elif SIZE_MAX == 0xFFFFFFFF
-
-#else
-
-	#error unknown SIZE_MAX
-
-#endif
-
-	return c;
-}
-
-SIZE_T safe_size_mul_sizeof_wchar(SIZE_T a)
-{
-	return safe_size_add(a,a); // x2
-}
-
-SIZE_T safe_size_mul_2(SIZE_T a)
-{
-	return safe_size_add(a,a); // x2
-}
-
-SIZE_T safe_size_mul(SIZE_T a,SIZE_T b)
-{
-	if (b == 0)
-	{
-		return 0;
-	}
-
-	if (a > SIZE_MAX / b) 
-	{
-		return SIZE_MAX;
-	}
-
-	return a * b;
-}

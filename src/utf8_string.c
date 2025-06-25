@@ -135,7 +135,7 @@ SIZE_T utf8_string_get_length_in_bytes(const ES_UTF8 *s)
 	return p - s;
 }
 
-const ES_UTF8 *utf8_string_match_utf8_string(const ES_UTF8 *s,const ES_UTF8 *search)
+const ES_UTF8 *utf8_string_parse_utf8_string(const ES_UTF8 *s,const ES_UTF8 *search)
 {
 	const ES_UTF8 *p1;
 	const ES_UTF8 *p2;
@@ -155,4 +155,38 @@ const ES_UTF8 *utf8_string_match_utf8_string(const ES_UTF8 *s,const ES_UTF8 *sea
 	}
 	
 	return p1;
+}
+
+int utf8_string_compare(const ES_UTF8 *a,const ES_UTF8 *b)
+{
+	const ES_UTF8 *p1;
+	const ES_UTF8 *p2;
+	
+	p1 = a;
+	p2 = b;
+	
+	while(*p2)
+	{
+		if (!*p1)
+		{
+			// a < b
+			return -1;
+		}
+		
+		if (*p1 != *p2)
+		{
+			return *p1 - *p2;
+		}
+		
+		p1++;
+		p2++;
+	}
+	
+	if (*p1)
+	{
+		// a > b
+		return 1;
+	}
+	
+	return 0;
 }

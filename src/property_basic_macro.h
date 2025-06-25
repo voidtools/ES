@@ -1,5 +1,7 @@
 
 // #define _PROPERTY_BASIC_MACRO(name,property_id)
+// sorted by name. 
+// dashes (-) are ignored when sorting.
 
 _PROPERTY_BASIC_MACRO("attrib",EVERYTHING3_PROPERTY_ID_ATTRIBUTES)
 _PROPERTY_BASIC_MACRO("attribs",EVERYTHING3_PROPERTY_ID_ATTRIBUTES)

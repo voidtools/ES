@@ -67,8 +67,18 @@ void column_color_set(DWORD property_id,WORD color)
 	}
 }
 
+column_color_t *column_color_remove(DWORD property_id)
+{
+	return array_remove(column_color_array,column_color_compare,(const void *)(uintptr_t)property_id);
+}
+
 column_color_t *column_color_find(DWORD property_id)
 {
 	return array_find(column_color_array,column_color_compare,(const void *)(uintptr_t)property_id);
 }
 
+void column_color_clear_all(void)
+{
+	array_empty(column_color_array);
+	pool_empty(column_color_pool);
+}

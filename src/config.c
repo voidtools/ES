@@ -94,6 +94,19 @@ void config_write_int(HANDLE file_handle,const ES_UTF8 *name,int value)
 	
 	utf8_buf_init(&cbuf);
 	
+	utf8_buf_printf(&cbuf,"%s=%d\r\n",name,value);
+	
+	os_write_file_utf8_string_n(file_handle,cbuf.buf,cbuf.length_in_bytes);
+
+	utf8_buf_kill(&cbuf);
+}
+
+void config_write_dword(HANDLE file_handle,const ES_UTF8 *name,DWORD value)
+{
+	utf8_buf_t cbuf;
+	
+	utf8_buf_init(&cbuf);
+	
 	utf8_buf_printf(&cbuf,"%s=%u\r\n",name,value);
 	
 	os_write_file_utf8_string_n(file_handle,cbuf.buf,cbuf.length_in_bytes);
@@ -160,6 +173,33 @@ int config_read_int(config_ini_t *ini,const ES_UTF8 *name,int default_value)
 	return ret;
 }
 
+DWORD config_read_dword(config_ini_t *ini,const ES_UTF8 *name,DWORD default_value)
+{
+	DWORD ret;
+	_config_keyvalue_t *keyvalue;
+	
+	ret = default_value;
+	keyvalue = _config_keyvalue_find(ini,name);
+	
+	if (keyvalue)
+	{
+		if (*keyvalue->value)
+		{
+			wchar_buf_t wcbuf;
+
+			wchar_buf_init(&wcbuf);
+		
+			wchar_buf_copy_utf8_string(&wcbuf,keyvalue->value);
+		
+			ret = wchar_string_to_dword(wcbuf.buf);
+		
+			wchar_buf_kill(&wcbuf);
+		}
+	}
+
+	return ret;
+}
+
 static BOOL _config_ini_get_line(config_ini_t *ini)
 {
 	ES_UTF8 *p;
@@ -200,11 +240,14 @@ static BOOL _config_ini_get_line(config_ini_t *ini)
 		
 		if (*p == '=')
 		{
-			*p = 0;
-			
-			p++;
-			
-			ini->value = p;
+			if (!ini->value)
+			{
+				*p = 0;
+				
+				p++;
+				
+				ini->value = p;
+			}
 		}
 		
 		p++;
@@ -260,7 +303,7 @@ BOOL config_ini_open(config_ini_t *ini,const wchar_t *filename,const ES_UTF8 *se
 						{
 							const ES_UTF8 *match_p;
 							
-							match_p = utf8_string_match_utf8_string(ini->key + 1,section);
+							match_p = utf8_string_parse_utf8_string(ini->key + 1,section);
 							if (match_p)
 							{
 								if (*match_p == ']')
@@ -279,18 +322,15 @@ BOOL config_ini_open(config_ini_t *ini,const wchar_t *filename,const ES_UTF8 *se
 										keyvalue->key = ini->key;
 										keyvalue->value = ini->value;
 										
-										// insert
-										if (ini->keyvalue_start)
-										{
-											ini->keyvalue_last->next = keyvalue;
-										}
-										else
-										{
-											ini->keyvalue_start = keyvalue;
-										}
+										// insert at start, as we search from the start
+										// this way the last added value will be returned first.
+										keyvalue->next = ini->keyvalue_start;
+										ini->keyvalue_start = keyvalue;
 										
-										keyvalue->next = NULL;
-										ini->keyvalue_last = keyvalue;
+										if (!ini->keyvalue_last)
+										{
+											ini->keyvalue_last = keyvalue;
+										}
 									}
 									
 									break;
@@ -356,7 +396,7 @@ static _config_keyvalue_t *_config_keyvalue_find(config_ini_t *ini,const ES_UTF8
 	{
 		const ES_UTF8 *match_p;
 							
-		match_p = utf8_string_match_utf8_string(keyvalue->key,key);
+		match_p = utf8_string_parse_utf8_string(keyvalue->key,key);
 		if (match_p)
 		{
 			if (!*match_p)

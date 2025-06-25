@@ -287,3 +287,13 @@ void wchar_buf_cat_path_separator(wchar_buf_t *wcbuf)
 		}
 	}
 }
+
+void wchar_buf_cat_list_wchar_string_n(wchar_buf_t *wcbuf,const wchar_t *s,SIZE_T slength_in_wchars)
+{
+	if (wcbuf->length_in_wchars)
+	{
+		wchar_buf_cat_wchar(wcbuf,';');
+	}
+	
+	wchar_buf_cat_wchar_string_n(wcbuf,s,slength_in_wchars);
+}
