@@ -72,6 +72,7 @@ SIZE_T wchar_string_get_highlighted_length(const wchar_t *s)
 	return len;
 }
 
+// convert a wchar string to a int.
 int wchar_string_to_int(const wchar_t *s)
 {
 	const wchar_t *p;
@@ -144,18 +145,94 @@ int wchar_string_to_int(const wchar_t *s)
 	return value;
 }
 
+// convert a wchar string to a dword.
 DWORD wchar_string_to_dword(const wchar_t *s)
 {
 	return (DWORD)wchar_string_to_int(s);
 }
 
+// copy a wchar string to a wchar string buffer.
+// caller MUST make sure there is enough room in buf.
 void wchar_string_copy_wchar_string_n(wchar_t *buf,const wchar_t *s,SIZE_T slength_in_wchars)
 {
 	os_copy_memory(buf,s,slength_in_wchars * sizeof(wchar_t));
 	buf[slength_in_wchars] = 0;
 }
 
-// don't need to use es_safe_size as the returned length is <= length of s.
+// Calculate the length of the specified utf8 string in wchars
+// returns the length in wchars.
+SIZE_T wchar_string_get_length_in_wchars_from_utf8_string(const ES_UTF8 *s)
+{
+	SIZE_T ret_len;
+	const ES_UTF8 *p;
+	
+	p = s;
+	ret_len = 0;
+	
+	while(*p)
+	{
+		if (*p & 0x80)
+		{
+			// p is UTF-8, decode it
+			if (((*p & 0xE0) == 0xC0) && (p[1]))
+			{
+				// 2 byte UTF-8 to UTF-16
+				ret_len = safe_size_add_one(ret_len);
+
+				p += 2;
+			}
+			else
+			if (((*p & 0xF0) == 0xE0) && (p[1]) && (p[2]))
+			{
+				// 3 byte UTF-8 to UTF-16
+				ret_len = safe_size_add_one(ret_len);
+
+				p += 3;
+			}
+			else
+			if (((*p & 0xF8) == 0xF0) && (p[1]) && (p[2]) && (p[3]))
+			{
+				int c;
+				
+				c = ((*p & 0x07) << 18) | ((p[1] & 0x3f) << 12) | ((p[2] & 0x3f) << 6) | (p[3] & 0x3f);
+				
+				if (c >= 0x10000)
+				{
+					// surrogate.
+					c -= 0x10000;
+					
+					ret_len = safe_size_add(ret_len,2);
+				}
+				else
+				{
+					// 4 byte UTF-8
+					ret_len = safe_size_add_one(ret_len);
+				}
+
+				p += 4;
+			}
+			else
+			{
+				// invalid UTF-8.
+				ret_len = safe_size_add_one(ret_len);
+				
+				p++;
+			}
+		}
+		else
+		{
+			ret_len = safe_size_add_one(ret_len);
+			
+			p++;
+		}
+	}
+	
+	return ret_len;
+}
+
+// copy a UTF-8 into a wchar buffer
+// caller needs to ensure there is enough room in the buffer.
+// Use wchar_string_get_length_in_wchars_from_utf8_string to calculate the required length.
 wchar_t *wchar_string_copy_utf8_string(wchar_t *buf,const ES_UTF8 *s)
 {
 	wchar_t *d;
@@ -172,14 +249,7 @@ wchar_t *wchar_string_copy_utf8_string(wchar_t *buf,const ES_UTF8 *s)
 			if (((*p & 0xE0) == 0xC0) && (p[1]))
 			{
 				// 2 byte UTF-8 to UTF-16
-				if (buf)
-				{
-					*d++ = ((*p & 0x1f) << 6) | (p[1] & 0x3f);
-				}
-				else
-				{
-					d++;
-				}
+				*d++ = ((*p & 0x1f) << 6) | (p[1] & 0x3f);
 
 				p += 2;
 			}
@@ -187,14 +257,7 @@ wchar_t *wchar_string_copy_utf8_string(wchar_t *buf,const ES_UTF8 *s)
 			if (((*p & 0xF0) == 0xE0) && (p[1]) && (p[2]))
 			{
 				// 3 byte UTF-8 to UTF-16
-				if (buf)
-				{
-					*d++ = ((*p & 0x0f) << (12)) | ((p[1] & 0x3f) << 6) | (p[2] & 0x3f);
-				}
-				else
-				{
-					d++;
-				}
+				*d++ = ((*p & 0x0f) << (12)) | ((p[1] & 0x3f) << 6) | (p[2] & 0x3f);
 
 				p += 3;
 			}
@@ -205,75 +268,211 @@ wchar_t *wchar_string_copy_utf8_string(wchar_t *buf,const ES_UTF8 *s)
 				
 				c = ((*p & 0x07) << 18) | ((p[1] & 0x3f) << 12) | ((p[2] & 0x3f) << 6) | (p[3] & 0x3f);
 				
-				if (c > 0xFFFF)
+				if (c >= 0x10000)
 				{
 					// surrogate.
 					c -= 0x10000;
 					
-					if (buf)
-					{
-						*d++ = 0xD800 + (c >> 10);
-						*d++ = 0xDC00 + (c & 0x03FF);
-					}
-					else
-					{
-						d += 2;
-					}
+					*d++ = 0xD800 + (c >> 10);
+					*d++ = 0xDC00 + (c & 0x03FF);
 				}
 				else
 				{
 					// 4 byte UTF-8
-					if (buf)
-					{
-						*d++ = c;
-					}
-					else
-					{
-						d++;
-					}
+					*d++ = c;
 				}
 
 				p += 4;
 			}
 			else
 			{
-				if (buf)
-				{
-					*d++ = 0;
-				}
-				else
-				{
-					d++;
-				}
+				// invalid UTF-8.
+				*d++ = 0xFFFD;
 				
 				p++;
 			}
 		}
 		else
 		{
-			if (buf)
-			{			
-				*d++ = *p;
-			}
-			else
-			{
-				d++;
-			}
+			*d++ = *p;
 			
 			p++;
 		}
 	}
 	
-	if (buf)
-	{			
-		*d = 0;
-	}
+	*d = 0;
 
 	return d;
 }
 
-const wchar_t *wchar_string_skip_ws(const wchar_t *p)
+// copy a UTF-8 into a wchar buffer
+// caller needs to ensure there is enough room in the buffer.
+// set buf to NULL to calculate the required length in bytes.
+SIZE_T wchar_string_get_length_in_wchars_from_utf8_string_n(const ES_UTF8 *s,SIZE_T slength_in_bytes)
 {
+	SIZE_T ret_len;
+	const ES_UTF8 *p;
+	SIZE_T run;
+	
+	p = s;
+	ret_len = 0;
+	run = slength_in_bytes;
+	
+	while(run)
+	{
+		if (*p & 0x80)
+		{
+			// p is UTF-8, decode it
+			if (((*p & 0xE0) == 0xC0) && (run >= 2))
+			{
+				// 2 byte UTF-8 to UTF-16
+				ret_len = safe_size_add_one(ret_len);
+
+				p += 2;
+				run -= 2;
+			}
+			else
+			if (((*p & 0xF0) == 0xE0) && (run >= 3))
+			{
+				// 3 byte UTF-8 to UTF-16
+				ret_len = safe_size_add_one(ret_len);
+
+				p += 3;
+				run -= 3;
+			}
+			else
+			if (((*p & 0xF8) == 0xF0) && (run >= 4))
+			{
+				int c;
+				
+				c = ((*p & 0x07) << 18) | ((p[1] & 0x3f) << 12) | ((p[2] & 0x3f) << 6) | (p[3] & 0x3f);
+				
+				if (c >= 0x10000)
+				{
+					// surrogate.
+					c -= 0x10000;
+					
+					ret_len = safe_size_add(ret_len,2);
+				}
+				else
+				{
+					// 4 byte UTF-8
+					ret_len = safe_size_add_one(ret_len);
+				}
+
+				p += 4;
+				run -= 4;
+			}
+			else
+			{
+				// invalid UTF-8.
+				ret_len = safe_size_add_one(ret_len);
+
+				p++;
+				run--;
+			}
+		}
+		else
+		{
+			ret_len = safe_size_add_one(ret_len);
+			
+			p++;
+			run--;
+		}
+	}
+
+	return ret_len;
+}
+
+// copy a UTF-8 into a wchar buffer
+// caller needs to ensure there is enough room in the buffer.
+// set buf to NULL to calculate the required length in bytes.
+wchar_t *wchar_string_copy_utf8_string_n(wchar_t *buf,const ES_UTF8 *s,SIZE_T slength_in_bytes)
+{
+	wchar_t *d;
+	const ES_UTF8 *p;
+	SIZE_T run;
+	
+	p = s;
+	d = buf;
+	run = slength_in_bytes;
+	
+	while(run)
+	{
+		if (*p & 0x80)
+		{
+			// p is UTF-8, decode it
+			if (((*p & 0xE0) == 0xC0) && (run >= 2))
+			{
+				// 2 byte UTF-8 to UTF-16
+				*d++ = ((*p & 0x1f) << 6) | (p[1] & 0x3f);
+
+				p += 2;
+				run -= 2;
+			}
+			else
+			if (((*p & 0xF0) == 0xE0) && (run >= 3))
+			{
+				// 3 byte UTF-8 to UTF-16
+				*d++ = ((*p & 0x0f) << (12)) | ((p[1] & 0x3f) << 6) | (p[2] & 0x3f);
+
+				p += 3;
+				run -= 3;
+			}
+			else
+			if (((*p & 0xF8) == 0xF0) && (run >= 4))
+			{
+				int c;
+				
+				c = ((*p & 0x07) << 18) | ((p[1] & 0x3f) << 12) | ((p[2] & 0x3f) << 6) | (p[3] & 0x3f);
+				
+				if (c >= 0x10000)
+				{
+					// surrogate.
+					c -= 0x10000;
+					
+					*d++ = 0xD800 + (c >> 10);
+					*d++ = 0xDC00 + (c & 0x03FF);
+				}
+				else
+				{
+					// 4 byte UTF-8
+					*d++ = c;
+				}
+
+				p += 4;
+				run -= 4;
+			}
+			else
+			{
+				// invalid UTF-8.
+				*d++ = 0xFFFD;
+				
+				p++;
+				run--;
+			}
+		}
+		else
+		{
+			*d++ = *p;
+			
+			p++;
+			run--;
+		}
+	}
+	
+	*d = 0;
+
+	return d;
+}
+
+// skip white spaces in s.
+const wchar_t *wchar_string_skip_ws(const wchar_t *s)
+{
+	const wchar_t *p;
+	
+	p = s;
+	
 	while(*p)
 	{
 		if (!unicode_is_ascii_ws(*p))
@@ -287,6 +486,8 @@ const wchar_t *wchar_string_skip_ws(const wchar_t *p)
 	return p;
 }
 
+// allocate a copy of the specified string.
+// the allocated string must be freed with mem_free.
 wchar_t *wchar_string_alloc_wchar_string_n(const wchar_t *s,SIZE_T slength_in_wchars)
 {
 	SIZE_T size;
@@ -314,6 +515,7 @@ BOOL wchar_string_is_trailing_path_separator_n(const wchar_t *s,SIZE_T slength_i
 	return FALSE;
 }
 
+// get the path separator character from the specified root path.
 int wchar_string_get_path_separator_from_root(const wchar_t *s)
 {
 	const wchar_t *p;
@@ -369,6 +571,7 @@ int wchar_string_get_path_separator_from_root(const wchar_t *s)
 	return '\\';
 }
 
+// case compare two wchar strings.
 int wchar_string_compare(const wchar_t *a,const wchar_t *b)
 {
 	const wchar_t *p1;
@@ -443,6 +646,9 @@ const wchar_t *wchar_string_parse_list_item(const wchar_t *s,wchar_buf_t *out_wc
 	return p;
 }
 
+// match a utf8_string in s.
+// returns s AFTER the matched string.
+// Otherwise, returns NULL if no match was found.
 const wchar_t *wchar_string_parse_utf8_string(const wchar_t *s,const ES_UTF8 *search)
 {
 	const wchar_t *p1;
@@ -468,6 +674,9 @@ const wchar_t *wchar_string_parse_utf8_string(const wchar_t *s,const ES_UTF8 *se
 	return p1;
 }
 
+// match an integer.
+// returns s AFTER the matched integer and stores the value in out_value.
+// Otherwise, returns NULL if no match was found.
 const wchar_t *wchar_string_parse_int(const wchar_t *s,int *out_value)
 {
 	const wchar_t *p;

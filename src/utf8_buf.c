@@ -27,7 +27,7 @@
 
 #include "es.h"
 
-static ES_UTF8 *_utf8_buf_print_number(int base,int abase,ES_UTF8 *buf,ES_UTF8 *d,int sign,int paddingchar,SIZE_T padding,ES_UINT64 number);
+static ES_UTF8 *_utf8_buf_get_format_number(int base,int abase,ES_UTF8 *buf,ES_UTF8 *d,int sign,int paddingchar,SIZE_T padding,ES_UINT64 number);
 static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list argptr);
 
 // Init a utf8 buffer to an empty string.
@@ -85,12 +85,13 @@ void utf8_buf_grow_length(utf8_buf_t *cbuf,SIZE_T length_in_bytes)
 // returns TRUE on success. Otherwise FALSE if there's not enough memory.
 void utf8_buf_copy_wchar_string(utf8_buf_t *cbuf,const wchar_t *ws)
 {
-	utf8_buf_grow_length(cbuf,(SIZE_T)utf8_string_copy_wchar_string(NULL,ws));
+	utf8_buf_grow_length(cbuf,utf8_string_get_length_in_bytes_from_wchar_string(ws));
 
 	utf8_string_copy_wchar_string(cbuf->buf,ws);
 }
 
-static ES_UTF8 *_utf8_buf_print_number(int base,int abase,ES_UTF8 *buf,ES_UTF8 *d,int sign,int paddingchar,SIZE_T padding,ES_UINT64 number)
+// get a formatted number.
+static ES_UTF8 *_utf8_buf_get_format_number(int base,int abase,ES_UTF8 *buf,ES_UTF8 *d,int sign,int paddingchar,SIZE_T padding,ES_UINT64 number)
 {
 	ES_UINT64 i;
 	int dp;
@@ -105,7 +106,10 @@ loop1:
 		i /= base;
 		dp++;
 		
-		if (i) goto loop1;
+		if (i) 
+		{
+			goto loop1;
+		}
 	}
 	else
 	{
@@ -133,7 +137,7 @@ loop1:
 			{
 				if (padding)
 				{
-					d = (void *)safe_size_add((SIZE_T)d,padding);
+					d = (void *)safe_size_add((uintptr_t)d,padding);
 				}
 			}
 		}
@@ -174,7 +178,7 @@ loop1:
 			{
 				if (padding)
 				{
-					d = (void *)safe_size_add((SIZE_T)d,padding);
+					d = (void *)safe_size_add((uintptr_t)d,padding);
 				}
 			}
 		}
@@ -215,12 +219,13 @@ loop2:
 	else
 	{
 		// dp is a small number and is safe.
-		d = (void *)safe_size_add((SIZE_T)d,dp);
+		d = (void *)safe_size_add((uintptr_t)d,dp);
 	}
 
 	return d;	
 }
 
+// get printf output
 static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list argptr)
 {
 	ES_UTF8 *d;
@@ -321,7 +326,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 				
 				// we use an int64 above so we can convert -2147483648 to 2147483648 (note that the largest value for an int is 2147483647)
 				// if we used 32bits -(-2147483648) == -2147483648
-				d = _utf8_buf_print_number(10,0,buf,d,(num < 0),paddingchar,padding,(num<0)?-num:num);
+				d = _utf8_buf_get_format_number(10,0,buf,d,(num < 0),paddingchar,padding,(num<0)?-num:num);
 				
 				p++;
 			}
@@ -332,7 +337,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 
 				num = va_arg(argptr,unsigned int);
 				
-				d = _utf8_buf_print_number(10,0,buf,d,0,paddingchar,padding,num);
+				d = _utf8_buf_get_format_number(10,0,buf,d,0,paddingchar,padding,num);
 				
 				p++;
 			}
@@ -343,7 +348,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 
 				num = va_arg(argptr,SIZE_T);
 				
-				d = _utf8_buf_print_number(10,0,buf,d,0,paddingchar,padding,num);
+				d = _utf8_buf_get_format_number(10,0,buf,d,0,paddingchar,padding,num);
 				
 				p+=2;
 			}
@@ -358,11 +363,11 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 				// special case for -0x80000000 == 0x80000000
 				if ((SIZE_T)num == (SIZE_MAX>>1)+1)
 				{
-					d = _utf8_buf_print_number(10,0,buf,d,1,paddingchar,padding,(SIZE_MAX>>1)+1);
+					d = _utf8_buf_get_format_number(10,0,buf,d,1,paddingchar,padding,(SIZE_MAX>>1)+1);
 				}
 				else
 				{
-					d = _utf8_buf_print_number(10,0,buf,d,(num<0),paddingchar,padding,(num<0)?-num:num);
+					d = _utf8_buf_get_format_number(10,0,buf,d,(num<0),paddingchar,padding,(num<0)?-num:num);
 				}
 				
 				p+=2;
@@ -377,11 +382,11 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 				// special case for 0x8000000000000000UI64, since we cant remove the sign (eg: -9223372036854775808 to 9223372036854775808) because 9223372036854775807 is the largest signed __int64.
 				if ((ES_UINT64)num == (ES_UINT64)0x8000000000000000UI64)
 				{
-					d = _utf8_buf_print_number(10,0,buf,d,1,paddingchar,padding,(ES_UINT64)0x8000000000000000UI64);
+					d = _utf8_buf_get_format_number(10,0,buf,d,1,paddingchar,padding,(ES_UINT64)0x8000000000000000UI64);
 				}
 				else
 				{
-					d = _utf8_buf_print_number(10,0,buf,d,(num<0),paddingchar,padding,(num<0)?-num:num);
+					d = _utf8_buf_get_format_number(10,0,buf,d,(num<0),paddingchar,padding,(num<0)?-num:num);
 				}
 				
 				p+=4;
@@ -393,7 +398,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 
 				num = va_arg(argptr,ES_UINT64);
 				
-				d = _utf8_buf_print_number(10,0,buf,d,0,paddingchar,padding,num);
+				d = _utf8_buf_get_format_number(10,0,buf,d,0,paddingchar,padding,num);
 				
 				p+=4;
 			}
@@ -404,7 +409,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 
 				num = va_arg(argptr,ES_UINT64);
 				
-				d = _utf8_buf_print_number(16,p[3]+'A'-'X',buf,d,0,paddingchar,padding,num);
+				d = _utf8_buf_get_format_number(16,p[3]+'A'-'X',buf,d,0,paddingchar,padding,num);
 				
 				p+=4;
 			}
@@ -415,7 +420,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 
 				num = va_arg(argptr,unsigned int);
 				
-				d = _utf8_buf_print_number(16,*p+'A'-'X',buf,d,0,paddingchar,padding,num);
+				d = _utf8_buf_get_format_number(16,*p+'A'-'X',buf,d,0,paddingchar,padding,num);
 				
 				p++;
 			}
@@ -426,7 +431,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 
 				num = va_arg(argptr,SIZE_T);
 				
-				d = _utf8_buf_print_number(16,*p+'A'-'P',buf,d,0,'0',8<<(sizeof(SIZE_T)>>3),num);
+				d = _utf8_buf_get_format_number(16,*p+'A'-'P',buf,d,0,'0',8<<(sizeof(SIZE_T)>>3),num);
 				
 #if SIZE_MAX == 0xffffffffffffffffui64
 #elif SIZE_MAX == 0xffffffffui32
@@ -454,7 +459,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 				}
 				else
 				{
-					d = (void *)safe_size_add((SIZE_T)d,utf8_string_get_length_in_bytes(str));
+					d = (void *)safe_size_add((uintptr_t)d,utf8_string_get_length_in_bytes(str));
 				}
 				
 				p++;
@@ -472,7 +477,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 				}
 				else
 				{
-					d = (void *)safe_size_add((SIZE_T)d,(SIZE_T)utf8_string_copy_wchar_string(NULL,wstr));
+					d = (void *)safe_size_add((uintptr_t)d,(SIZE_T)utf8_string_get_length_in_bytes_from_wchar_string(wstr));
 				}
 				
 				p++;
@@ -514,7 +519,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 				}
 				else
 				{
-					d = (void *)safe_size_add((SIZE_T)d,(SIZE_T)utf8_string_copy_wchar_string(NULL,wch));
+					d = (void *)safe_size_add((uintptr_t)d,(SIZE_T)utf8_string_get_length_in_bytes_from_wchar_string(wch));
 				}
 				
 				p++;
@@ -548,6 +553,7 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 	return d;
 }
 
+// vsprintf
 void utf8_buf_vprintf(utf8_buf_t *cbuf,const ES_UTF8 *format,va_list argptr)
 {
 	utf8_buf_grow_length(cbuf,(SIZE_T)_utf8_buf_get_vprintf(NULL,format,argptr));
@@ -556,6 +562,7 @@ void utf8_buf_vprintf(utf8_buf_t *cbuf,const ES_UTF8 *format,va_list argptr)
 }
 
 
+// sprintf
 void utf8_buf_printf(utf8_buf_t *cbuf,const ES_UTF8 *format,...)
 {
 	va_list argptr;
@@ -567,6 +574,7 @@ void utf8_buf_printf(utf8_buf_t *cbuf,const ES_UTF8 *format,...)
 	va_end(argptr);
 }
 
+// copy a simple utf8 string with the specified length.
 void utf8_buf_copy_utf8_string_n(utf8_buf_t *cbuf,const ES_UTF8 *s,SIZE_T length_in_bytes)
 {
 	utf8_buf_grow_length(cbuf,length_in_bytes);
@@ -576,6 +584,7 @@ void utf8_buf_copy_utf8_string_n(utf8_buf_t *cbuf,const ES_UTF8 *s,SIZE_T length
 	cbuf->buf[length_in_bytes] = 0;
 }
 
+// copy a simple utf8 string
 void utf8_buf_copy_utf8_string(utf8_buf_t *cbuf,const ES_UTF8 *s)
 {
 	utf8_buf_copy_utf8_string_n(cbuf,s,utf8_string_get_length_in_bytes(s));

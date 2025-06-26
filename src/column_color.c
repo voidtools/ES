@@ -24,13 +24,15 @@
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 // column colors
+// we can set column colors for columns that are not shown. -useful for loading colors from the es.ini
 
 #include "es.h"
 
 // these must be set in main()
 pool_t *column_color_pool = NULL; // pool of column_color_t
-array_t *column_color_array = NULL; // array of column_color_t
+array_t *column_color_array = NULL; // array of column_color_t sorted by property id.
 
+// compare two column colors by property ID.
 int column_color_compare(const column_color_t *a,const void *property_id)
 {
 	if (a->property_id < (DWORD)(uintptr_t)property_id)
@@ -46,6 +48,8 @@ int column_color_compare(const column_color_t *a,const void *property_id)
 	return 0;
 }
 
+// set a column color
+// adds a new column color or replaces the existing column color.
 void column_color_set(DWORD property_id,WORD color)
 {
 	column_color_t *column_color;
@@ -67,16 +71,22 @@ void column_color_set(DWORD property_id,WORD color)
 	}
 }
 
+// remove an column color (if it exists)
+// returns a pointer to the removed column color.
+// returns NULL if not found.
 column_color_t *column_color_remove(DWORD property_id)
 {
 	return array_remove(column_color_array,column_color_compare,(const void *)(uintptr_t)property_id);
 }
 
+// returns a pointer to the found column color.
+// returns NULL if not found.
 column_color_t *column_color_find(DWORD property_id)
 {
 	return array_find(column_color_array,column_color_compare,(const void *)(uintptr_t)property_id);
 }
 
+// reset column colors.
 void column_color_clear_all(void)
 {
 	array_empty(column_color_array);

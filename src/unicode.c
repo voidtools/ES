@@ -38,6 +38,7 @@ BOOL unicode_is_ascii_ws(int c)
 	return FALSE;
 }
 
+// convert ASCII character to lowercase.
 int unicode_ascii_to_lower(int c)
 {
 	if ((c >= 'A') && (c <= 'Z'))
@@ -46,4 +47,15 @@ int unicode_ascii_to_lower(int c)
 	}
 	
 	return c;
+}
+
+// get the hex character for the specified value (0-15)
+int unicode_hex_char(int value)
+{
+	if ((value >= 0) && (value < 10))
+	{
+		return value + '0';
+	}
+
+	return value - 10 + 'A';
 }

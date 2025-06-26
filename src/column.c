@@ -29,10 +29,11 @@
 
 // these must be set in main()
 pool_t *column_pool = NULL; // pool of column_t
-array_t *column_array = NULL; // array of column_t
+array_t *column_array = NULL; // array of column_t sorted by property ID.
 column_t *column_order_start = NULL; // column order
 column_t *column_order_last = NULL;
 
+// compare two columns, sorting by property ID.
 int column_compare(const column_t *a,const void *property_id)
 {
 	if (a->property_id < (DWORD)(uintptr_t)property_id)
@@ -48,13 +49,16 @@ int column_compare(const column_t *a,const void *property_id)
 	return 0;
 }
 
-// returns SIZE_MAX if not found.
+// returns the column from the specified property id.
+// returns NULL if not found.
 column_t *column_find(DWORD property_id)
 {
 	return array_find(column_array,column_compare,(const void *)(uintptr_t)property_id);
 }
 
-void column_insert_order(column_t *column)
+// add the specified column to the end of the order list.
+// the column MUST NOT be in the order list.
+void column_insert_order_at_end(column_t *column)
 {
 	if (column_order_start)
 	{
@@ -71,6 +75,8 @@ void column_insert_order(column_t *column)
 	column_order_last = column;
 }
 	
+// add the specified column to the start of the order list.
+// the column MUST NOT be in the order list.
 void column_insert_order_at_start(column_t *column)
 {
 	column->order_prev = NULL;
@@ -86,7 +92,9 @@ void column_insert_order_at_start(column_t *column)
 		column_order_last = column;
 	}
 }
-		
+
+// remove the specified column from the order list.
+// the column MUTS BE in the order list.
 void column_remove_order(column_t *column)
 {
 	if (column_order_start == column)
@@ -107,7 +115,12 @@ void column_remove_order(column_t *column)
 		column->order_next->order_prev = column->order_prev;
 	}
 }
-		
+
+// add a new column.
+// Does nothing if the column was already added.
+// returns a pointer to the added column or existing column.
+// The new column is added to the end of the order list.
+// or, the existing column is moved to the end of the order list.
 column_t *column_add(DWORD property_id)
 {
 	column_t *column;
@@ -128,11 +141,12 @@ column_t *column_add(DWORD property_id)
 		array_insert(column_array,insert_index,column);
 	}
 	
-	column_insert_order(column);
+	column_insert_order_at_end(column);
 	
 	return column;
 }
 
+// removes the specified column if it exists.
 void column_remove(DWORD property_id)
 {
 	column_t *column;
@@ -144,6 +158,7 @@ void column_remove(DWORD property_id)
 	}
 }
 
+// reset columns.
 void column_clear_all(void)
 {
 	array_empty(column_array);

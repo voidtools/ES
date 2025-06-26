@@ -23,12 +23,13 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
-// simple arrays
+// debugging
 
 #include "es.h"
 
 #ifdef _DEBUG
 
+// write some debug information to the console.
 void debug_printf(ES_UTF8 *format,...)
 {
 	va_list argptr;
@@ -49,6 +50,7 @@ void debug_printf(ES_UTF8 *format,...)
 	va_end(argptr);
 }
 
+// write a debug error message to the console in Red text.
 void debug_error_printf(const ES_UTF8 *format,...)
 {
 	va_list argptr;
@@ -60,7 +62,8 @@ void debug_error_printf(const ES_UTF8 *format,...)
 	va_end(argptr);
 }
 
-void debug_fatal2(const ES_UTF8 *format,...)
+// show a message and terminate the program.
+void DECLSPEC_NORETURN debug_fatal2(const ES_UTF8 *format,...)
 {
 	va_list argptr;
 

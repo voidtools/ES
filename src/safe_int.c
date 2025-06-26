@@ -27,6 +27,8 @@
 
 #include "es.h"
 
+// returns a safe int from a size_t.
+// INT_MAX should be treated as an invalid value.
 int safe_int_from_size(SIZE_T a)
 {
 	if (a <= INT_MAX)

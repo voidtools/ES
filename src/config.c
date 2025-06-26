@@ -23,14 +23,21 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
-// Configuration
+// Configuration es.ini
 
 #include "es.h"
 
+// a keyvalue pair.
 typedef struct _config_keyvalue_s
 {
+	// the next keyvalue pair
+	// in reverse order (start == last line in es.ini)
 	struct _config_keyvalue_s *next;
+	
+	// the key text
 	const ES_UTF8 *key;
+	
+	// the value text.
 	const ES_UTF8 *value;
 	
 }_config_keyvalue_t;
@@ -39,6 +46,7 @@ static BOOL _config_ini_get_line(config_ini_t *ini);
 static BOOL _config_ini_find_next_keyvalue(config_ini_t *ini);
 static _config_keyvalue_t *_config_keyvalue_find(config_ini_t *ini,const ES_UTF8 *key);
 
+// get the es.ini filename
 BOOL config_get_filename(int is_appdata,int is_temp,wchar_buf_t *wcbuf)
 {
 	if (is_appdata)
@@ -68,6 +76,7 @@ BOOL config_get_filename(int is_appdata,int is_temp,wchar_buf_t *wcbuf)
 	}
 	else
 	{
+		// same path as es.exe
 		if (os_get_module_file_name(NULL,wcbuf))
 		{
 			wchar_buf_remove_file_spec(wcbuf);
@@ -88,6 +97,7 @@ BOOL config_get_filename(int is_appdata,int is_temp,wchar_buf_t *wcbuf)
 	return FALSE;
 }
 
+// write out a key=int-value pair to the opened es.ini
 void config_write_int(HANDLE file_handle,const ES_UTF8 *name,int value)
 {
 	utf8_buf_t cbuf;
@@ -101,6 +111,7 @@ void config_write_int(HANDLE file_handle,const ES_UTF8 *name,int value)
 	utf8_buf_kill(&cbuf);
 }
 
+// write out a key=dword-value pair to the opened es.ini
 void config_write_dword(HANDLE file_handle,const ES_UTF8 *name,DWORD value)
 {
 	utf8_buf_t cbuf;
@@ -114,6 +125,7 @@ void config_write_dword(HANDLE file_handle,const ES_UTF8 *name,DWORD value)
 	utf8_buf_kill(&cbuf);
 }
 
+// write out a key=string-value pair to the opened es.ini
 void config_write_string(HANDLE file_handle,const ES_UTF8 *name,const wchar_t *value)
 {
 	utf8_buf_t cbuf;
@@ -130,6 +142,9 @@ void config_write_string(HANDLE file_handle,const ES_UTF8 *name,const wchar_t *v
 	utf8_buf_kill(&cbuf);
 }
 
+// read a string value with the specified name.
+// returns TRUE if found and stores the value in wcbuf.
+// Otherwise, returns FALSE if not found.
 BOOL config_read_string(config_ini_t *ini,const ES_UTF8 *name,wchar_buf_t *wcbuf)
 {
 	_config_keyvalue_t *keyvalue;
@@ -146,6 +161,9 @@ BOOL config_read_string(config_ini_t *ini,const ES_UTF8 *name,wchar_buf_t *wcbuf
 	return FALSE;
 }
 
+// read an int-value with the specified name.
+// returns the int-value if found.
+// Otherwise, returns default_value
 int config_read_int(config_ini_t *ini,const ES_UTF8 *name,int default_value)
 {
 	int ret;
@@ -173,6 +191,9 @@ int config_read_int(config_ini_t *ini,const ES_UTF8 *name,int default_value)
 	return ret;
 }
 
+// read an dword-value with the specified name.
+// returns the dword-value if found.
+// Otherwise, returns default_value
 DWORD config_read_dword(config_ini_t *ini,const ES_UTF8 *name,DWORD default_value)
 {
 	DWORD ret;
@@ -200,6 +221,11 @@ DWORD config_read_dword(config_ini_t *ini,const ES_UTF8 *name,DWORD default_valu
 	return ret;
 }
 
+// read a line from the ini file.
+// stores the found key/value pair in ini.
+// ini->value will be set to NULL for comments, sections and if there's no =
+// returns TRUE if data is available.
+// returns FALSE if there's no more data.
 static BOOL _config_ini_get_line(config_ini_t *ini)
 {
 	ES_UTF8 *p;
@@ -258,6 +284,8 @@ static BOOL _config_ini_get_line(config_ini_t *ini)
 	return TRUE;
 }
 
+// open an ini file, find the specified section and read all the keyvalue pairs.
+// the keyvalue pairs are stored in ini.
 BOOL config_ini_open(config_ini_t *ini,const wchar_t *filename,const ES_UTF8 *section)
 {
 	BOOL ret;
@@ -353,6 +381,10 @@ BOOL config_ini_open(config_ini_t *ini,const wchar_t *filename,const ES_UTF8 *se
 	return ret;
 }
 
+// find the next keyvalue pair.
+// skips any ; comments
+// returns TRUE if another keyvalue pair is found.
+// returns FALSE if the section changes or if there's no more keyvalue pairs.
 static BOOL _config_ini_find_next_keyvalue(config_ini_t *ini)
 {
 	for(;;)
@@ -387,6 +419,9 @@ static BOOL _config_ini_find_next_keyvalue(config_ini_t *ini)
 	return FALSE;
 }
 
+// find a keyvalue pair by key name.
+// returns a pointer to the keyvalue pair.
+// returns NULL if not found.
 static _config_keyvalue_t *_config_keyvalue_find(config_ini_t *ini,const ES_UTF8 *key)
 {
 	_config_keyvalue_t *keyvalue;
@@ -411,6 +446,8 @@ static _config_keyvalue_t *_config_keyvalue_find(config_ini_t *ini,const ES_UTF8
 	return NULL;
 }
 
+// close an ini file.
+// returns any allocated memory to the system.
 void config_ini_close(config_ini_t *ini)
 {
 	pool_kill(&ini->pool);

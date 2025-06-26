@@ -14,7 +14,7 @@ typedef struct array_s
 	// this will double in size each time the array grows.
 	SIZE_T allocated;
 	
-	// small stack space for initial buffer.
+	// small stack space for initial buffer to avoid allocation.
 	BYTE stack_buf[ARRAY_STACK_SIZE];
 	
 }array_t;

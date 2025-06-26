@@ -17,7 +17,7 @@ typedef struct column_s
 
 int column_compare(const column_t *a,const void *property_id);
 column_t *column_find(DWORD property_id);
-void column_insert_order(column_t *column);
+void column_insert_order_at_end(column_t *column);
 void column_insert_order_at_start(column_t *column);
 void column_remove_order(column_t *column);
 column_t *column_add(DWORD property_id);

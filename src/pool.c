@@ -27,6 +27,7 @@
 
 #include "es.h"
 
+// initialize a pool
 void pool_init(pool_t *buf)
 {
 	buf->p = buf->stack;
@@ -35,12 +36,14 @@ void pool_init(pool_t *buf)
 	buf->cur_alloc_size = POOL_STACK_SIZE;
 }
 
+// reset a pool
 void pool_empty(pool_t *buf)
 {
 	pool_kill(buf);
 	pool_init(buf);
 }
-	
+
+// return any allocated memory back to the system.
 void pool_kill(pool_t *buf)
 {
 	pool_chunk_t *chunk;
@@ -59,11 +62,16 @@ void pool_kill(pool_t *buf)
 	}
 }
 
+// allocate some memory from the pool.
+// memory is aligned to 8 bytes.
 void *pool_alloc(pool_t *buf,SIZE_T size)
 {
 	void *p;
+	SIZE_T aligned_size;
 	
-	if (size > buf->avail)
+	aligned_size = (size + 7) & (~7);
+	
+	if (aligned_size > buf->avail)
 	{
 		SIZE_T min_alloc_size;
 		SIZE_T alloc_size;
@@ -78,7 +86,7 @@ void *pool_alloc(pool_t *buf,SIZE_T size)
 		
 		buf->cur_alloc_size = alloc_size;
 		
-		min_alloc_size = safe_size_add(sizeof(pool_chunk_t),size);
+		min_alloc_size = safe_size_add(sizeof(pool_chunk_t),aligned_size);
 		
 		if (alloc_size < min_alloc_size)
 		{
@@ -96,8 +104,8 @@ void *pool_alloc(pool_t *buf,SIZE_T size)
 	
 	p = buf->p;
 
-	buf->p += size;
-	buf->avail -= size;
+	buf->p += aligned_size;
+	buf->avail -= aligned_size;
 
 	return p;
 }

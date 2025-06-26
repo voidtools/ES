@@ -154,5 +154,5 @@ SIZE_T ipc3_stream_read_len_vlq(ipc3_stream_t *stream);
 BOOL ipc3_read_pipe(HANDLE pipe_handle,void *buf,SIZE_T buf_size);
 BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size);
 HANDLE ipc3_connect_pipe(void);
-BOOL ipc3_pipe_ioctrl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread);
-void ipc3_get_pipe_name(wchar_buf_t *wcbuf);
+BOOL ipc3_pipe_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread);
+void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf);

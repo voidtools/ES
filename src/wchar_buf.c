@@ -85,6 +85,7 @@ void wchar_buf_grow_length(wchar_buf_t *wcbuf,SIZE_T length_in_wchars)
 	wcbuf->length_in_wchars = length_in_wchars;
 }
 
+// concatenate a simple wchar string with specified length.
 void wchar_buf_cat_wchar_string_n(wchar_buf_t *wcbuf,const wchar_t *s,SIZE_T slength_in_wchars)
 {
 	SIZE_T size_in_wchars;
@@ -130,16 +131,19 @@ void wchar_buf_cat_wchar_string_n(wchar_buf_t *wcbuf,const wchar_t *s,SIZE_T sle
 	wcbuf->buf[length_in_wchars] = 0;
 }
 
+// concatenate a simple wchar string.
 void wchar_buf_cat_wchar_string(wchar_buf_t *wcbuf,const wchar_t *s)
 {
 	wchar_buf_cat_wchar_string_n(wcbuf,s,wchar_string_get_length_in_wchars(s));
 }
 
+// concatenate a wchar character.
 void wchar_buf_cat_wchar(wchar_buf_t *wcbuf,wchar_t ch)
 {
 	wchar_buf_cat_wchar_string_n(wcbuf,&ch,1);
 }
 
+// concatenate a UTF-8 string.
 void wchar_buf_cat_utf8_string(wchar_buf_t *wcbuf,const ES_UTF8 *s)
 {
 	wchar_buf_t add_wcbuf;
@@ -153,13 +157,23 @@ void wchar_buf_cat_utf8_string(wchar_buf_t *wcbuf,const ES_UTF8 *s)
 	wchar_buf_kill(&add_wcbuf);
 }
 
+// copy a UTF-8 string.
 void wchar_buf_copy_utf8_string(wchar_buf_t *wcbuf,const ES_UTF8 *s)
 {
-	wchar_buf_grow_length(wcbuf,((SIZE_T)(wchar_string_copy_utf8_string(NULL,s)) / sizeof(wchar_t)));
+	wchar_buf_grow_length(wcbuf,wchar_string_get_length_in_wchars_from_utf8_string(s));
 
 	wchar_string_copy_utf8_string(wcbuf->buf,s);
 }
 
+// copy a UTF-8 string.
+void wchar_buf_copy_utf8_string_n(wchar_buf_t *wcbuf,const ES_UTF8 *s,SIZE_T slength_in_bytes)
+{
+	wchar_buf_grow_length(wcbuf,wchar_string_get_length_in_wchars_from_utf8_string_n(s,slength_in_bytes));
+
+	wchar_string_copy_utf8_string_n(wcbuf->buf,s,slength_in_bytes);
+}
+
+// concatenate a simple wchar string with the specified length.
 void wchar_buf_copy_wchar_string_n(wchar_buf_t *wcbuf,const wchar_t *s,SIZE_T slength_in_wchars)
 {
 	wchar_buf_grow_length(wcbuf,slength_in_wchars);
@@ -169,11 +183,13 @@ void wchar_buf_copy_wchar_string_n(wchar_buf_t *wcbuf,const wchar_t *s,SIZE_T sl
 	wcbuf->buf[slength_in_wchars] = 0;
 }
 
+// concatenate a simple wchar string.
 void wchar_buf_copy_wchar_string(wchar_buf_t *wcbuf,const wchar_t *s)
 {
 	wchar_buf_copy_wchar_string_n(wcbuf,s,wchar_string_get_length_in_wchars(s));
 }
 
+// remove the file specification from the specified wcbuf.
 void wchar_buf_remove_file_spec(wchar_buf_t *wcbuf)
 {
 	const wchar_t *p;
@@ -209,6 +225,7 @@ void wchar_buf_remove_file_spec(wchar_buf_t *wcbuf)
 	}
 }
 
+// sprintf
 void wchar_buf_printf(wchar_buf_t *wcbuf,const ES_UTF8 *format,...)
 {
 	va_list argptr;
@@ -220,6 +237,7 @@ void wchar_buf_printf(wchar_buf_t *wcbuf,const ES_UTF8 *format,...)
 	va_end(argptr);
 }
 
+// vsprintf
 void wchar_buf_vprintf(wchar_buf_t *wcbuf,const ES_UTF8 *format,va_list argptr)
 {
 	utf8_buf_t cbuf;
@@ -233,11 +251,7 @@ void wchar_buf_vprintf(wchar_buf_t *wcbuf,const ES_UTF8 *format,va_list argptr)
 	utf8_buf_kill(&cbuf);
 }
 
-void wchar_buf_print_UINT64(wchar_buf_t *wcbuf,ES_UINT64 value)
-{
-	wchar_buf_printf(wcbuf,"%I64u",value);
-}
-
+// cat printf
 void wchar_buf_cat_printf(wchar_buf_t *wcbuf,const ES_UTF8 *format,...)
 {
 	va_list argptr;
@@ -264,15 +278,21 @@ void wchar_buf_cat_print_UINT64(wchar_buf_t *wcbuf,ES_UINT64 value)
 	wchar_buf_cat_printf(wcbuf,"%I64u",value);
 }
 
-void wchar_buf_path_cat_filename(const wchar_t *path,const wchar_t *name,wchar_buf_t *wcbuf)
+// combine a path and filename
+// adds the correct path separate between path and filename if required.
+// stores the result in out_wcbuf.
+void wchar_buf_path_cat_filename(const wchar_t *path,const wchar_t *name,wchar_buf_t *out_wcbuf)
 {
-	wchar_buf_copy_wchar_string(wcbuf,path);
+	wchar_buf_copy_wchar_string(out_wcbuf,path);
 
-	wchar_buf_cat_path_separator(wcbuf);
+	wchar_buf_cat_path_separator(out_wcbuf);
 	
-	wchar_buf_cat_wchar_string(wcbuf,name);
+	wchar_buf_cat_wchar_string(out_wcbuf,name);
 }
 
+// concatenate a path separator.
+// does nothing if there's already a path separator.
+// uses the correct path separator based on the root.
 void wchar_buf_cat_path_separator(wchar_buf_t *wcbuf)
 {
 	if (wcbuf->length_in_wchars)
@@ -288,6 +308,7 @@ void wchar_buf_cat_path_separator(wchar_buf_t *wcbuf)
 	}
 }
 
+// add a wchar string to a semicolon (;) delimited list.
 void wchar_buf_cat_list_wchar_string_n(wchar_buf_t *wcbuf,const wchar_t *s,SIZE_T slength_in_wchars)
 {
 	if (wcbuf->length_in_wchars)

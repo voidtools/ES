@@ -27,8 +27,62 @@
 
 #include "es.h"
 
+// calculate the utf8 length in bytes from the specified wchar string.
+SIZE_T utf8_string_get_length_in_bytes_from_wchar_string(const wchar_t *ws)
+{
+	const wchar_t *p;
+	SIZE_T ret_len;
+	
+	p = ws;
+	ret_len = 0;
+	
+	while(*p)
+	{
+		int c;
+		
+		c = *p++;
+		
+		// surrogates
+		if ((c >= 0xD800) && (c < 0xDC00))
+		{
+			if ((*p >= 0xDC00) && (*p < 0xE000))
+			{
+				c = 0x10000 + ((c - 0xD800) << 10) + (*p - 0xDC00);
+				
+				p++;
+			}
+		}
+		
+		if (c > 0xffff)
+		{
+			// 4 bytes
+			ret_len = safe_size_add(ret_len,4);
+		}
+		else
+		if (c > 0x7ff)
+		{
+			// 3 bytes
+			ret_len = safe_size_add(ret_len,3);
+		}
+		else
+		if (c > 0x7f)
+		{
+			// 2 bytes
+			ret_len = safe_size_add(ret_len,2);
+		}
+		else
+		{	
+			// ascii
+			ret_len = safe_size_add_one(ret_len);
+		}
+	}
+	
+	return ret_len;
+}
+
 // Copy a wchar string into a UTF-8 buffer.
-// Use a NULL buffer to calculate the size.
+// caller must ensure there is enough room in the buffer.
+// use utf8_string_get_length_in_bytes_from_wchar_string to calculate length.
 // Handles surrogates correctly.
 ES_UTF8 *utf8_string_copy_wchar_string(ES_UTF8 *buf,const wchar_t *ws)
 {
@@ -58,69 +112,39 @@ ES_UTF8 *utf8_string_copy_wchar_string(ES_UTF8 *buf,const wchar_t *ws)
 		if (c > 0xffff)
 		{
 			// 4 bytes
-			if (buf)
-			{
-				*d++ = ((c >> 18) & 0x07) | 0xF0; // 11110xxx
-				*d++ = ((c >> 12) & 0x3f) | 0x80; // 10xxxxxx
-				*d++ = ((c >> 6) & 0x3f) | 0x80; // 10xxxxxx
-				*d++ = (c & 0x3f) | 0x80; // 10xxxxxx
-			}
-			else
-			{
-				d = (void *)safe_size_add((SIZE_T)d,4);
-			}
+			*d++ = ((c >> 18) & 0x07) | 0xF0; // 11110xxx
+			*d++ = ((c >> 12) & 0x3f) | 0x80; // 10xxxxxx
+			*d++ = ((c >> 6) & 0x3f) | 0x80; // 10xxxxxx
+			*d++ = (c & 0x3f) | 0x80; // 10xxxxxx
 		}
 		else
 		if (c > 0x7ff)
 		{
 			// 3 bytes
-			if (buf)
-			{
-				*d++ = ((c >> 12) & 0x0f) | 0xE0; // 1110xxxx
-				*d++ = ((c >> 6) & 0x3f) | 0x80; // 10xxxxxx
-				*d++ = (c & 0x3f) | 0x80; // 10xxxxxx
-			}
-			else
-			{
-				d = (void *)safe_size_add((SIZE_T)d,3);
-			}
+			*d++ = ((c >> 12) & 0x0f) | 0xE0; // 1110xxxx
+			*d++ = ((c >> 6) & 0x3f) | 0x80; // 10xxxxxx
+			*d++ = (c & 0x3f) | 0x80; // 10xxxxxx
 		}
 		else
 		if (c > 0x7f)
 		{
 			// 2 bytes
-			if (buf)
-			{
-				*d++ = ((c >> 6) & 0x1f) | 0xC0; // 110xxxxx
-				*d++ = (c & 0x3f) | 0x80; // 10xxxxxx
-			}
-			else
-			{
-				d = (void *)safe_size_add((SIZE_T)d,2);
-			}
+			*d++ = ((c >> 6) & 0x1f) | 0xC0; // 110xxxxx
+			*d++ = (c & 0x3f) | 0x80; // 10xxxxxx
 		}
 		else
 		{	
 			// ascii
-			if (buf)
-			{
-				*d++ = c;
-			}
-			else
-			{
-				d = (void *)safe_size_add((SIZE_T)d,1);
-			}
+			*d++ = c;
 		}
 	}
 	
-	if (buf)
-	{
-		*d = 0;
-	}
+	*d = 0;
 	
 	return d;
 }
 
+// return the length of the specified string in number of bytes.
 SIZE_T utf8_string_get_length_in_bytes(const ES_UTF8 *s)
 {
 	const ES_UTF8 *p;
@@ -135,6 +159,9 @@ SIZE_T utf8_string_get_length_in_bytes(const ES_UTF8 *s)
 	return p - s;
 }
 
+// match a search string in s
+// returns the position of s after matching search.
+// returns NULL if it doesn't match.
 const ES_UTF8 *utf8_string_parse_utf8_string(const ES_UTF8 *s,const ES_UTF8 *search)
 {
 	const ES_UTF8 *p1;
@@ -157,6 +184,10 @@ const ES_UTF8 *utf8_string_parse_utf8_string(const ES_UTF8 *s,const ES_UTF8 *sea
 	return p1;
 }
 
+// compare two UTF-8 strings
+// returns -1 if a < b
+// returns 1 if a > b
+// returns 0 if a == b.
 int utf8_string_compare(const ES_UTF8 *a,const ES_UTF8 *b)
 {
 	const ES_UTF8 *p1;

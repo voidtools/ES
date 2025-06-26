@@ -7,8 +7,14 @@
 // a chunk of memory.
 typedef struct pool_chunk_s
 {
-	// the next pool in the list.
-	struct pool_chunk_s *next;
+	union
+	{
+		// the next pool in the list.
+		struct pool_chunk_s *next;
+		
+		// ensure 8-byte alignment.
+		ES_UINT64 alignment;
+	};
 	
 	// data follows.
 	// BYTE data[];

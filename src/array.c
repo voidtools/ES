@@ -27,6 +27,8 @@
 
 #include "es.h"
 
+// initialize an array.
+// The initialized array will be empty.
 void array_init(array_t *a)
 {
 	a->indexes = (void **)a->stack_buf;
@@ -34,6 +36,8 @@ void array_init(array_t *a)
 	a->allocated = ARRAY_STACK_SIZE / sizeof(void *);
 }
 
+// kill an initialized array
+// Any allocated memory is returned to the system.
 void array_kill(array_t *a)
 {
 	if (a->indexes != (void **)a->stack_buf)
@@ -48,6 +52,9 @@ void array_empty(array_t *a)
 	array_init(a);
 }
 
+// returns a pointer to the found item.
+// Otherwise, returns NULL and sets out_insertion_index.
+// call array_insert with this index to add a new item.
 void *array_find_or_get_insertion_index(const array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data,SIZE_T *out_insertion_index)
 {
 	SIZE_T blo;
@@ -92,6 +99,8 @@ void *array_find_or_get_insertion_index(const array_t *a,int (*compare)(const vo
 	return NULL;
 }
 
+// returns a pointer to the found item.
+// returns NULL if not found.
 void *array_find(const array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data)
 {
 	SIZE_T blo;
@@ -131,6 +140,8 @@ void *array_find(const array_t *a,int (*compare)(const void *a,const void *b),co
 	return NULL;
 }
 
+// insert the specified item at the specified index.
+// call array_find_or_get_insertion_index to get the insertion position.
 void array_insert(array_t *a,SIZE_T insertion_index,void *item)
 {
 	SIZE_T new_count;
@@ -179,7 +190,8 @@ void array_insert(array_t *a,SIZE_T insertion_index,void *item)
 	a->count++;
 }
 
-// caller should free returned item.
+// returns a pointer to the item if found and removes it from the array.
+// caller should free the returned item.
 void *array_remove(array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data)
 {
 	SIZE_T blo;

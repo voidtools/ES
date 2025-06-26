@@ -67,6 +67,10 @@ void *os_zero_memory(void *dst,SIZE_T size)
 	return d + size;
 }
 
+// replaces the old file with a new file.
+// the operation should be atomic.
+// However, this is no longer true as the NTFS rename can get flushed to disk before the actual data.
+// for ES.ini this will have to do.
 int os_replace_file(const wchar_t *old_name,const wchar_t *new_name)
 {
 	BOOL ret;
@@ -107,6 +111,8 @@ int os_replace_file(const wchar_t *old_name,const wchar_t *new_name)
 	return ret;
 }
 
+// create a new empty file.
+// returns INVALID_HANDLE_VALUE if unable to create the new file.
 HANDLE os_create_file(const wchar_t *filename)
 {
 	HANDLE file_handle;
@@ -121,6 +127,8 @@ HANDLE os_create_file(const wchar_t *filename)
 	return file_handle;
 }
 
+// open an existing file.
+// returns INVALID_HANDLE_VALUE if not found.
 HANDLE os_open_file(const wchar_t *filename)
 {
 	HANDLE file_handle;
@@ -135,7 +143,8 @@ HANDLE os_open_file(const wchar_t *filename)
 	return file_handle;
 }
 
-void os_write_file_utf8_string_n(HANDLE file_handle,const ES_UTF8 *s,SIZE_T slength_in_bytes)
+// write out a UTF-8 string with the specified length to a file.
+BOOL os_write_file_utf8_string_n(HANDLE file_handle,const ES_UTF8 *s,SIZE_T slength_in_bytes)
 {
 	DWORD num_written;
 	const ES_UTF8 *p;
@@ -159,25 +168,30 @@ void os_write_file_utf8_string_n(HANDLE file_handle,const ES_UTF8 *s,SIZE_T slen
 		
 		if (!WriteFile(file_handle,s,write_size,&num_written,NULL))
 		{
-			break;
+			return FALSE;
 		}
 		
 		if (num_written != write_size)
 		{
-			break;
+			return FALSE;
 		}
 		
 		p += write_size;
 		run -= write_size;
 	}
+	
+	return TRUE;
 }
 
-void os_write_file_utf8_string(HANDLE file_handle,const ES_UTF8 *s)
+// write out a UTF-8 string to a file.
+BOOL os_write_file_utf8_string(HANDLE file_handle,const ES_UTF8 *s)
 {
-	os_write_file_utf8_string_n(file_handle,s,utf8_string_get_length_in_bytes(s));
+	return os_write_file_utf8_string_n(file_handle,s,utf8_string_get_length_in_bytes(s));
 }
 
-BOOL os_get_module_file_name(HMODULE hmod,wchar_buf_t *wcbuf)
+// get the module filename, eg: "C:\\Windows\\System32\\ES.exe"
+// stores the filename in out_wcbuf.
+BOOL os_get_module_file_name(HMODULE hmod,wchar_buf_t *out_wcbuf)
 {
 	for(;;)
 	{
@@ -185,24 +199,24 @@ BOOL os_get_module_file_name(HMODULE hmod,wchar_buf_t *wcbuf)
 		DWORD gmfn_ret;
 		SIZE_T new_size_in_wchars;
 		
-		if (wcbuf->size_in_wchars <= ES_DWORD_MAX)
+		if (out_wcbuf->size_in_wchars <= ES_DWORD_MAX)
 		{
-			size_in_wchars = (DWORD)wcbuf->size_in_wchars;
+			size_in_wchars = (DWORD)out_wcbuf->size_in_wchars;
 		}
 		else
 		{
 			size_in_wchars = ES_DWORD_MAX;
 		}
 		
-		gmfn_ret = GetModuleFileName(hmod,wcbuf->buf,size_in_wchars);
+		gmfn_ret = GetModuleFileName(hmod,out_wcbuf->buf,size_in_wchars);
 		if (!gmfn_ret)
 		{
 			break;
 		}
 		
-		if (gmfn_ret < wcbuf->size_in_wchars)
+		if (gmfn_ret < size_in_wchars)
 		{
-			wcbuf->length_in_wchars = gmfn_ret;
+			out_wcbuf->length_in_wchars = gmfn_ret;
 			
 			return TRUE;
 		}
@@ -213,18 +227,21 @@ BOOL os_get_module_file_name(HMODULE hmod,wchar_buf_t *wcbuf)
 			break;
 		}
 		
-		new_size_in_wchars = safe_size_mul_2(wcbuf->size_in_wchars);
+		new_size_in_wchars = safe_size_mul_2(out_wcbuf->size_in_wchars);
 		if (new_size_in_wchars < WCHAR_BUF_CAT_MIN_ALLOC_SIZE)
 		{
 			new_size_in_wchars = WCHAR_BUF_CAT_MIN_ALLOC_SIZE;
 		}
 		
-		wchar_buf_grow_size(wcbuf,new_size_in_wchars);
+		wchar_buf_grow_size(out_wcbuf,new_size_in_wchars);
 	}
 	
 	return FALSE;
 }
 
+// get the full path from the specified path
+// expands relative paths to an absolute path.
+// TODO: expand environment variables.
 void os_get_full_path_name(const wchar_t *relative_path,wchar_buf_t *wcbuf)
 {
 	wchar_t *namepart;
@@ -251,7 +268,7 @@ void os_get_full_path_name(const wchar_t *relative_path,wchar_buf_t *wcbuf)
 			break;
 		}
 		
-		if (len < wcbuf->size_in_wchars)
+		if (len < size)
 		{
 			wcbuf->length_in_wchars = len;
 			
@@ -278,7 +295,7 @@ void os_get_full_path_name(const wchar_t *relative_path,wchar_buf_t *wcbuf)
 }
 
 // merge left and right sorted arrays into one.
-static void _os_sort_merge(void **dst,void **left,SIZE_T left_count,void **right,SIZE_T right_count,int (*comp)(const void *,const void *))
+static void _os_sort_merge(void **dst,void **left,SIZE_T left_count,void **right,SIZE_T right_count,int (*comp_proc)(const void *,const void *))
 {
 	void **d;
 	void **l;
@@ -295,7 +312,7 @@ static void _os_sort_merge(void **dst,void **left,SIZE_T left_count,void **right
 	for(;;)
 	{
 		// find lowest
-		if (comp(*l,*r) <= 0)
+		if (comp_proc(*l,*r) <= 0)
 		{
 			*d++ = *l;
 			lrun--;
@@ -327,7 +344,7 @@ static void _os_sort_merge(void **dst,void **left,SIZE_T left_count,void **right
 }
 
 // split array into two, sort and merge.
-static void _os_sort_split(void **dst,void **src,SIZE_T count,int (*comp)(const void *,const void *))
+static void _os_sort_split(void **dst,void **src,SIZE_T count,int (*comp_proc)(const void *,const void *))
 {
 	SIZE_T mid;
 	
@@ -343,13 +360,14 @@ static void _os_sort_split(void **dst,void **src,SIZE_T count,int (*comp)(const 
 	
 	// dst contains a copy of the array 
 	// and it doesn't matter what order it is in.
-	_os_sort_split(src,dst,mid,comp);
-	_os_sort_split(src+mid,dst+mid,count - mid,comp);
+	_os_sort_split(src,dst,mid,comp_proc);
+	_os_sort_split(src+mid,dst+mid,count - mid,comp_proc);
 
-	_os_sort_merge(dst,src,mid,src+mid,count - mid,comp);	
+	_os_sort_merge(dst,src,mid,src+mid,count - mid,comp_proc);	
 }
 
-void os_sort(void **base,SIZE_T count,int (*comp)(const void *,const void *))
+// sort indexes using merge sort.
+void os_sort(void **indexes,SIZE_T count,int (*comp_proc)(const void *,const void *))
 {
 	if (count < 2)
 	{
@@ -363,15 +381,15 @@ void os_sort(void **base,SIZE_T count,int (*comp)(const void *,const void *))
 		temp_size = safe_size_mul_sizeof_pointer(count);
 		temp = mem_alloc(temp_size);
 
-		os_copy_memory(temp,base,temp_size);
+		os_copy_memory(temp,indexes,temp_size);
 
-		_os_sort_split(base,temp,count,comp);
+		_os_sort_split(indexes,temp,count,comp_proc);
 			
 		mem_free(temp);
 	}
 }
 
-
+// get a known folder path.
 BOOL os_get_special_folder_path(int nFolder,wchar_buf_t *out_wcbuf)
 {
 	ITEMIDLIST *pidl;
@@ -397,9 +415,10 @@ BOOL os_get_special_folder_path(int nFolder,wchar_buf_t *out_wcbuf)
 	return ret;
 }
 
-BOOL os_get_appdata_path(wchar_buf_t *wcbuf)
+// get the appdata path and store the path in out_wcbuf.
+BOOL os_get_appdata_path(wchar_buf_t *out_wcbuf)
 {
-	return os_get_special_folder_path(CSIDL_APPDATA,wcbuf);
+	return os_get_special_folder_path(CSIDL_APPDATA,out_wcbuf);
 }
 
 // makes sure the path to filename exists.
@@ -460,6 +479,7 @@ void os_make_sure_path_to_file_exists(const wchar_t *filename)
 	wchar_buf_kill(&path_wcbuf);
 }
 
+// print an error message to the console.
 void os_error_vprintf(const ES_UTF8 *format,va_list argptr)
 {
 	utf8_buf_t cbuf;
@@ -512,6 +532,7 @@ void os_error_vprintf(const ES_UTF8 *format,va_list argptr)
 	utf8_buf_kill(&cbuf);
 }
 
+// print an error message to the console.
 void os_error_printf(const ES_UTF8 *format,...)
 {
 	va_list argptr;

@@ -29,39 +29,69 @@
 
 // pools must be set in main()
 pool_t *secondary_sort_pool = NULL; // pool of secondary_sort_t
+array_t *secondary_sort_array = NULL; // array of secondary_sort_t sorted by property id.
 secondary_sort_t *secondary_sort_start = NULL;
 secondary_sort_t *secondary_sort_last = NULL;
-SIZE_T secondary_sort_count = 0;
 
-void secondary_sort_add(DWORD property_id,int ascending)
+// compare two secondary sorts by property ID.
+int secondary_sort_compare(const secondary_sort_t *a,const void *property_id)
 {
-	secondary_sort_t *sort;
-
-	sort = pool_alloc(secondary_sort_pool,sizeof(secondary_sort_t));
-		
-	sort->property_id = property_id;
-	sort->ascending = ascending;
-
-	if (secondary_sort_start)
+	if (a->property_id < (DWORD)(uintptr_t)property_id)
 	{
-		secondary_sort_last->next = sort;
+		return -1;
 	}
-	else
+
+	if (a->property_id > (DWORD)(uintptr_t)property_id)
 	{
-		secondary_sort_start = sort;
+		return 1;
 	}
 	
-	secondary_sort_last = sort;
-	sort->next = NULL;
-	secondary_sort_count++;
+	return 0;
+}
+
+// add a secondarry sort
+// does nothing if the secondary sort already exists.
+// returns the new secondary sort or the existing secondary sort.
+secondary_sort_t *secondary_sort_add(DWORD property_id,int ascending)
+{
+	secondary_sort_t *sort;
+	SIZE_T insert_index;
+	
+	sort = array_find_or_get_insertion_index(secondary_sort_array,secondary_sort_compare,(const void *)(uintptr_t)property_id,&insert_index);
+	if (!sort)
+	{
+		// alloc
+		sort = pool_alloc(secondary_sort_pool,sizeof(secondary_sort_t));
+			
+		// init
+		sort->property_id = property_id;
+		sort->ascending = ascending;
+		
+		// insert
+		array_insert(secondary_sort_array,insert_index,sort);
+
+		if (secondary_sort_start)
+		{
+			secondary_sort_last->next = sort;
+		}
+		else
+		{
+			secondary_sort_start = sort;
+		}
+		
+		secondary_sort_last = sort;
+		sort->next = NULL;
+	}
+	
+	return sort;
 }
 
 void secondary_sort_clear_all(void)
 {
+	array_empty(secondary_sort_array);
 	pool_empty(secondary_sort_pool);
 
 	secondary_sort_start = NULL;
 	secondary_sort_last = NULL;
-	secondary_sort_count = 0;
 }
 

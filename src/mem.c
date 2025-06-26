@@ -27,6 +27,15 @@
 
 #include "es.h"
 
+// allocate some memory.
+// throws a fatal error if there is not enough memory available.
+// size should be <= 65536.
+// use a try alloc for larger sizes.
+// returns a pointer to the newly allocated memory.
+// memory will be garbage and will need initializing.
+// call mem_free to return the memory to the system.
+// SIZE_MAX is not a valid size and will throw an error.
+// use safe_size_* functions to perform safe size arithmetic.
 void *mem_alloc(SIZE_T size)
 {
 	void *p;
@@ -45,6 +54,8 @@ void *mem_alloc(SIZE_T size)
 	return p;
 }
 
+// return allocated memory to the system.
+// ptr must be a return value from mem_alloc.
 void mem_free(void *ptr)
 {
 	HeapFree(GetProcessHeap(),0,ptr);

@@ -24,13 +24,15 @@
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 // column widths
+// we can set column widths for columns that are not shown. -useful for loading widths from the es.ini
 
 #include "es.h"
 
 // these must be set in main()
 pool_t *column_width_pool = NULL; // pool of column_width_t
-array_t *column_width_array = NULL; // array of column_width_t
+array_t *column_width_array = NULL; // array of column_width_t sorted by property ID.
 
+// compare two column widths by property ID.
 int column_width_compare(const column_width_t *a,const void *property_id)
 {
 	if (a->property_id < (DWORD)(uintptr_t)property_id)
@@ -46,6 +48,8 @@ int column_width_compare(const column_width_t *a,const void *property_id)
 	return 0;
 }
 
+// set a column width
+// adds a new column widths or replaces the existing column width.
 void column_width_set(DWORD property_id,int width)
 {
 	column_width_t *column_width;
@@ -81,16 +85,24 @@ void column_width_set(DWORD property_id,int width)
 	}
 }
 
+// remove an column width (if it exists)
+// returns a pointer to the removed column width.
+// returns NULL if not found.
 column_width_t *column_width_find(DWORD property_id)
 {
 	return array_find(column_width_array,column_width_compare,(const void *)(uintptr_t)property_id);
 }
 
+// returns a pointer to the found column width.
+// returns NULL if not found.
 column_width_t *column_width_remove(DWORD property_id)
 {
 	return array_remove(column_width_array,column_width_compare,(const void *)(uintptr_t)property_id);
 }
 
+// get the width of a column.
+// returns any defined width.
+// if no width is defined, returns the default width.
 int column_width_get(DWORD property_id)
 {
 	column_width_t *column_width;
@@ -102,9 +114,10 @@ int column_width_get(DWORD property_id)
 		return column_width->width;
 	}
 	
-	return property_format_to_column_width[property_get_format(property_id)];
+	return proerty_get_default_width(property_id);
 }
 
+// reset column widths.
 void column_width_clear_all(void)
 {
 	array_empty(column_width_array);

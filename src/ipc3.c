@@ -27,7 +27,9 @@
 
 #include "es.h"
 
-
+// write some data to a pipe handle.
+// returns TRUE if all data is written to the pipe.
+// Otherwise, returns FALSE.
 BOOL ipc3_write_pipe_data(HANDLE pipe_handle,const void *in_data,SIZE_T in_size)
 {
 	const BYTE *p;
@@ -201,7 +203,7 @@ void ipc3_stream_read_data(ipc3_stream_t *stream,void *data,SIZE_T size)
 	}
 }
 
-// Read some data from the IPC Pipe.
+// skip over some data in the pipe stream.
 void ipc3_stream_skip(ipc3_stream_t *stream,SIZE_T size)
 {
 	BYTE buf[256];
@@ -225,6 +227,7 @@ void ipc3_stream_skip(ipc3_stream_t *stream,SIZE_T size)
 	}
 }
 
+// read a BYTE value from the pipe stream.
 BYTE ipc3_stream_read_byte(ipc3_stream_t *stream)
 {
 	BYTE value;
@@ -234,6 +237,7 @@ BYTE ipc3_stream_read_byte(ipc3_stream_t *stream)
 	return value;
 }
 
+// read a WORD value from the pipe stream.
 WORD ipc3_stream_read_word(ipc3_stream_t *stream)
 {
 	WORD value;
@@ -243,6 +247,7 @@ WORD ipc3_stream_read_word(ipc3_stream_t *stream)
 	return value;
 }
 
+// read a DWORD value from the pipe stream.
 DWORD ipc3_stream_read_dword(ipc3_stream_t *stream)
 {
 	DWORD value;
@@ -252,6 +257,7 @@ DWORD ipc3_stream_read_dword(ipc3_stream_t *stream)
 	return value;
 }
 
+// read a UINT64 value from the pipe stream.
 ES_UINT64 ipc3_stream_read_uint64(ipc3_stream_t *stream)
 {
 	ES_UINT64 value;
@@ -423,6 +429,7 @@ BOOL ipc3_read_pipe(HANDLE pipe_handle,void *buf,SIZE_T buf_size)
 	return TRUE;
 }
 
+// skip some data from the pipe.
 BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size)
 {
 	BYTE buf[256];
@@ -467,7 +474,16 @@ HANDLE ipc3_connect_pipe(void)
 	return pipe_handle;
 }
 
-BOOL ipc3_pipe_ioctrl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread)
+// perform an IOCTL on the Everything IPC3 pipe.
+// command is one of the IPC3_COMMAND_* commands.
+// input and output will depend on the command.
+// see the command documentation for input and output specification.
+//
+// writes the input to the pipe and waits for a reply.
+// stores the reply in the output buffer.
+// returns TRUE if successful.
+// Otherwise, returns FALSE on failure.
+BOOL ipc3_pipe_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread)
 {
 	if (ipc3_write_pipe_message(pipe_handle,command,in_buf,in_size))
 	{
@@ -542,15 +558,16 @@ BOOL ipc3_pipe_ioctrl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T i
 	return FALSE;
 }
 
+// get the instance name and store it in wcbuf.
 // instance_name must be non-NULL.
-void ipc3_get_pipe_name(wchar_buf_t *wcbuf)
+void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf)
 {
-	wchar_buf_copy_utf8_string(wcbuf,"\\\\.\\PIPE\\Everything IPC");
+	wchar_buf_copy_utf8_string(out_wcbuf,"\\\\.\\PIPE\\Everything IPC");
 
 	if (es_instance_name_wcbuf->length_in_wchars)
 	{
-		wchar_buf_cat_utf8_string(wcbuf," (");
-		wchar_buf_cat_wchar_string_n(wcbuf,es_instance_name_wcbuf->buf,es_instance_name_wcbuf->length_in_wchars);
-		wchar_buf_cat_utf8_string(wcbuf,")");
+		wchar_buf_cat_utf8_string(out_wcbuf," (");
+		wchar_buf_cat_wchar_string_n(out_wcbuf,es_instance_name_wcbuf->buf,es_instance_name_wcbuf->length_in_wchars);
+		wchar_buf_cat_utf8_string(out_wcbuf,")");
 	}
 }
