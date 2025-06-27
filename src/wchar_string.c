@@ -230,7 +230,7 @@ SIZE_T wchar_string_get_length_in_wchars_from_utf8_string(const ES_UTF8 *s)
 	return ret_len;
 }
 
-// copy a UTF-8 into a wchar buffer
+// copy a UTF-8 string into a wchar buffer
 // caller needs to ensure there is enough room in the buffer.
 // Use wchar_string_get_length_in_wchars_from_utf8_string to calculate the required length.
 wchar_t *wchar_string_copy_utf8_string(wchar_t *buf,const ES_UTF8 *s)

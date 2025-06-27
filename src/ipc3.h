@@ -156,3 +156,5 @@ BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size);
 HANDLE ipc3_connect_pipe(void);
 BOOL ipc3_pipe_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread);
 void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf);
+void ipc3_stream_init(ipc3_stream_t *stream,HANDLE pipe_handle);
+void ipc3_stream_kill(ipc3_stream_t *stream);				

@@ -91,11 +91,15 @@ void utf8_buf_copy_wchar_string(utf8_buf_t *cbuf,const wchar_t *ws)
 }
 
 // get a formatted number.
-static ES_UTF8 *_utf8_buf_get_format_number(int base,int abase,ES_UTF8 *buf,ES_UTF8 *d,int sign,int paddingchar,SIZE_T padding,ES_UINT64 number)
+// returns the buffer location after formatting the number.
+// if buf is NULL, returns the required buffer length in bytes. (not including the NULL terminator)
+static ES_UTF8 *_utf8_buf_get_format_number(int base,int abase,ES_UTF8 *buf,ES_UTF8 *dstart,int sign,int paddingchar,SIZE_T padding,ES_UINT64 number)
 {
+	ES_UTF8 *d;
 	ES_UINT64 i;
-	int dp;
+	SIZE_T dp;
 	
+	d = dstart;
 	dp = 0;
 	
 	// get len
@@ -120,9 +124,9 @@ loop1:
 	// do padding.
 	if (paddingchar != '0')
 	{
-		if (padding > (SIZE_T)dp)
+		if (padding > dp)
 		{
-			padding -= (SIZE_T)dp;
+			padding -= dp;
 
 			if (buf)
 			{
@@ -135,10 +139,7 @@ loop1:
 			}
 			else
 			{
-				if (padding)
-				{
-					d = (void *)safe_size_add((uintptr_t)d,padding);
-				}
+				d = (void *)safe_size_add((uintptr_t)d,padding);
 			}
 		}
 	}
@@ -161,9 +162,9 @@ loop1:
 	// do padding.
 	if (paddingchar == '0')
 	{
-		if (padding > (SIZE_T)dp)
+		if (padding > dp)
 		{
-			padding -= (SIZE_T)dp;
+			padding -= dp;
 
 			if (buf)
 			{
@@ -176,10 +177,7 @@ loop1:
 			}
 			else
 			{
-				if (padding)
-				{
-					d = (void *)safe_size_add((uintptr_t)d,padding);
-				}
+				d = (void *)safe_size_add((uintptr_t)d,padding);
 			}
 		}
 	}
@@ -560,7 +558,6 @@ void utf8_buf_vprintf(utf8_buf_t *cbuf,const ES_UTF8 *format,va_list argptr)
 	
 	_utf8_buf_get_vprintf(cbuf->buf,format,argptr);
 }
-
 
 // sprintf
 void utf8_buf_printf(utf8_buf_t *cbuf,const ES_UTF8 *format,...)

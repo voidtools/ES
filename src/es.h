@@ -11,8 +11,14 @@
 #define ES_ERROR_IPC						8 // NO Everything IPC window.
 #define ES_ERROR_NO_RESULTS					9 // No results found. Only set if -no-result-error is used
 
-#define ES_DWORD_MAX		0xffffffff
 #define ES_UINT64_MAX		0xffffffffffffffffUI64
+#define ES_DWORD_MAX		0xffffffff
+#define ES_WORD_MAX			0xffff
+#define ES_BYTE_MAX			0xff
+//#define INT64_MIN	(-9223372036854775807i64 - 1)
+//#define INT64_MAX	0x7fffffffffffffffi64
+//#define INT32_MIN	(-2147483647 - 1)
+//#define INT32_MAX	2147483647
 
 #define WIN32_LEAN_AND_MEAN
 

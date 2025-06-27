@@ -571,3 +571,22 @@ void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf)
 		wchar_buf_cat_utf8_string(out_wcbuf,")");
 	}
 }
+
+void ipc3_stream_init(ipc3_stream_t *stream,HANDLE pipe_handle)
+{
+	stream->pipe_handle = pipe_handle;
+	stream->buf = NULL;
+	stream->p = NULL;
+	stream->avail = 0;
+	stream->is_error = 0;
+	stream->got_last = 0;
+	stream->is_64bit = 0;
+}
+
+void ipc3_stream_kill(ipc3_stream_t *stream)				
+{
+	if (stream->buf)
+	{
+		mem_free(stream->buf);
+	}
+}

@@ -239,38 +239,35 @@ BOOL os_get_module_file_name(HMODULE hmod,wchar_buf_t *out_wcbuf)
 	return FALSE;
 }
 
-// get the full path from the specified path
-// expands relative paths to an absolute path.
-// TODO: expand environment variables.
-void os_get_full_path_name(const wchar_t *relative_path,wchar_buf_t *wcbuf)
+// expand environment variables.
+// stores the expanded variables in out_wcbuf.
+void os_expand_environment_variables(const wchar_t *s,wchar_buf_t *out_wcbuf)
 {
-	wchar_t *namepart;
-
 	for(;;)
 	{
 		DWORD size;
 		DWORD len;
 		SIZE_T new_size_in_wchars;
 		
-		if (wcbuf->size_in_wchars <= ES_DWORD_MAX)
+		if (out_wcbuf->size_in_wchars <= ES_DWORD_MAX)
 		{
-			size = (DWORD)wcbuf->size_in_wchars;
+			size = (DWORD)out_wcbuf->size_in_wchars;
 		}
 		else
 		{
 			size = ES_DWORD_MAX;
 		}
 		
-		len = GetFullPathName(relative_path,size,wcbuf->buf,&namepart);
+		len = ExpandEnvironmentStrings(s,out_wcbuf->buf,size);
 		
 		if (!len)
 		{
 			break;
 		}
 		
-		if (len < size)
+		if (len <= size)
 		{
-			wcbuf->length_in_wchars = len;
+			out_wcbuf->length_in_wchars = len - 1;
 			
 			return;
 		}
@@ -281,17 +278,86 @@ void os_get_full_path_name(const wchar_t *relative_path,wchar_buf_t *wcbuf)
 			break;
 		}
 			
-		new_size_in_wchars = safe_size_mul_2(wcbuf->size_in_wchars);
+		new_size_in_wchars = safe_size_mul_2(out_wcbuf->size_in_wchars);
 		if (new_size_in_wchars < WCHAR_BUF_CAT_MIN_ALLOC_SIZE)
 		{
 			new_size_in_wchars = WCHAR_BUF_CAT_MIN_ALLOC_SIZE;
 		}
 		
-		wchar_buf_grow_size(wcbuf,new_size_in_wchars);
+		wchar_buf_grow_size(out_wcbuf,new_size_in_wchars);
 	}
 	
 	// just use relative path..
-	wchar_buf_copy_wchar_string(wcbuf,relative_path);
+	wchar_buf_copy_wchar_string(out_wcbuf,s);
+}
+
+// get the full path from the specified path
+// expands relative paths to an absolute path.
+void os_get_full_path_name(const wchar_t *relative_path,wchar_buf_t *out_wcbuf)
+{
+	for(;;)
+	{
+		DWORD size;
+		DWORD len;
+		SIZE_T new_size_in_wchars;
+		wchar_t *namepart;
+		
+		if (out_wcbuf->size_in_wchars <= ES_DWORD_MAX)
+		{
+			size = (DWORD)out_wcbuf->size_in_wchars;
+		}
+		else
+		{
+			size = ES_DWORD_MAX;
+		}
+		
+		len = GetFullPathName(relative_path,size,out_wcbuf->buf,&namepart);
+		
+		if (!len)
+		{
+			break;
+		}
+		
+		if (len < size)
+		{
+			out_wcbuf->length_in_wchars = len;
+			
+			return;
+		}
+		
+		// already have the max size.
+		if (size == ES_DWORD_MAX)
+		{
+			break;
+		}
+			
+		new_size_in_wchars = safe_size_mul_2(out_wcbuf->size_in_wchars);
+		if (new_size_in_wchars < WCHAR_BUF_CAT_MIN_ALLOC_SIZE)
+		{
+			new_size_in_wchars = WCHAR_BUF_CAT_MIN_ALLOC_SIZE;
+		}
+		
+		wchar_buf_grow_size(out_wcbuf,new_size_in_wchars);
+	}
+	
+	// just use relative path..
+	wchar_buf_copy_wchar_string(out_wcbuf,relative_path);
+}
+
+// get the expanded full path from the specified path
+// expands relative paths to an absolute path.
+// expands environment variables.
+void os_get_expanded_full_path_name(const wchar_t *relative_path,wchar_buf_t *out_wcbuf)
+{
+	wchar_buf_t expanded_wcbuf;
+
+	wchar_buf_init(&expanded_wcbuf);
+
+	os_expand_environment_variables(relative_path,&expanded_wcbuf);
+	
+	os_get_full_path_name(expanded_wcbuf.buf,out_wcbuf);
+	
+	wchar_buf_kill(&expanded_wcbuf);
 }
 
 // merge left and right sorted arrays into one.
