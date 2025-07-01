@@ -1,6 +1,4 @@
 
-#define COLUMN_FLAG_HIGHLIGHT	0x00000001
-
 typedef struct column_s
 {
 	// order list.
@@ -9,9 +7,6 @@ typedef struct column_s
 	
 	// EVERYTHING3_PROPERTY_ID_*
 	DWORD property_id;
-	
-	// zero or more COLUMN_FLAG_*
-	DWORD flags;
 	
 }column_t;
 

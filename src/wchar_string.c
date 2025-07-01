@@ -145,6 +145,79 @@ int wchar_string_to_int(const wchar_t *s)
 	return value;
 }
 
+// convert a wchar string to a int.
+ES_UINT64 wchar_string_to_uint64(const wchar_t *s)
+{
+	const wchar_t *p;
+	ES_UINT64 value;
+	
+	p = s;
+	value = 0;
+	
+	if ((*p == '0') && ((p[1] == 'x') || (p[1] == 'X')))
+	{
+		p += 2;
+		
+		while(*p)
+		{
+			if ((*p >= '0') && (*p <= '9'))
+			{
+				value *= 16;
+				value += *p - '0';
+			}
+			else
+			if ((*p >= 'A') && (*p <= 'F'))
+			{
+				value *= 16;
+				value += *p - 'A' + 10;
+			}
+			else
+			if ((*p >= 'a') && (*p <= 'f'))
+			{
+				value *= 16;
+				value += *p - 'a' + 10;
+			}
+			else
+			{
+				break;
+			}
+			
+			p++;
+		}
+	}
+	else
+	{
+		int sign;
+		
+		sign = 1;
+		
+		if (*p == '-')
+		{
+			sign = -1;
+			p++;
+		}
+	
+		while(*p)
+		{
+			if (!((*p >= '0') && (*p <= '9')))
+			{
+				break;
+			}
+			
+			value *= 10;
+			value += *p - '0';
+			p++;
+		}
+		
+		if (sign < 0)
+		{
+			value = (ES_UINT64)-(__int64)value;
+		}
+	}
+	
+	return value;
+}
+
 // convert a wchar string to a dword.
 DWORD wchar_string_to_dword(const wchar_t *s)
 {

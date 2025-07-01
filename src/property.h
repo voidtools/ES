@@ -33,9 +33,10 @@ enum
 	PROPERTY_FORMAT_DATA128, // data
 	PROPERTY_FORMAT_DATA256, // data
 	PROPERTY_FORMAT_DATA512, // data
-	PROPERTY_FORMAT_YESNO, // 3 characters
 	PROPERTY_FORMAT_COUNT,
 };
+
+#define PROPERTY_FORMAT_YESNO	PROPERTY_FORMAT_NUMBER1
 
 // property name (or alias)
 // and proeprty ID

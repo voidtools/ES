@@ -123,12 +123,16 @@ typedef struct ipc3_message_s
 typedef struct ipc3_stream_s
 {
 	HANDLE pipe_handle;
+
+	// NULL if not yet allocated
 	BYTE *buf;
 	BYTE *p;
 	SIZE_T avail;
 	int is_error;
-	int got_last;
 	int is_64bit;
+	int got_last;
+	DWORD pipe_avail;
+	DWORD buf_size;
 		
 }ipc3_stream_t;
 
@@ -154,7 +158,8 @@ SIZE_T ipc3_stream_read_len_vlq(ipc3_stream_t *stream);
 BOOL ipc3_read_pipe(HANDLE pipe_handle,void *buf,SIZE_T buf_size);
 BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size);
 HANDLE ipc3_connect_pipe(void);
-BOOL ipc3_pipe_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread);
+BOOL ipc3_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread);
 void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf);
 void ipc3_stream_init(ipc3_stream_t *stream,HANDLE pipe_handle);
 void ipc3_stream_kill(ipc3_stream_t *stream);				
+BOOL ipc3_is_property_indexed(HANDLE pipe_handle,DWORD property_id);

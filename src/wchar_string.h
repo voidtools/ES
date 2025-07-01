@@ -15,6 +15,7 @@ else \
 } 
 
 int wchar_string_to_int(const wchar_t *s);
+ES_UINT64 wchar_string_to_uint64(const wchar_t *s);
 DWORD wchar_string_to_dword(const wchar_t *s);
 SIZE_T wchar_string_get_length_in_wchars(const wchar_t *s);
 SIZE_T wchar_string_get_highlighted_length(const wchar_t *s);

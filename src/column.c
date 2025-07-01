@@ -136,7 +136,6 @@ column_t *column_add(DWORD property_id)
 		column = pool_alloc(column_pool,sizeof(column_t));
 		
 		column->property_id = property_id;
-		column->flags = 0;
 		
 		array_insert(column_array,insert_index,column);
 	}

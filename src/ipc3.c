@@ -27,6 +27,8 @@
 
 #include "es.h"
 
+#define _IPC3_STREAM_MAX_BUF_SIZE	65536
+
 // write some data to a pipe handle.
 // returns TRUE if all data is written to the pipe.
 // Otherwise, returns FALSE.
@@ -104,6 +106,13 @@ void ipc3_stream_read_data(ipc3_stream_t *stream,void *data,SIZE_T size)
 	BYTE *d;
 	SIZE_T run;
 	
+	if (stream->is_error)
+	{
+		os_zero_memory(data,size);
+		
+		return;
+	}
+	
 	d = (BYTE *)data;
 	run = size;
 	
@@ -113,75 +122,108 @@ void ipc3_stream_read_data(ipc3_stream_t *stream,void *data,SIZE_T size)
 		
 		if (!stream->avail)
 		{
-			ipc3_message_t recv_header;
-			
-			if (stream->got_last)
+			for(;;)
 			{
-				// read passed EOF
-				os_zero_memory(d,run);
-				
-				stream->is_error = 1;
-			
-				return;
-			}
-			
-			if (!ipc3_read_pipe(stream->pipe_handle,&recv_header,sizeof(ipc3_message_t)))
-			{
-				// read header failed.
-				os_zero_memory(d,run);
-				
-				stream->is_error = 1;
-			
-				return;
-			}
-
-			// last chunk?
-			if (recv_header.code == IPC3_RESPONSE_OK_MORE_DATA)
-			{
-			}
-			else
-			if (recv_header.code == IPC3_RESPONSE_OK)
-			{
-				stream->got_last = 1;
-			}
-			else
-			{
-				os_zero_memory(d,run);
-				
-				stream->is_error = 1;
-				
-				return;
-			}
-			
-			if (recv_header.size)			
-			{
-//TODO: dont reallocate.
-				if (stream->buf)
+				// is there some data to read from the pipe?
+				if (stream->pipe_avail)
 				{
-					mem_free(stream->buf);
-				}
-			
-				stream->buf = mem_alloc(recv_header.size);
-				if (!stream->buf)
-				{
-					os_zero_memory(d,run);
+					DWORD read_size;
 					
-					stream->is_error = 1;
-					
-					break;
-				}
+					// fill the buffer with data from the pipe.
+					if (!stream->buf)
+					{
+						DWORD alloc_size;
 						
-				if (!ipc3_read_pipe(stream->pipe_handle,stream->buf,recv_header.size))
-				{
-					os_zero_memory(d,run);
-					
-					stream->is_error = 1;
+						alloc_size = _IPC3_STREAM_MAX_BUF_SIZE;
+						
+						if (stream->got_last)
+						{
+							// don't allocate more than we need.
+							if (alloc_size > stream->pipe_avail)
+							{
+								alloc_size = stream->pipe_avail;
+							}
+						}
+						
+						stream->buf_size = alloc_size;
+						stream->buf = mem_try_alloc(alloc_size);
+						if (!stream->buf)
+						{
+							os_zero_memory(d,run);
+							
+							stream->is_error = 1;
 
+							return;
+						}
+					}
+					
+					read_size = stream->pipe_avail;
+					if (read_size > stream->buf_size)
+					{
+						read_size = stream->buf_size;
+					}
+							
+					if (!ipc3_read_pipe(stream->pipe_handle,stream->buf,read_size))
+					{
+						os_zero_memory(d,run);
+						
+						stream->is_error = 1;
+
+						return;
+					}
+					
+					stream->pipe_avail -= read_size;
+					
+					stream->p = stream->buf;
+					stream->avail = read_size;
+					
 					break;
 				}
-				
-				stream->p = stream->buf;
-				stream->avail = recv_header.size;
+				else
+				{
+					ipc3_message_t recv_header;
+					
+					if (stream->got_last)
+					{
+						// there is no more headers.
+						os_zero_memory(d,run);
+						
+						stream->is_error = 1;
+					
+						return;
+					}
+					
+					// read the header.
+					if (!ipc3_read_pipe(stream->pipe_handle,&recv_header,sizeof(ipc3_message_t)))
+					{
+						// read header failed.
+						os_zero_memory(d,run);
+						
+						stream->is_error = 1;
+					
+						return;
+					}
+					
+					if (recv_header.code == IPC3_RESPONSE_OK_MORE_DATA)
+					{
+						// expect more headers and data..
+					}
+					else
+					if (recv_header.code == IPC3_RESPONSE_OK)
+					{
+						stream->got_last = 1;
+					}
+					else
+					{
+						os_zero_memory(d,run);
+						
+						stream->is_error = 1;
+						
+						return;
+					}
+					
+					stream->pipe_avail = recv_header.size;
+				}
 			}
 		}
 		
@@ -483,7 +525,7 @@ HANDLE ipc3_connect_pipe(void)
 // stores the reply in the output buffer.
 // returns TRUE if successful.
 // Otherwise, returns FALSE on failure.
-BOOL ipc3_pipe_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread)
+BOOL ipc3_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread)
 {
 	if (ipc3_write_pipe_message(pipe_handle,command,in_buf,in_size))
 	{
@@ -579,8 +621,10 @@ void ipc3_stream_init(ipc3_stream_t *stream,HANDLE pipe_handle)
 	stream->p = NULL;
 	stream->avail = 0;
 	stream->is_error = 0;
-	stream->got_last = 0;
 	stream->is_64bit = 0;
+	stream->got_last = 0;
+	stream->pipe_avail = 0;
+	stream->buf_size = 0;
 }
 
 void ipc3_stream_kill(ipc3_stream_t *stream)				
@@ -589,4 +633,23 @@ void ipc3_stream_kill(ipc3_stream_t *stream)
 	{
 		mem_free(stream->buf);
 	}
+}
+
+BOOL ipc3_is_property_indexed(HANDLE pipe_handle,DWORD property_id)
+{
+	DWORD value;
+	SIZE_T numread;
+	
+	if (ipc3_ioctl(pipe_handle,IPC3_COMMAND_IS_PROPERTY_INDEXED,&property_id,sizeof(DWORD),&value,sizeof(DWORD),&numread))
+	{
+		if (numread == sizeof(DWORD))
+		{
+			if (value)
+			{
+				return TRUE;
+			}
+		}
+	}
+	
+	return FALSE;
 }

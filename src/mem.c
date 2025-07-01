@@ -54,6 +54,18 @@ void *mem_alloc(SIZE_T size)
 	return p;
 }
 
+// same as mem_alloc, except can return NULL if there is not enought memory available.
+void *mem_try_alloc(SIZE_T size)
+{
+	// SIZE_MAX is invalid.
+	if (size == SIZE_MAX)
+	{
+		return NULL;
+	}
+
+	return HeapAlloc(GetProcessHeap(),0,size);
+}
+
 // return allocated memory to the system.
 // ptr must be a return value from mem_alloc.
 void mem_free(void *ptr)

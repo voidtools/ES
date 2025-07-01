@@ -62,19 +62,23 @@ void debug_error_printf(const ES_UTF8 *format,...)
 	va_end(argptr);
 }
 
+#endif
+
 // show a message and terminate the program.
-void DECLSPEC_NORETURN debug_fatal2(const ES_UTF8 *format,...)
+void DECLSPEC_NORETURN debug_fatal2(const ES_UTF8 *filename,int line,const ES_UTF8 *format,...)
 {
 	va_list argptr;
+	utf8_buf_t msg_cbuf;
 
 	va_start(argptr,format);
+	utf8_buf_init(&msg_cbuf);
 
-	os_error_vprintf(format,argptr);
+	utf8_buf_vprintf(&msg_cbuf,format,argptr);
+
+	os_error_printf("FATAL ERROR %s(%d): %s",filename,line,msg_cbuf.buf);
 	
 	ExitProcess(0);
 
+	utf8_buf_kill(&msg_cbuf);
 	va_end(argptr);
 }
-
-#endif
-

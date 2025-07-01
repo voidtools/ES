@@ -125,6 +125,20 @@ void config_write_dword(HANDLE file_handle,const ES_UTF8 *name,DWORD value)
 	utf8_buf_kill(&cbuf);
 }
 
+// write out a key=dword-value pair to the opened es.ini
+void config_write_uint64(HANDLE file_handle,const ES_UTF8 *name,ES_UINT64 value)
+{
+	utf8_buf_t cbuf;
+	
+	utf8_buf_init(&cbuf);
+	
+	utf8_buf_printf(&cbuf,"%s=%I64u\r\n",name,value);
+	
+	os_write_file_utf8_string_n(file_handle,cbuf.buf,cbuf.length_in_bytes);
+
+	utf8_buf_kill(&cbuf);
+}
+
 // write out a key=string-value pair to the opened es.ini
 void config_write_string(HANDLE file_handle,const ES_UTF8 *name,const wchar_t *value)
 {
@@ -213,6 +227,36 @@ DWORD config_read_dword(config_ini_t *ini,const ES_UTF8 *name,DWORD default_valu
 			wchar_buf_copy_utf8_string(&wcbuf,keyvalue->value);
 		
 			ret = wchar_string_to_dword(wcbuf.buf);
+		
+			wchar_buf_kill(&wcbuf);
+		}
+	}
+
+	return ret;
+}
+
+// read an uint64-value with the specified name.
+// returns the uint64-value if found.
+// Otherwise, returns default_value
+ES_UINT64 config_read_uint64(config_ini_t *ini,const ES_UTF8 *name,ES_UINT64 default_value)
+{
+	ES_UINT64 ret;
+	_config_keyvalue_t *keyvalue;
+	
+	ret = default_value;
+	keyvalue = _config_keyvalue_find(ini,name);
+	
+	if (keyvalue)
+	{
+		if (*keyvalue->value)
+		{
+			wchar_buf_t wcbuf;
+
+			wchar_buf_init(&wcbuf);
+		
+			wchar_buf_copy_utf8_string(&wcbuf,keyvalue->value);
+		
+			ret = wchar_string_to_uint64(wcbuf.buf);
 		
 			wchar_buf_kill(&wcbuf);
 		}
