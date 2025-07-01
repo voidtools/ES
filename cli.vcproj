@@ -406,11 +406,43 @@
 				>
 			</File>
 			<File
+				RelativePath=".\src\column.c"
+				>
+			</File>
+			<File
+				RelativePath=".\src\column.h"
+				>
+			</File>
+			<File
+				RelativePath=".\src\column_color.c"
+				>
+			</File>
+			<File
+				RelativePath=".\src\column_color.h"
+				>
+			</File>
+			<File
+				RelativePath=".\src\column_width.c"
+				>
+			</File>
+			<File
+				RelativePath=".\src\column_width.h"
+				>
+			</File>
+			<File
 				RelativePath=".\src\config.c"
 				>
 			</File>
 			<File
 				RelativePath=".\src\config.h"
+				>
+			</File>
+			<File
+				RelativePath=".\src\debug.c"
+				>
+			</File>
+			<File
+				RelativePath=".\src\debug.h"
 				>
 			</File>
 			<File
@@ -427,6 +459,14 @@
 			</File>
 			<File
 				RelativePath=".\src\everything_ipc.h"
+				>
+			</File>
+			<File
+				RelativePath=".\src\ipc3.c"
+				>
+			</File>
+			<File
+				RelativePath=".\src\ipc3.h"
 				>
 			</File>
 			<File
@@ -454,6 +494,22 @@
 				>
 			</File>
 			<File
+				RelativePath=".\src\property.c"
+				>
+			</File>
+			<File
+				RelativePath=".\src\property.h"
+				>
+			</File>
+			<File
+				RelativePath=".\src\property_name_to_id_macro.h"
+				>
+			</File>
+			<File
+				RelativePath=".\src\property_old_column_macro.h"
+				>
+			</File>
+			<File
 				RelativePath=".\src\safe_int.c"
 				>
 			</File>
@@ -467,6 +523,14 @@
 			</File>
 			<File
 				RelativePath=".\src\safe_size.h"
+				>
+			</File>
+			<File
+				RelativePath=".\src\secondary_sort.c"
+				>
+			</File>
+			<File
+				RelativePath=".\src\secondary_sort.h"
 				>
 			</File>
 			<File
