@@ -905,7 +905,7 @@ const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 };
 
 // default column widths.
-static BYTE _property_format_to_column_width[PROPERTY_FORMAT_COUNT] =
+static WORD _property_format_to_column_width[PROPERTY_FORMAT_COUNT] =
 {
 	0, // PROPERTY_FORMAT_NONE,
 	30, // PROPERTY_FORMAT_TEXT30, // 30 characters

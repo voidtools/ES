@@ -7,8 +7,8 @@
 #define ES_ERROR_EXPECTED_SWITCH_PARAMETER	4 // expected an additional command line option with the specified switch
 #define ES_ERROR_CREATE_FILE				5 // failed to create export output file
 #define ES_ERROR_UNKNOWN_SWITCH				6 // unknown switch.
-#define ES_ERROR_SEND_MESSAGE				7 // failed to send Everything IPC a query.
-#define ES_ERROR_IPC						8 // NO Everything IPC window.
+#define ES_ERROR_IPC_ERROR					7 // failed to send Everything IPC a query or bad IPC reply.
+#define ES_ERROR_NO_IPC						8 // NO Everything IPC window or pipe.
 #define ES_ERROR_NO_RESULTS					9 // No results found. Only set if -no-result-error is used
 
 #define ES_UINT64_MAX		0xffffffffffffffffUI64

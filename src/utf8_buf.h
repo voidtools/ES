@@ -17,6 +17,9 @@ typedef struct utf8_buf_s
 	// includes room for the null terminator.
 	SIZE_T size_in_bytes;
 
+	// align stack_buf to 16 bytes.
+	SIZE_T padding1;
+
 	// some stack for us before we need to allocate memory from the system.
 	ES_UTF8 stack_buf[UTF8_BUF_STACK_SIZE];
 	

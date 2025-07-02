@@ -287,7 +287,7 @@ void os_expand_environment_variables(const wchar_t *s,wchar_buf_t *out_wcbuf)
 		wchar_buf_grow_size(out_wcbuf,new_size_in_wchars);
 	}
 	
-	// just use relative path..
+	// just use un-expanded path..
 	wchar_buf_copy_wchar_string(out_wcbuf,s);
 }
 
@@ -442,16 +442,19 @@ void os_sort(void **indexes,SIZE_T count,int (*comp_proc)(const void *,const voi
 	else
 	{
 		SIZE_T temp_size;
+		pool_t temp_pool;
 		void **temp;
+
+		pool_init(&temp_pool);
 		
 		temp_size = safe_size_mul_sizeof_pointer(count);
-		temp = mem_alloc(temp_size);
+		temp = pool_alloc(&temp_pool,temp_size);
 
 		os_copy_memory(temp,indexes,temp_size);
 
 		_os_sort_split(indexes,temp,count,comp_proc);
 			
-		mem_free(temp);
+		pool_kill(&temp_pool);
 	}
 }
 

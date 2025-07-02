@@ -5,3 +5,4 @@ SIZE_T safe_size_mul_sizeof_pointer(SIZE_T a);
 SIZE_T safe_size_mul_sizeof_wchar(SIZE_T a);
 SIZE_T safe_size_mul_2(SIZE_T a);
 SIZE_T safe_size_mul(SIZE_T a,SIZE_T b);
+SIZE_T safe_size_from_uint64(ES_UINT64 a);

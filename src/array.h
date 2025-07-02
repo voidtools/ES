@@ -13,6 +13,9 @@ typedef struct array_s
 	// the number of allocated items in indexes.
 	// this will double in size each time the array grows.
 	SIZE_T allocated;
+
+	// ensure stack_buf is 16byte aligned.
+	SIZE_T padding1;
 	
 	// small stack space for initial buffer to avoid allocation.
 	BYTE stack_buf[ARRAY_STACK_SIZE];

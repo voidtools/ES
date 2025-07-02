@@ -27,7 +27,34 @@
 
 #include "es.h"
 
-#define _IPC3_STREAM_MAX_BUF_SIZE	65536
+#define _IPC3_STREAM_PIPE_MAX_BUF_SIZE			65536
+
+#define _IPC3_STREAM_MEMORY_CHUNK_SIZE			65536
+
+static void _ipc3_stream_pipe_seek_proc(ipc3_stream_t *stream,ES_UINT64 position_from_start);
+static ES_UINT64 _ipc3_stream_pipe_tell_proc(ipc3_stream_t *stream);
+static SIZE_T _ipc3_stream_pipe_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T size);
+static void _ipc3_stream_pipe_close_proc(ipc3_stream_t *stream);
+static void _ipc3_stream_memory_seek_proc(ipc3_stream_t *stream,ES_UINT64 position_from_start);
+static ES_UINT64 _ipc3_stream_memory_tell_proc(ipc3_stream_t *stream);
+static SIZE_T _ipc3_stream_memory_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T size);
+static void _ipc3_stream_memory_close_proc(ipc3_stream_t *stream);
+
+static ipc3_stream_vtbl_t _ipc3_stream_pipe_vtbl =
+{
+	_ipc3_stream_pipe_seek_proc,
+	_ipc3_stream_pipe_tell_proc,
+	_ipc3_stream_pipe_read_proc,
+	_ipc3_stream_pipe_close_proc,
+};
+
+static ipc3_stream_vtbl_t _ipc3_stream_memory_vtbl =
+{
+	_ipc3_stream_memory_seek_proc,
+	_ipc3_stream_memory_tell_proc,
+	_ipc3_stream_memory_read_proc,
+	_ipc3_stream_memory_close_proc,
+};
 
 // write some data to a pipe handle.
 // returns TRUE if all data is written to the pipe.
@@ -103,146 +130,26 @@ BOOL ipc3_write_pipe_message(HANDLE pipe_handle,DWORD code,const void *in_data,S
 // Read some data from the IPC Pipe.
 void ipc3_stream_read_data(ipc3_stream_t *stream,void *data,SIZE_T size)
 {
-	BYTE *d;
-	SIZE_T run;
+	SIZE_T numread;
 	
-	if (stream->is_error)
-	{
-		os_zero_memory(data,size);
-		
-		return;
-	}
-	
-	d = (BYTE *)data;
-	run = size;
-	
-	while(run)
-	{
-		SIZE_T chunk_size;
-		
-		if (!stream->avail)
-		{
-			for(;;)
-			{
-				// is there some data to read from the pipe?
-				if (stream->pipe_avail)
-				{
-					DWORD read_size;
-					
-					// fill the buffer with data from the pipe.
-					if (!stream->buf)
-					{
-						DWORD alloc_size;
-						
-						alloc_size = _IPC3_STREAM_MAX_BUF_SIZE;
-						
-						if (stream->got_last)
-						{
-							// don't allocate more than we need.
-							if (alloc_size > stream->pipe_avail)
-							{
-								alloc_size = stream->pipe_avail;
-							}
-						}
-						
-						stream->buf_size = alloc_size;
-						stream->buf = mem_try_alloc(alloc_size);
-						if (!stream->buf)
-						{
-							os_zero_memory(d,run);
-							
-							stream->is_error = 1;
+	numread = stream->vtbl->read_proc(stream,data,size);
 
-							return;
-						}
-					}
-					
-					read_size = stream->pipe_avail;
-					if (read_size > stream->buf_size)
-					{
-						read_size = stream->buf_size;
-					}
-							
-					if (!ipc3_read_pipe(stream->pipe_handle,stream->buf,read_size))
-					{
-						os_zero_memory(d,run);
-						
-						stream->is_error = 1;
-
-						return;
-					}
-					
-					stream->pipe_avail -= read_size;
-					
-					stream->p = stream->buf;
-					stream->avail = read_size;
-					
-					break;
-				}
-				else
-				{
-					ipc3_message_t recv_header;
-					
-					if (stream->got_last)
-					{
-						// there is no more headers.
-						os_zero_memory(d,run);
-						
-						stream->is_error = 1;
-					
-						return;
-					}
-					
-					// read the header.
-					if (!ipc3_read_pipe(stream->pipe_handle,&recv_header,sizeof(ipc3_message_t)))
-					{
-						// read header failed.
-						os_zero_memory(d,run);
-						
-						stream->is_error = 1;
-					
-						return;
-					}
-					
-					if (recv_header.code == IPC3_RESPONSE_OK_MORE_DATA)
-					{
-						// expect more headers and data..
-					}
-					else
-					if (recv_header.code == IPC3_RESPONSE_OK)
-					{
-						stream->got_last = 1;
-					}
-					else
-					{
-						os_zero_memory(d,run);
-						
-						stream->is_error = 1;
-						
-						return;
-					}
-					
-					stream->pipe_avail = recv_header.size;
-				}
-			}
-		}
-		
-		// stream->avail can be zero if we received a zero-sized data message.
-		
-		chunk_size = run;
-		if (chunk_size > stream->avail)
-		{
-			chunk_size = stream->avail;
-		}
-		
-		CopyMemory(d,stream->p,chunk_size);
-		
-		stream->p += chunk_size;
-		stream->avail -= chunk_size;
-		
-		d += chunk_size;
-		run -= chunk_size;
+	// zero what we didn't read..
+	os_zero_memory(((BYTE *)data) + numread,size - numread);
+	
+	if (numread != size)
+	{
+		// we expected the data so set is_error.
+		stream->is_error = 1;
 	}
+}
+
+// Like ipc3_stream_read_data, except we don't set is_error if we don't read all the data.
+// returns the number of bytes read.
+// check stream->is_error for any errors.
+SIZE_T ipc3_stream_try_read_data(ipc3_stream_t *stream,void *data,SIZE_T size)
+{
+	return stream->vtbl->read_proc(stream,data,size);
 }
 
 // skip over some data in the pipe stream.
@@ -500,6 +407,10 @@ BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size)
 	return 1;
 }
 
+// connect to Everything pipe server.
+// returns a pipe handle 
+// returns INVALID_HANDLE_VALUE if not pipe servers are available.
+//TODO: es_timeout
 HANDLE ipc3_connect_pipe(void)
 {
 	wchar_buf_t pipe_name_wcbuf;
@@ -614,27 +525,208 @@ void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf)
 	}
 }
 
-void ipc3_stream_init(ipc3_stream_t *stream,HANDLE pipe_handle)
+// initialize a pipe stream
+// the pipe_handle is just used a reference and should not be closed until the stream is closed.
+void ipc3_stream_pipe_init(ipc3_stream_pipe_t *stream,HANDLE pipe_handle)
 {
+	stream->base.vtbl = &_ipc3_stream_pipe_vtbl;
+	stream->base.is_error = 0;
+	stream->base.is_64bit = 0;
+	
 	stream->pipe_handle = pipe_handle;
 	stream->buf = NULL;
 	stream->p = NULL;
 	stream->avail = 0;
-	stream->is_error = 0;
-	stream->is_64bit = 0;
-	stream->got_last = 0;
+	stream->is_last = 0;
+	stream->is_eof = 0;
 	stream->pipe_avail = 0;
 	stream->buf_size = 0;
+	stream->pipe_totread = 0;
 }
 
-void ipc3_stream_kill(ipc3_stream_t *stream)				
+// close a stream.
+void ipc3_stream_close(ipc3_stream_t *stream)				
 {
-	if (stream->buf)
+	stream->vtbl->close_proc(stream);
+}
+
+// seek to a specific position in the pipe.
+// which is not possible, so just set the error flag
+static void _ipc3_stream_pipe_seek_proc(ipc3_stream_t *stream,ES_UINT64 position_from_start)
+{
+	// not supported.
+	stream->is_error = 1;
+}
+
+// get the current position of the pipe stream.
+// we maintain the total read from the pipe so we just take of whats available in the buffer.
+static ES_UINT64 _ipc3_stream_pipe_tell_proc(ipc3_stream_t *stream)
+{	
+	return ((ipc3_stream_pipe_t *)stream)->pipe_totread	- ((ipc3_stream_pipe_t *)stream)->avail;
+}
+
+// read from a pipe stream.
+// tries to read from a buffer first.
+// if the buffer is empty, read a chunk from the pipe into the buffer and try again.
+// returns the number of bytes read.
+// MUST set is_error on any errors.
+static SIZE_T _ipc3_stream_pipe_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T size)
+{
+	BYTE *d;
+	SIZE_T run;
+	
+	// read past the end of file.
+	if (stream->is_error)
 	{
-		mem_free(stream->buf);
+		return 0;
+	}
+	
+	// read past the end of file.
+	if (((ipc3_stream_pipe_t *)stream)->is_eof)
+	{
+		stream->is_error = 1;
+		
+		return 0;
+	}
+	
+	d = (BYTE *)buf;
+	run = size;
+	
+	while(run)
+	{
+		SIZE_T chunk_size;
+		
+		if (!((ipc3_stream_pipe_t *)stream)->avail)
+		{
+			for(;;)
+			{
+				// is there some data to read from the pipe?
+				if (((ipc3_stream_pipe_t *)stream)->pipe_avail)
+				{
+					DWORD read_size;
+					
+					// fill the buffer with data from the pipe.
+					if (!((ipc3_stream_pipe_t *)stream)->buf)
+					{
+						DWORD alloc_size;
+						
+						alloc_size = _IPC3_STREAM_PIPE_MAX_BUF_SIZE;
+						
+						if (((ipc3_stream_pipe_t *)stream)->is_last)
+						{
+							// don't allocate more than we need.
+							if (alloc_size > ((ipc3_stream_pipe_t *)stream)->pipe_avail)
+							{
+								alloc_size = ((ipc3_stream_pipe_t *)stream)->pipe_avail;
+							}
+						}
+						
+						((ipc3_stream_pipe_t *)stream)->buf_size = alloc_size;
+						((ipc3_stream_pipe_t *)stream)->buf = mem_try_alloc(alloc_size);
+						if (!((ipc3_stream_pipe_t *)stream)->buf)
+						{
+							stream->is_error = 1;
+							
+							return d - (BYTE *)buf;
+						}
+					}
+					
+					read_size = ((ipc3_stream_pipe_t *)stream)->pipe_avail;
+					if (read_size > ((ipc3_stream_pipe_t *)stream)->buf_size)
+					{
+						read_size = ((ipc3_stream_pipe_t *)stream)->buf_size;
+					}
+							
+					if (!ipc3_read_pipe(((ipc3_stream_pipe_t *)stream)->pipe_handle,((ipc3_stream_pipe_t *)stream)->buf,read_size))
+					{
+						stream->is_error = 1;
+
+						return d - (BYTE *)buf;
+					}
+					
+					((ipc3_stream_pipe_t *)stream)->pipe_totread += read_size;
+					((ipc3_stream_pipe_t *)stream)->pipe_avail -= read_size;
+					
+					((ipc3_stream_pipe_t *)stream)->p = ((ipc3_stream_pipe_t *)stream)->buf;
+					((ipc3_stream_pipe_t *)stream)->avail = read_size;
+					
+					break;
+				}
+				else
+				{
+					ipc3_message_t recv_header;
+					
+					if (((ipc3_stream_pipe_t *)stream)->is_last)
+					{
+						// do not read again.
+						((ipc3_stream_pipe_t *)stream)->is_eof = 1;
+
+						return d - (BYTE *)buf;
+					}
+					
+					// read the header.
+					if (!ipc3_read_pipe(((ipc3_stream_pipe_t *)stream)->pipe_handle,&recv_header,sizeof(ipc3_message_t)))
+					{
+						// read header failed.
+						stream->is_error = 1;
+						
+						return d - (BYTE *)buf;
+					}
+					
+					if (recv_header.code == IPC3_RESPONSE_OK_MORE_DATA)
+					{
+						// expect more headers and data..
+					}
+					else
+					if (recv_header.code == IPC3_RESPONSE_OK)
+					{
+						((ipc3_stream_pipe_t *)stream)->is_last = 1;
+					}
+					else
+					{
+						stream->is_error = 1;
+						
+						return d - (BYTE *)buf;
+					}
+					
+					((ipc3_stream_pipe_t *)stream)->pipe_avail = recv_header.size;
+				}
+			}
+		}
+		
+		// stream->avail can be zero if we received a zero-sized data message.
+		
+		chunk_size = run;
+		if (chunk_size > ((ipc3_stream_pipe_t *)stream)->avail)
+		{
+			chunk_size = ((ipc3_stream_pipe_t *)stream)->avail;
+		}
+		
+		CopyMemory(d,((ipc3_stream_pipe_t *)stream)->p,chunk_size);
+		
+		((ipc3_stream_pipe_t *)stream)->p += chunk_size;
+		((ipc3_stream_pipe_t *)stream)->avail -= chunk_size;
+		
+		d += chunk_size;
+		run -= chunk_size;
+	}
+	
+	return d - (BYTE *)buf; 
+}
+
+// close a pipe stream.
+static void _ipc3_stream_pipe_close_proc(ipc3_stream_t *stream)
+{
+	if (((ipc3_stream_pipe_t *)stream)->buf)
+	{
+		mem_free(((ipc3_stream_pipe_t *)stream)->buf);
 	}
 }
 
+// Look up a property by property id and check if it is indexed.
+// returns TRUE if indexed.
+// Otherwise returns FALSE.
+// Returns FALSE if unknown or if an error occurs.
 BOOL ipc3_is_property_indexed(HANDLE pipe_handle,DWORD property_id)
 {
 	DWORD value;
@@ -653,3 +745,632 @@ BOOL ipc3_is_property_indexed(HANDLE pipe_handle,DWORD property_id)
 	
 	return FALSE;
 }
+
+// initialize a result list.
+void ipc3_result_list_init(ipc3_result_list_t *result_list,ipc3_stream_t *stream)
+{
+	utf8_buf_init(&result_list->property_request_cbuf);
+
+	result_list->stream = stream;
+	result_list->total_result_size = ES_UINT64_MAX;
+
+	result_list->index_to_stream_offset_array = NULL;
+	result_list->index_to_stream_offset_valid_count = 0;
+
+	// get reply flags
+	result_list->valid_flags = ipc3_stream_read_dword(stream);
+
+	// setup x64 stream.
+	if (result_list->valid_flags & IPC3_SEARCH_FLAG_64BIT)
+	{
+		stream->is_64bit = 1;
+	}
+
+	// result counts
+	result_list->folder_result_count = ipc3_stream_read_size_t(stream);
+	result_list->file_result_count = ipc3_stream_read_size_t(stream);
+	
+	// total size.
+	if (result_list->valid_flags & IPC3_SEARCH_FLAG_TOTAL_SIZE)
+	{
+		result_list->total_result_size = ipc3_stream_read_uint64(stream);
+	}
+	
+	// viewport
+	result_list->viewport_offset = ipc3_stream_read_size_t(stream);
+	result_list->viewport_count = ipc3_stream_read_size_t(stream);
+	
+	// sort
+	result_list->sort_count = ipc3_stream_read_len_vlq(stream);
+	
+	if (result_list->sort_count)
+	{
+		SIZE_T sort_run;
+		
+		sort_run = result_list->sort_count;
+		
+		while(sort_run)
+		{
+			DWORD sort_property_id;
+			DWORD sort_flags;
+			
+			sort_property_id = ipc3_stream_read_dword(stream);
+			sort_flags = ipc3_stream_read_dword(stream);
+			
+			sort_run--;
+		}
+	}
+
+	// property requests
+	result_list->property_request_count = ipc3_stream_read_len_vlq(stream);
+	
+	if (result_list->property_request_count)
+	{
+		SIZE_T property_request_size;
+		
+		property_request_size = safe_size_mul(sizeof(ipc3_result_list_property_request_t),result_list->property_request_count);
+		
+		utf8_buf_grow_size(&result_list->property_request_cbuf,property_request_size);
+		
+		{
+			SIZE_T property_request_run;
+			ipc3_result_list_property_request_t *property_request_d;
+			
+			property_request_run = result_list->property_request_count;
+			property_request_d = (ipc3_result_list_property_request_t *)result_list->property_request_cbuf.buf;
+			
+			while(property_request_run)
+			{
+				property_request_d->property_id = ipc3_stream_read_dword(stream);
+				property_request_d->flags = ipc3_stream_read_dword(stream);
+				property_request_d->value_type = ipc3_stream_read_byte(stream);
+				
+				property_request_d++;
+				property_request_run--;
+			}
+		}
+	}
+}
+
+// destroy a result list.
+void ipc3_result_list_kill(ipc3_result_list_t *result_list)
+{
+	if (result_list->index_to_stream_offset_array)
+	{
+		mem_free(result_list->index_to_stream_offset_array);
+	}
+	
+	utf8_buf_kill(&result_list->property_request_cbuf);
+}
+
+// initialize a memory stream
+// the source stream MUST exist while this stream exists.
+void ipc3_stream_memory_init(ipc3_stream_memory_t *stream,ipc3_stream_t *source_stream)
+{
+	stream->base.vtbl = &_ipc3_stream_memory_vtbl;
+	stream->base.is_error = 0;
+	stream->base.is_64bit = source_stream->is_64bit;
+	
+	stream->source_stream = source_stream;
+	
+	stream->chunk_cur = SIZE_MAX;
+	stream->p = NULL;
+	stream->avail = 0;
+	stream->is_last = 0;
+	
+	array_init(&((ipc3_stream_memory_t *)stream)->chunk_array);
+}
+
+// seek to a specific location in a memory stream.
+// we can calculate the chunk index from the position as we have fixed sized chunks.
+// add the remainder to the current chunk.
+static void _ipc3_stream_memory_seek_proc(ipc3_stream_t *stream,ES_UINT64 position_from_start)
+{
+	SIZE_T chunk_index;
+	
+	chunk_index = safe_size_from_uint64(position_from_start / _IPC3_STREAM_MEMORY_CHUNK_SIZE);
+
+	if (chunk_index < ((ipc3_stream_memory_t *)stream)->chunk_array.count)
+	{
+		BYTE *chunk;
+		SIZE_T chunk_offset;
+		
+		chunk = ((ipc3_stream_memory_t *)stream)->chunk_array.indexes[chunk_index];
+		
+		((ipc3_stream_memory_t *)stream)->chunk_cur = chunk_index;
+		
+		chunk_offset = (SIZE_T)(position_from_start % _IPC3_STREAM_MEMORY_CHUNK_SIZE);
+		
+		((ipc3_stream_memory_t *)stream)->p = chunk + chunk_offset;
+		((ipc3_stream_memory_t *)stream)->avail = _IPC3_STREAM_MEMORY_CHUNK_SIZE - chunk_offset;
+	}
+	else
+	if (position_from_start == 0)
+	{
+		// we haven't read anything yet if 
+		// ((ipc3_stream_memory_t *)stream)->chunk_array.count
+		// is zero.
+	}
+	else
+	{
+		// bad ref.
+		stream->is_error = 1;
+	}
+}
+
+// get the current position of a memory stream
+// calculated from the current chunk index and the current position in the current chunk.
+static ES_UINT64 _ipc3_stream_memory_tell_proc(ipc3_stream_t *stream)
+{	
+	BYTE *chunk;
+	
+	if (((ipc3_stream_memory_t *)stream)->chunk_cur == SIZE_MAX)
+	{
+		// haven't read anything yet..
+		return 0;
+	}
+	
+	chunk = ((ipc3_stream_memory_t *)stream)->chunk_array.indexes[((ipc3_stream_memory_t *)stream)->chunk_cur];
+	
+	return (((ipc3_stream_memory_t *)stream)->chunk_cur * _IPC3_STREAM_MEMORY_CHUNK_SIZE) + ((ipc3_stream_memory_t *)stream)->p - chunk;
+}
+
+// the read proc for a memory stream.
+// tries to read from the current chunk if data is available.
+// if not, it setups the next chunk and tries again..
+// returns the number of bytes read.
+// MUST set is_error on any errors.
+static SIZE_T _ipc3_stream_memory_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T size)
+{
+	BYTE *d;
+	SIZE_T run;
+	
+	if (stream->is_error)
+	{
+		return 0;
+	}
+	
+	d = (BYTE *)buf;
+	run = size;
+	
+	while(run)
+	{
+		SIZE_T copy_size;
+		
+		if (!((ipc3_stream_memory_t *)stream)->avail)
+		{
+			// is there some data to read from the memory?
+			if ((((ipc3_stream_memory_t *)stream)->chunk_cur == SIZE_MAX) || (((ipc3_stream_memory_t *)stream)->chunk_cur + 1 >= ((ipc3_stream_memory_t *)stream)->chunk_array.count))
+			{
+				BYTE *chunk;
+				SIZE_T numread;
+				
+				// already got last chunk.
+				if (((ipc3_stream_memory_t *)stream)->is_last)
+				{
+					stream->is_error = 1;
+					
+					return d - (BYTE *)buf;
+				}
+				
+				// new chunk
+				chunk = mem_try_alloc(65536);
+				if (!chunk)
+				{
+					stream->is_error = 1;
+					
+					return d - (BYTE *)buf;
+				}
+				
+				// add to our chunk list.
+				array_insert(&((ipc3_stream_memory_t *)stream)->chunk_array,SIZE_MAX,chunk);
+				
+				// now actually try to read from the source stream, which might fail..
+				numread = ipc3_stream_try_read_data(((ipc3_stream_memory_t *)stream)->source_stream,chunk,_IPC3_STREAM_MEMORY_CHUNK_SIZE);
+				
+				if (numread != _IPC3_STREAM_MEMORY_CHUNK_SIZE)
+				{
+					// read last chunk.
+					((ipc3_stream_memory_t *)stream)->is_last = 1;
+					
+					((ipc3_stream_memory_t *)stream)->last_chunk_numread = numread;
+				}
+			}
+
+			// next chunk..
+			if (((ipc3_stream_memory_t *)stream)->chunk_cur == SIZE_MAX)
+			{
+				((ipc3_stream_memory_t *)stream)->chunk_cur = 0;
+			}
+			else
+			{
+				((ipc3_stream_memory_t *)stream)->chunk_cur++;
+			}
+			
+			// setup current position
+			((ipc3_stream_memory_t *)stream)->p = ((ipc3_stream_memory_t *)stream)->chunk_array.indexes[((ipc3_stream_memory_t *)stream)->chunk_cur];
+
+			// setup available size.
+			// if we are the last chunk use the last numread size.
+			if ((((ipc3_stream_memory_t *)stream)->is_last) && (((ipc3_stream_memory_t *)stream)->chunk_cur == ((ipc3_stream_memory_t *)stream)->chunk_array.count - 1))
+			{
+				((ipc3_stream_memory_t *)stream)->avail = ((ipc3_stream_memory_t *)stream)->last_chunk_numread;
+			}
+			else
+			{
+				((ipc3_stream_memory_t *)stream)->avail = _IPC3_STREAM_MEMORY_CHUNK_SIZE;
+			}
+		}
+		
+		copy_size = run;
+		if (copy_size > ((ipc3_stream_memory_t *)stream)->avail)
+		{
+			copy_size = ((ipc3_stream_memory_t *)stream)->avail;
+		}
+		
+		CopyMemory(d,((ipc3_stream_memory_t *)stream)->p,copy_size);
+		
+		((ipc3_stream_memory_t *)stream)->p += copy_size;
+		((ipc3_stream_memory_t *)stream)->avail -= copy_size;
+		
+		d += copy_size;
+		run -= copy_size;
+	}
+					
+	return d - (BYTE *)buf;
+}
+
+// close a memory stream.
+// releases chunks and kills the array
+static void _ipc3_stream_memory_close_proc(ipc3_stream_t *stream)
+{
+	// free chunks.
+	
+	{
+		SIZE_T chunk_index;
+		
+		for(chunk_index=0;chunk_index<((ipc3_stream_memory_t *)stream)->chunk_array.count;chunk_index++)
+		{
+			mem_free(((ipc3_stream_memory_t *)stream)->chunk_array.indexes[chunk_index]);
+		}
+	}
+	
+	array_kill(&((ipc3_stream_memory_t *)stream)->chunk_array);
+}
+
+// seek to the specified position from the start of the memory stream.
+void ipc3_stream_seek(ipc3_stream_t *stream,ES_UINT64 position_from_start)
+{
+	stream->vtbl->seek_proc(stream,position_from_start);
+}
+
+// get the current position of the stream.
+// needed so we can seek later.
+ES_UINT64 ipc3_stream_tell(ipc3_stream_t *stream)
+{	
+	return stream->vtbl->tell_proc(stream);
+}
+
+// get the stream offset from the start index
+// cache the result.
+void ipc3_result_list_seek_to_offset_from_index(ipc3_result_list_t *result_list,SIZE_T start_index)
+{
+	SIZE_T last_index;
+	SIZE_T last_offset;
+	SIZE_T property_request_count;
+	ipc3_result_list_property_request_t *property_request_array;
+	ipc3_stream_t *stream;
+
+	stream = result_list->stream;
+
+	if (start_index < result_list->index_to_stream_offset_valid_count)
+	{
+		// we have already seen this item.
+		ipc3_stream_seek(stream,result_list->index_to_stream_offset_array[start_index]);
+		
+		return;
+	}
+	
+	property_request_count = result_list->property_request_count;
+	property_request_array = (ipc3_result_list_property_request_t *)result_list->property_request_cbuf.buf;
+
+	// search from the last index and offset.
+	last_index = 0;
+	last_offset = 0;
+	
+	if (result_list->index_to_stream_offset_valid_count)
+	{
+		last_index = result_list->index_to_stream_offset_valid_count - 1;
+		last_offset = result_list->index_to_stream_offset_array[result_list->index_to_stream_offset_valid_count - 1];
+	}
+	else
+	{
+		result_list->index_to_stream_offset_array[0] = 0;
+		result_list->index_to_stream_offset_valid_count++;
+	}
+	
+	ipc3_stream_seek(stream,last_offset);
+	
+	// find the offset and cache it..
+	for(;;)
+	{
+		BYTE item_flags;
+		SIZE_T property_request_run;
+		const ipc3_result_list_property_request_t *property_request_p;
+		
+		if (last_index == start_index)
+		{
+			// found it.
+			break;
+		}
+		
+		// item flags.
+		item_flags = ipc3_stream_read_byte(stream);
+		
+		// read stream.
+		// skip over properties.
+		property_request_run = property_request_count;
+		property_request_p = property_request_array;
+		
+		// read remaining pipe data.
+		// we shouldn't any remaining data.
+		// this should really be an error.
+		while(property_request_run)
+		{
+			// skip it.
+			if (property_request_p->flags & (IPC3_SEARCH_PROPERTY_REQUEST_FLAG_FORMAT|IPC3_SEARCH_PROPERTY_REQUEST_FLAG_HIGHLIGHT))
+			{
+				SIZE_T len;
+				
+				len = ipc3_stream_read_len_vlq(stream);
+				
+				ipc3_stream_skip(stream,len);
+			}
+			else
+			{
+				// add to total item size.
+				switch(property_request_p->value_type)
+				{
+					case IPC3_PROPERTY_VALUE_TYPE_PSTRING: 
+					case IPC3_PROPERTY_VALUE_TYPE_PSTRING_MULTISTRING: 
+					case IPC3_PROPERTY_VALUE_TYPE_PSTRING_STRING_REFERENCE:
+					case IPC3_PROPERTY_VALUE_TYPE_PSTRING_FOLDER_REFERENCE:
+					case IPC3_PROPERTY_VALUE_TYPE_PSTRING_FILE_OR_FOLDER_REFERENCE:
+
+						{
+							SIZE_T len;
+							
+							len = ipc3_stream_read_len_vlq(stream);
+							
+							ipc3_stream_skip(stream,len);
+						}
+
+						break;
+
+					case IPC3_PROPERTY_VALUE_TYPE_BYTE:
+					case IPC3_PROPERTY_VALUE_TYPE_BYTE_GET_TEXT:
+
+						ipc3_stream_skip(stream,sizeof(BYTE));
+
+						break;
+
+					case IPC3_PROPERTY_VALUE_TYPE_WORD:
+					case IPC3_PROPERTY_VALUE_TYPE_WORD_GET_TEXT:
+
+						ipc3_stream_skip(stream,sizeof(WORD));
+						
+						break;
+
+					case IPC3_PROPERTY_VALUE_TYPE_DWORD: 
+					case IPC3_PROPERTY_VALUE_TYPE_DWORD_FIXED_Q1K: 
+					case IPC3_PROPERTY_VALUE_TYPE_DWORD_GET_TEXT: 
+
+						ipc3_stream_skip(stream,sizeof(DWORD));
+						
+						break;
+						
+					case IPC3_PROPERTY_VALUE_TYPE_UINT64: 
+
+						ipc3_stream_skip(stream,sizeof(ES_UINT64));
+						
+						break;
+						
+					case IPC3_PROPERTY_VALUE_TYPE_UINT128: 
+
+						ipc3_stream_skip(stream,sizeof(EVERYTHING3_UINT128));
+						
+						break;
+						
+					case IPC3_PROPERTY_VALUE_TYPE_DIMENSIONS: 
+
+						ipc3_stream_skip(stream,sizeof(EVERYTHING3_DIMENSIONS));
+						
+						break;
+						
+					case IPC3_PROPERTY_VALUE_TYPE_SIZE_T:
+					
+						ipc3_stream_read_size_t(stream);
+						break;
+						
+					case IPC3_PROPERTY_VALUE_TYPE_INT32_FIXED_Q1K: 
+					case IPC3_PROPERTY_VALUE_TYPE_INT32_FIXED_Q1M: 
+
+						ipc3_stream_skip(stream,sizeof(__int32));
+						
+						break;
+
+					case IPC3_PROPERTY_VALUE_TYPE_BLOB8:
+
+						{
+							BYTE len;
+							
+							len = ipc3_stream_read_byte(stream);
+							
+							ipc3_stream_skip(stream,len);
+						}
+
+						break;
+
+					case IPC3_PROPERTY_VALUE_TYPE_BLOB16:
+
+						{
+							WORD len;
+							
+							len = ipc3_stream_read_word(stream);
+							
+							ipc3_stream_skip(stream,len);
+						}
+
+						break;
+
+				}
+			}
+			
+			property_request_p++;
+			property_request_run--;
+		}
+		
+		last_index++;
+		last_offset = (SIZE_T)ipc3_stream_tell(stream);
+		
+		// cache it.
+		result_list->index_to_stream_offset_array[result_list->index_to_stream_offset_valid_count] = last_offset;
+		result_list->index_to_stream_offset_valid_count++;
+	}
+}
+
+// fill in a buffer with a VLQ value and progress the buffer pointer.
+BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value)
+{
+	BYTE *d;
+	
+	d = buf;
+	
+	if (value < 0xff)
+	{
+		if (buf)
+		{
+			*d++ = (BYTE)value;
+		}
+		else
+		{
+			d++;
+		}
+		
+		return d;
+	}
+	
+	value -= 0xff;
+
+	if (buf)
+	{
+		*d++ = 0xff;
+	}
+	else
+	{
+		d++;
+	}
+	
+	if (value < 0xffff)
+	{
+		if (buf)
+		{
+			*d++ = (BYTE)(value >> 8);
+			*d++ = (BYTE)(value);
+		}
+		else
+		{
+			d += 2;
+		}
+		
+		return d;
+	}
+	
+	value -= 0xffff;
+
+	if (buf)
+	{
+		*d++ = 0xff;
+		*d++ = 0xff;
+	}
+	else
+	{
+		d += 2;
+	}
+	
+	if (value < 0xffffffff)
+	{
+		if (buf)
+		{
+			*d++ = (BYTE)(value >> 24);
+			*d++ = (BYTE)(value >> 16);
+			*d++ = (BYTE)(value >> 8);
+			*d++ = (BYTE)(value);
+		}
+		else
+		{
+			d += 4;
+		}
+		
+		return d;
+	}
+	
+	value -= 0xffffffff;
+
+	if (buf)
+	{
+		*d++ = 0xff;
+		*d++ = 0xff;
+		*d++ = 0xff;
+		*d++ = 0xff;
+	}
+	else
+	{
+		d += 4;
+	}
+	
+	// value cannot be larger than or equal to 0xffffffffffffffff
+#if SIZE_MAX == 0xFFFFFFFFFFFFFFFFUI64
+
+	if (buf)
+	{
+		*d++ = (BYTE)(value >> 56);
+		*d++ = (BYTE)(value >> 48);
+		*d++ = (BYTE)(value >> 40);
+		*d++ = (BYTE)(value >> 32);
+		*d++ = (BYTE)(value >> 24);
+		*d++ = (BYTE)(value >> 16);
+		*d++ = (BYTE)(value >> 8);
+		*d++ = (BYTE)(value);
+	}
+	else
+	{
+		d += 8;
+	}
+	
+
+#elif SIZE_MAX == 0xFFFFFFFF
+
+	if (buf)
+	{
+		*d++ = 0x00;
+		*d++ = 0x00;
+		*d++ = 0x00;
+		*d++ = 0x00;
+		*d++ = 0xff;
+		*d++ = 0xff;
+		*d++ = 0xff;
+		*d++ = 0xff;
+	}
+	else
+	{
+		d += 8;
+	}
+	
+#else
+	#error unknown SIZE_MAX
+#endif
+
+	return d;
+}
+

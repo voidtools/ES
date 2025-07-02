@@ -119,22 +119,77 @@ typedef struct ipc3_message_s
 	
 }ipc3_message_t;
 
-// recv stream.
+// stream virtual table.
+typedef struct ipc3_stream_vtbl_s
+{
+	// jump to a position in the stream.
+	// is_error MUST be set on seek error
+	void (*seek_proc)(struct ipc3_stream_s *stream,ES_UINT64 position_from_start);
+	
+	// get the current position in the stream.
+	ES_UINT64 (*tell_proc)(struct ipc3_stream_s *stream);
+	
+	// read from the stream.
+	// is_error MUST be set on read error
+	// buf MUST be set to zeroes on read error.
+	// returns the amount of data read.
+	// can return less than size.
+	// set stream->is_error on any errors.
+	SIZE_T (*read_proc)(struct ipc3_stream_s *stream,void *buf,SIZE_T size);
+
+	// close the stream.
+	void (*close_proc)(struct ipc3_stream_s *stream);
+	
+}ipc3_stream_vtbl_t;
+
+// input stream.
 typedef struct ipc3_stream_s
 {
+	const ipc3_stream_vtbl_t *vtbl;
+	int is_error;
+	int is_64bit;
+	
+}ipc3_stream_t;
+
+// pipe stream.
+typedef struct ipc3_stream_pipe_s
+{
+	ipc3_stream_t base;
+	
 	HANDLE pipe_handle;
 
 	// NULL if not yet allocated
 	BYTE *buf;
 	BYTE *p;
 	SIZE_T avail;
-	int is_error;
-	int is_64bit;
-	int got_last;
+	int is_last;
+	int is_eof;
 	DWORD pipe_avail;
 	DWORD buf_size;
+	ES_UINT64 pipe_totread;
 		
-}ipc3_stream_t;
+}ipc3_stream_pipe_t;
+
+// memory stream.
+typedef struct ipc3_stream_memory_s
+{
+	ipc3_stream_t base;
+	
+	// an array of ipc3_stream_memory_chunk_t *
+	array_t chunk_array;
+	
+	// current position.
+	SIZE_T chunk_cur;
+	BYTE *p;
+	SIZE_T avail;
+	
+	int is_last;
+	SIZE_T last_chunk_numread;
+	
+	// the original source input stream.
+	struct ipc3_stream_s *source_stream;
+		
+}ipc3_stream_memory_t;
 
 typedef struct ipc3_result_list_property_request_s
 {
@@ -145,9 +200,45 @@ typedef struct ipc3_result_list_property_request_s
 	
 }ipc3_result_list_property_request_t;
 
+// an ipc3 result list.
+typedef struct ipc3_result_list_s
+{
+	ES_UINT64 total_result_size;
+	SIZE_T folder_result_count;
+	SIZE_T file_result_count;
+	SIZE_T viewport_offset;
+	SIZE_T viewport_count;
+	SIZE_T sort_count;
+
+	SIZE_T property_request_count;
+
+	DWORD valid_flags;
+	
+	// the pipe stream
+	// -or-
+	// the memory stream if we are in es_pause mode.
+	ipc3_stream_t *stream;
+
+	// ipc3_result_list_property_request_t *property_request_array;
+	utf8_buf_t property_request_cbuf;
+	
+	// index to stream offset in bytes.
+	// this array has a count of viewport_count items.
+	// the first index will always be 0.
+	// only used by es_pause.
+	SIZE_T *index_to_stream_offset_array;
+	
+	// the number of valid index to stream offset items in.
+	// index_to_stream_offset_array.
+	// only used by es_pause.
+	SIZE_T index_to_stream_offset_valid_count;
+	
+}ipc3_result_list_t;
+
 BOOL ipc3_write_pipe_data(HANDLE pipe_handle,const void *in_data,SIZE_T in_size);
 BOOL ipc3_write_pipe_message(HANDLE pipe_handle,DWORD code,const void *in_data,SIZE_T in_size);
 void ipc3_stream_read_data(ipc3_stream_t *stream,void *data,SIZE_T size);
+SIZE_T ipc3_stream_try_read_data(ipc3_stream_t *stream,void *data,SIZE_T size);
 void ipc3_stream_skip(ipc3_stream_t *stream,SIZE_T size);
 BYTE ipc3_stream_read_byte(ipc3_stream_t *stream);
 WORD ipc3_stream_read_word(ipc3_stream_t *stream);
@@ -160,6 +251,14 @@ BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size);
 HANDLE ipc3_connect_pipe(void);
 BOOL ipc3_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread);
 void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf);
-void ipc3_stream_init(ipc3_stream_t *stream,HANDLE pipe_handle);
-void ipc3_stream_kill(ipc3_stream_t *stream);				
+void ipc3_stream_pipe_init(ipc3_stream_pipe_t *stream,HANDLE pipe_handle);
+void ipc3_stream_close(ipc3_stream_t *stream);				
 BOOL ipc3_is_property_indexed(HANDLE pipe_handle,DWORD property_id);
+void ipc3_result_list_init(ipc3_result_list_t *result_list,ipc3_stream_t *stream);
+void ipc3_result_list_kill(ipc3_result_list_t *result_list);
+void ipc3_stream_memory_init(ipc3_stream_memory_t *stream,ipc3_stream_t *source_stream);
+void ipc3_stream_seek(ipc3_stream_t *stream,ES_UINT64 position_from_start);
+ES_UINT64 ipc3_stream_tell(ipc3_stream_t *stream);
+void ipc3_result_list_seek_to_offset_from_index(ipc3_result_list_t *result_list,SIZE_T start_index);
+ES_UINT64 ipc3_stream_tell(ipc3_stream_t *stream);
+BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value);

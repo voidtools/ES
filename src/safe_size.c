@@ -112,3 +112,13 @@ SIZE_T safe_size_mul(SIZE_T a,SIZE_T b)
 
 	return a * b;
 }
+
+SIZE_T safe_size_from_uint64(ES_UINT64 a)
+{
+	if (a <= SIZE_MAX)
+	{
+		return (SIZE_T)a;
+	}
+	
+	return SIZE_MAX;
+}

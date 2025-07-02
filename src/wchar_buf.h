@@ -18,6 +18,9 @@ typedef struct wchar_buf_s
 	// includes room for the null terminator.
 	SIZE_T size_in_wchars;
 	
+	// align stack_buf to 16 bytes.
+	SIZE_T padding1;
+
 	// some stack for us before we need to allocate memory from the system.
 	wchar_t stack_buf[WCHAR_BUF_STACK_SIZE];
 	

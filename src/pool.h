@@ -37,6 +37,7 @@ typedef struct pool_s
 	SIZE_T cur_alloc_size;
 	
 	// some stack space.
+	// make sure this is 16-byte aligned.
 	BYTE stack[POOL_STACK_SIZE];
 	
 }pool_t;

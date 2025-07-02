@@ -142,6 +142,7 @@ void *array_find(const array_t *a,int (*compare)(const void *a,const void *b),co
 
 // insert the specified item at the specified index.
 // call array_find_or_get_insertion_index to get the insertion position.
+// insertion_index can be SIZE_MAX to add to the end.
 void array_insert(array_t *a,SIZE_T insertion_index,void *item)
 {
 	SIZE_T new_count;

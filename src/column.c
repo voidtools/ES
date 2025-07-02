@@ -167,3 +167,28 @@ void column_clear_all(void)
 	column_order_last = NULL;
 }
 
+// insert_after_column can be NULL to insert at the start.
+// if insert_after_column is non-NULL it MUST be in the column order list.
+// column MUST not be in the column order list.
+void column_insert_after(column_t *column,column_t *insert_after_column)
+{
+	if (insert_after_column)
+	{
+		column->order_next = insert_after_column->order_next;
+		column->order_prev = insert_after_column;
+		insert_after_column->order_next = column;
+
+		if (column->order_next)
+		{
+			column->order_next->order_prev = column;
+		}
+		else
+		{
+			column_order_last = column;
+		}
+	}
+	else
+	{
+		column_insert_order_at_start(column);
+	}
+}

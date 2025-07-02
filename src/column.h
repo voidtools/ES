@@ -18,6 +18,7 @@ void column_remove_order(column_t *column);
 column_t *column_add(DWORD property_id);
 void column_remove(DWORD property_id);
 void column_clear_all(void);
+void column_insert_after(column_t *column,column_t *insert_after_column);
 
 extern pool_t *column_pool; // pool of column_t
 extern array_t *column_array; // array of column_t
