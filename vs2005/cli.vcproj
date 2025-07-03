@@ -161,7 +161,7 @@
 			/>
 			<Tool
 				Name="VCManifestTool"
-				AdditionalManifestFiles="../res/es.x64.Manifest"
+				AdditionalManifestFiles="../res/es.Manifest"
 			/>
 			<Tool
 				Name="VCXDCMakeTool"
@@ -365,7 +365,7 @@
 			/>
 			<Tool
 				Name="VCManifestTool"
-				AdditionalManifestFiles="../res/es.x64.Manifest"
+				AdditionalManifestFiles="../res/es.Manifest"
 				EmbedManifest="false"
 				SuppressStartupBanner="false"
 				VerboseOutput="false"
