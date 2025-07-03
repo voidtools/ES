@@ -81,36 +81,32 @@
 // NOTES:
 // ScrollConsoleScreenBuffer is unuseable because it fills invalidated areas, which causes unnecessary flickering.
 
-
 #include "es.h"
 
-#define ES_COPYDATA_IPCTEST_QUERYCOMPLETEW		0
-#define ES_COPYDATA_IPCTEST_QUERYCOMPLETE2W		1
+#define _ES_COPYDATA_IPCTEST_QUERYCOMPLETEW			0
+#define _ES_COPYDATA_IPCTEST_QUERYCOMPLETE2W		1
 
-#define ES_EXPORT_TYPE_NONE			0
-#define ES_EXPORT_TYPE_CSV			1
-#define ES_EXPORT_TYPE_EFU			2
-#define ES_EXPORT_TYPE_TXT			3
-#define ES_EXPORT_TYPE_M3U			4
-#define ES_EXPORT_TYPE_M3U8			5
-#define ES_EXPORT_TYPE_TSV			6
-#define ES_EXPORT_TYPE_JSON			7
+#define _ES_EXPORT_TYPE_NONE		0
+#define _ES_EXPORT_TYPE_CSV			1
+#define _ES_EXPORT_TYPE_EFU			2
+#define _ES_EXPORT_TYPE_TXT			3
+#define _ES_EXPORT_TYPE_M3U			4
+#define _ES_EXPORT_TYPE_M3U8		5
+#define _ES_EXPORT_TYPE_TSV			6
+#define _ES_EXPORT_TYPE_JSON		7
 
-#define ES_EXPORT_BUF_SIZE			65536
+#define _ES_EXPORT_BUF_SIZE			65536
 
-#define ES_PAUSE_TEXT				"ESC=Quit; Up,Down,Left,Right,Page Up,Page Down,Home,End=Scroll"
-#define ES_BLANK_PAUSE_TEXT			"                                                              "
-
-#define ES_IPC_VERSION_FLAG_IPC1	0x00000001 // Everything 1.3
-#define ES_IPC_VERSION_FLAG_IPC2	0x00000002 // Everything 1.4
-#define ES_IPC_VERSION_FLAG_IPC3	0x00000004 // Everything 1.5
+#define _ES_PAUSE_TEXT				"ESC=Quit; Up,Down,Left,Right,Page Up,Page Down,Home,End=Scroll"
+#define _ES_BLANK_PAUSE_TEXT		"                                                              "
 
 #define _ES_MSGFLT_ALLOW			1
 
-typedef struct _es_tagCHANGEFILTERSTRUCT 
+typedef struct _es_tagCHANGEFILTERSTRUCT_s
 {
 	DWORD cbSize;
 	DWORD ExtStatus;
+	
 }_ES_CHANGEFILTERSTRUCT;
 
 static int _es_main(void);
@@ -121,6 +117,7 @@ static void _es_output_cell_wchar_string(const wchar_t *text,int is_highlighted)
 static void _es_export_write_data(const ES_UTF8 *text,SIZE_T length_in_bytes);
 static void _es_export_write_wchar_string_n(const wchar_t *text,SIZE_T wlen);
 static void _es_format_number(ES_UINT64 number,int allow_digit_grouping,wchar_buf_t *out_wcbuf);
+static void _es_format_fixed_q1k(ES_UINT64 number,int allow_digit_grouping,wchar_buf_t *out_wcbuf);
 static void _es_format_dimensions(EVERYTHING3_DIMENSIONS *dimensions_value,wchar_buf_t *out_wcbuf);
 static int _es_compare_list_items(const EVERYTHING_IPC_ITEM *a,const EVERYTHING_IPC_ITEM *b);
 static void _es_output_cell_text_property_wchar_string(const wchar_t *value);
@@ -133,6 +130,7 @@ static void _es_output_cell_filetime_property(ES_UINT64 value);
 static void _es_output_cell_duration_property(ES_UINT64 value);
 static void _es_output_cell_attribute_property(DWORD file_attributes);
 static void _es_output_cell_number_property(ES_UINT64 value,ES_UINT64 empty_value);
+static void _es_output_cell_fixed_q1k_property(ES_UINT64 value,ES_UINT64 empty_value);
 static void _es_output_cell_dimensions_property(EVERYTHING3_DIMENSIONS *dimensions_value);
 static void _es_output_cell_data_property(const BYTE *data,SIZE_T size);
 static void _es_output_cell_separator(void);
@@ -203,13 +201,14 @@ static BOOL _es_set_sort_list(const wchar_t *sort_list,int allow_old_column_ids)
 static BOOL _es_set_columns(const wchar_t *sort_list,int action,int allow_old_column_ids);
 static BOOL _es_set_column_colors(const wchar_t *column_color_list,int action);
 static BOOL _es_set_column_widths(const wchar_t *column_width_list,int action);
-static SIZE_T __es_highlighted_wchar_string_get_length_in_wchars(const wchar_t *s);
+static SIZE_T _es_highlighted_wchar_string_get_length_in_wchars(const wchar_t *s);
 static void _es_add_standard_efu_columns(int size,int date_modified,int date_created,int attributes,int allow_reorder);
 static column_t *_es_find_last_standard_efu_column(void);
 static BOOL _es_ipc2_is_file_info_indexed(DWORD file_info_type);
 static void _es_output_pause(DWORD ipc_version,const void *data);
 static void _es_output_noncell_total_size(ES_UINT64 total_size);
 static void _es_output_noncell_result_count(ES_UINT64 result_count);
+static BOOL _es_resolve_sort_ascending(DWORD property_id,int ascending);
 
 static DWORD _es_primary_sort_property_id = EVERYTHING3_PROPERTY_ID_NAME;
 static char _es_primary_sort_ascending = 0; // 0 = default, >0 = ascending, <0 = descending
@@ -227,72 +226,72 @@ static char _es_ignore_whitespace = 0;
 static char _es_ignore_punctuation = 0;
 static char _es_exit_everything = 0;
 static char es_reindex = 0;
-static char es_save_db = 0;
-static BYTE _es_export_type = ES_EXPORT_TYPE_NONE;
+static char _es_save_db = 0;
+static BYTE _es_export_type = _ES_EXPORT_TYPE_NONE;
 static HANDLE _es_export_file = INVALID_HANDLE_VALUE;
 static BYTE *_es_export_buf = 0;
 static BYTE *_es_export_p;
 static DWORD _es_export_avail = 0;
-static char es_size_leading_zero = 0; // depreciated.
-static char es_run_count_leading_zero = 0; // depreciated
-static char es_digit_grouping = 1;
-static SIZE_T es_offset = 0;
-static SIZE_T es_max_results = SIZE_MAX;
-static DWORD es_ret = ES_ERROR_SUCCESS;
-static const wchar_t *es_command_line = 0;
-static BYTE es_size_format = 1; // 0 = auto, 1=bytes, 2=kb
-static BYTE es_date_format = 0; // display/export (set on query) date/time format 0 = system format, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
-static BYTE es_display_date_format = 0; // display date/time format 0 = system format, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
+static char _es_size_leading_zero = 0; // depreciated.
+static char _es_run_count_leading_zero = 0; // depreciated
+static char _es_digit_grouping = 1;
+static SIZE_T _es_offset = 0;
+static SIZE_T _es_max_results = SIZE_MAX;
+static DWORD _es_ret = ES_ERROR_SUCCESS; // the return code from main()
+static const wchar_t *_es_command_line = 0;
+static BYTE _es_size_format = 1; // 0 = auto, 1=bytes, 2=kb
+static BYTE _es_date_format = 0; // display/export (set on query) date/time format 0 = system format, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
+static BYTE _es_display_date_format = 0; // display date/time format 0 = system format, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
 static BYTE _es_export_date_format = 0; // export date/time format 0 = default, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
-static CHAR_INFO *es_output_cibuf = 0;
-static int es_output_cibuf_hscroll = 0;
-static WORD es_output_color = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
-static int es_output_cibuf_x = 0;
-static int es_output_cibuf_y = 0;
-static int es_max_wide = 0;
-static int es_console_wide = 80;
-static int es_console_high = 25;
-static int es_console_size_high = 25;
-static int es_console_window_x = 0;
-static int es_console_window_y = 0;
-static char es_pause = 0; 
-static char es_empty_search_help = 0;
-static char es_hide_empty_search_results = 0;
-static char es_save = 0;
-static HWND es_everything_hwnd = 0;
-static DWORD es_timeout = 0;
-static char es_get_result_count = 0; // 1 = show result count only
-static char es_get_total_size = 0; // 1 = calculate total result size, only display this total size and exit.
-static char es_no_result_error = 0; // 1 = set errorlevel if no results found.
-static HANDLE es_output_handle = 0;
-static UINT es_cp = 0; // current code page
-static char es_output_is_char = 0; // default to file, unless we can get the console mode.
-static WORD es_default_attributes = 0x07;
-static void *es_run_history_data = 0; // run count command
-static DWORD es_run_history_count = 0; // run count command
-static int es_run_history_command = 0;
-static SIZE_T es_run_history_size = 0;
-static DWORD es_ipc_version = 0xffffffff; // allow all ipc versions
-static char es_header = 0; // 0 == resolve based on export type; >0 == show; <0 == hide.
-static char es_double_quote = 0; // always use double quotes for filenames.
-static char es_csv_double_quote = 1; // always use double quotes for CSV for consistancy.
-static char es_get_everything_version = 0;
-static char es_utf8_bom = 0;
-static wchar_buf_t *es_search_wcbuf = NULL;
-static HWND es_reply_hwnd = 0;
-static char es_loaded_appdata_ini = 0; // loaded settings from appdata, we should save to appdata.
-static column_t *es_output_column = NULL; // current output column
+static CHAR_INFO *_es_output_cibuf = 0;
+static int _es_output_cibuf_hscroll = 0;
+static WORD _es_output_color = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+static int _es_output_cibuf_x = 0;
+static int _es_output_cibuf_y = 0;
+static int _es_max_wide = 0;
+static int _es_console_wide = 80;
+static int _es_console_high = 25;
+static int _es_console_size_high = 25;
+static int _es_console_window_x = 0;
+static int _es_console_window_y = 0;
+static char _es_pause = 0; 
+static char _es_empty_search_help = 0;
+static char _es_hide_empty_search_results = 0;
+static char _es_save = 0;
+static HWND _es_everything_hwnd = 0;
+static char _es_get_result_count = 0; // 1 = show result count only
+static char _es_get_total_size = 0; // 1 = calculate total result size, only display this total size and exit.
+static char _es_no_result_error = 0; // 1 = set errorlevel if no results found.
+static HANDLE _es_output_handle = 0; // current output console or file handle.
+static UINT _es_cp = 0; // current code page
+static char _es_output_is_char = 0; // default to file, unless we can get the console mode.
+static WORD _es_default_attributes = 0x07; // grey text on black background.
+static void *_es_run_history_data = 0; // run count command
+static DWORD _es_run_history_count = 0; // run count command
+static int _es_run_history_command = 0;
+static SIZE_T _es_run_history_size = 0;
+static char _es_header = 0; // 0 == resolve based on export type; >0 == show; <0 == hide.
+static char _es_double_quote = 0; // always use double quotes for filenames.
+static char _es_csv_double_quote = 1; // always use double quotes for CSV for consistancy.
+static char _es_get_everything_version = 0;
+static char _es_utf8_bom = 0;
+static wchar_buf_t *_es_search_wcbuf = NULL;
+static HWND _es_reply_hwnd = 0;
+static char _es_loaded_appdata_ini = 0; // loaded settings from appdata, we should save to appdata.
+static column_t *_es_output_column = NULL; // current output column
 static SIZE_T _es_output_cell_overflow = 0;
-static char es_is_in_header = 0;
-static char es_no_default_filename_column = 0;
-static char es_no_default_size_column = 0; // EFU only
-static char es_no_default_date_modified_column = 0; // EFU only
-static char es_no_default_date_created_column = 0; // EFU only
-static char es_no_default_attribute_column = 0; // EFU only
-static char es_folder_append_path_separator = 1;
-static char es_newline_type = 0; // 0==CRLF, 1==LF, 2==NUL
+static char _es_is_in_header = 0;
+static char _es_no_default_filename_column = 0; // Don't automatically add the filename column.
+static char _es_no_default_size_column = 0; // EFU only
+static char _es_no_default_date_modified_column = 0; // EFU only
+static char _es_no_default_date_created_column = 0; // EFU only
+static char _es_no_default_attribute_column = 0; // EFU only
+static char _es_folder_append_path_separator = 1; // append a trailing '\\' at the end of folder path and names.
+static char _es_newline_type = 0; // 0==CRLF, 1==LF, 2==NUL
 
 wchar_buf_t *es_instance_name_wcbuf = NULL;
+DWORD es_timeout = 0;
+DWORD es_ipc_version = 0xffffffff; // allow all ipc versions
 
 // load unicode for windows 95/98
 HMODULE LoadUnicowsProc(void);
@@ -331,7 +330,7 @@ static BOOL _es_ipc1_query(void)
 	
 	_es_get_reply_window();
 	
-	search_length_in_wchars = es_search_wcbuf->length_in_wchars;
+	search_length_in_wchars = _es_search_wcbuf->length_in_wchars;
 	
 	// EVERYTHING_IPC_QUERY includes the NULL terminator.
 	size = 	sizeof(EVERYTHING_IPC_QUERY);
@@ -340,9 +339,9 @@ static BOOL _es_ipc1_query(void)
 	utf8_buf_grow_size(&cbuf,size);
 	query = (EVERYTHING_IPC_QUERY *)cbuf.buf;
 
-	if (es_max_results <= ES_DWORD_MAX)
+	if (_es_max_results <= ES_DWORD_MAX)
 	{
-		query->max_results = (DWORD)es_max_results;
+		query->max_results = (DWORD)_es_max_results;
 	}
 	else
 	{
@@ -350,10 +349,10 @@ static BOOL _es_ipc1_query(void)
 	}
 
 	query->offset = 0;
-	query->reply_copydata_message = ES_COPYDATA_IPCTEST_QUERYCOMPLETEW;
+	query->reply_copydata_message = _ES_COPYDATA_IPCTEST_QUERYCOMPLETEW;
 	query->search_flags = (_es_match_case?EVERYTHING_IPC_MATCHCASE:0) | (_es_match_diacritics?EVERYTHING_IPC_MATCHACCENTS:0) | (_es_match_whole_word?EVERYTHING_IPC_MATCHWHOLEWORD:0) | (_es_match_path?EVERYTHING_IPC_MATCHPATH:0);
-	query->reply_hwnd = (DWORD)(uintptr_t)es_reply_hwnd;
-	os_copy_memory(query->search_string,es_search_wcbuf->buf,(search_length_in_wchars+1)*sizeof(WCHAR));
+	query->reply_hwnd = (DWORD)(uintptr_t)_es_reply_hwnd;
+	os_copy_memory(query->search_string,_es_search_wcbuf->buf,(search_length_in_wchars+1)*sizeof(WCHAR));
 
 	// it's not fatal if this is too large.
 	// a different IPC method might succeed..
@@ -365,12 +364,12 @@ static BOOL _es_ipc1_query(void)
 		cds.dwData = EVERYTHING_IPC_COPYDATAQUERY;
 		cds.lpData = query;
 
-		if (SendMessage(es_everything_hwnd,WM_COPYDATA,(WPARAM)es_reply_hwnd,(LPARAM)&cds) == TRUE)
+		if (SendMessage(_es_everything_hwnd,WM_COPYDATA,(WPARAM)_es_reply_hwnd,(LPARAM)&cds) == TRUE)
 		{
 			// we are committed to ipc1
 			// if we are exporting as EFU, make sure the attribute column is shown.
 			// but don't allow reordering.
-			if (_es_export_type == ES_EXPORT_TYPE_EFU)
+			if (_es_export_type == _ES_EXPORT_TYPE_EFU)
 			{
 				_es_add_standard_efu_columns(0,0,0,1,0);
 			}
@@ -400,7 +399,7 @@ static BOOL _es_ipc2_query(void)
 
 	_es_get_reply_window();
 	
-	search_length_in_wchars = es_search_wcbuf->length_in_wchars;
+	search_length_in_wchars = _es_search_wcbuf->length_in_wchars;
 	
 	size = sizeof(EVERYTHING_IPC_QUERY2);
 	size = safe_size_add(size,safe_size_mul_sizeof_wchar(safe_size_add_one(search_length_in_wchars)));
@@ -408,7 +407,7 @@ static BOOL _es_ipc2_query(void)
 	utf8_buf_grow_size(&cbuf,size);
 	query = (EVERYTHING_IPC_QUERY2 *)cbuf.buf;
 
-	if (_es_export_type == ES_EXPORT_TYPE_EFU)
+	if (_es_export_type == _ES_EXPORT_TYPE_EFU)
 	{
 		int is_size_indexed;
 		int is_date_modified_indexed;
@@ -515,41 +514,41 @@ static BOOL _es_ipc2_query(void)
 		}
 	}
 	
-	if (es_get_result_count)
+	if (_es_get_result_count)
 	{
 		request_flags = 0;
 	}
 	
-	if (es_get_total_size)
+	if (_es_get_total_size)
 	{
 		// we only want size.
 		request_flags = EVERYTHING_IPC_QUERY2_REQUEST_SIZE;
 	}
 	
-	if (es_max_results <= ES_DWORD_MAX)
+	if (_es_max_results <= ES_DWORD_MAX)
 	{
-		query->max_results = (DWORD)es_max_results;
+		query->max_results = (DWORD)_es_max_results;
 	}
 	else
 	{
 		query->max_results = ES_DWORD_MAX;
 	}
 
-	if (es_offset <= ES_DWORD_MAX)
+	if (_es_offset <= ES_DWORD_MAX)
 	{
-		query->offset = (DWORD)es_offset;
+		query->offset = (DWORD)_es_offset;
 	}
 	else
 	{
 		query->offset = ES_DWORD_MAX;
 	}
 
-	query->reply_copydata_message = ES_COPYDATA_IPCTEST_QUERYCOMPLETE2W;
+	query->reply_copydata_message = _ES_COPYDATA_IPCTEST_QUERYCOMPLETE2W;
 	query->search_flags = (_es_match_case?EVERYTHING_IPC_MATCHCASE:0) | (_es_match_diacritics?EVERYTHING_IPC_MATCHACCENTS:0) | (_es_match_whole_word?EVERYTHING_IPC_MATCHWHOLEWORD:0) | (_es_match_path?EVERYTHING_IPC_MATCHPATH:0);
-	query->reply_hwnd = (DWORD)(uintptr_t)es_reply_hwnd;
+	query->reply_hwnd = (DWORD)(uintptr_t)_es_reply_hwnd;
 	query->request_flags = request_flags;
 	query->sort_type = _es_get_ipc_sort_type_from_property_id(_es_primary_sort_property_id,_es_primary_sort_ascending);
-	os_copy_memory(query+1,es_search_wcbuf->buf,(search_length_in_wchars + 1) * sizeof(WCHAR));
+	os_copy_memory(query+1,_es_search_wcbuf->buf,(search_length_in_wchars + 1) * sizeof(WCHAR));
 
 	// it's not fatal if this is too large.
 	// a different IPC method might succeed..
@@ -559,12 +558,12 @@ static BOOL _es_ipc2_query(void)
 		cds.dwData = EVERYTHING_IPC_COPYDATA_QUERY2;
 		cds.lpData = query;
 
-		if (SendMessage(es_everything_hwnd,WM_COPYDATA,(WPARAM)es_reply_hwnd,(LPARAM)&cds) == TRUE)
+		if (SendMessage(_es_everything_hwnd,WM_COPYDATA,(WPARAM)_es_reply_hwnd,(LPARAM)&cds) == TRUE)
 		{
 			// we are committed to ipc2
 			// if we are exporting as EFU, make sure the attribute column is shown.
 			// but don't allow reordering.
-			if (_es_export_type == ES_EXPORT_TYPE_EFU)
+			if (_es_export_type == _ES_EXPORT_TYPE_EFU)
 			{
 				_es_add_standard_efu_columns(0,0,0,1,0);
 			}
@@ -598,7 +597,7 @@ static BOOL _es_ipc3_query(void)
 		utf8_buf_init(&search_cbuf);
 		utf8_buf_init(&packet_cbuf);
 	
-		utf8_buf_copy_wchar_string(&search_cbuf,es_search_wcbuf->buf);
+		utf8_buf_copy_wchar_string(&search_cbuf,_es_search_wcbuf->buf);
 
 #if SIZE_MAX == 0xFFFFFFFFFFFFFFFFUI64
 
@@ -652,7 +651,7 @@ static BOOL _es_ipc3_query(void)
 			search_flags |= IPC3_SEARCH_FLAG_IGNORE_WHITESPACE;
 		}
 
-		if (_es_export_type == ES_EXPORT_TYPE_EFU)
+		if (_es_export_type == _ES_EXPORT_TYPE_EFU)
 		{
 			int is_size_indexed;
 			int is_date_modified_indexed;
@@ -670,12 +669,12 @@ static BOOL _es_ipc3_query(void)
 			_es_add_standard_efu_columns(is_size_indexed,is_date_modified_indexed,is_date_created_indexed,is_attributes_indexed,1);
 		}
 
-		if (es_get_total_size)
+		if (_es_get_total_size)
 		{
 			search_flags |= IPC3_SEARCH_FLAG_TOTAL_SIZE;
 
 			// we don't need any results.
-			es_max_results = 0;
+			_es_max_results = 0;
 			
 			// we don't need any columns
 			column_clear_all();
@@ -723,14 +722,14 @@ static BOOL _es_ipc3_query(void)
 
 			// viewport
 			packet_d = _es_copy_size_t(packet_d,0);
-			packet_d = _es_copy_size_t(packet_d,es_max_results);
+			packet_d = _es_copy_size_t(packet_d,_es_max_results);
 
 			// primary sort
 			
 			packet_d = ipc3_copy_len_vlq(packet_d,search_sort_count);
 
 			packet_d = _es_copy_dword(packet_d,_es_primary_sort_property_id);
-			packet_d = _es_copy_dword(packet_d,_es_primary_sort_ascending ? 0 : IPC3_SEARCH_SORT_FLAG_DESCENDING);
+			packet_d = _es_copy_dword(packet_d,_es_resolve_sort_ascending(_es_primary_sort_property_id,_es_primary_sort_ascending) ? 0 : IPC3_SEARCH_SORT_FLAG_DESCENDING);
 
 			// secondary sort.
 			
@@ -742,7 +741,7 @@ static BOOL _es_ipc3_query(void)
 				while(secondary_sort)
 				{
 					packet_d = _es_copy_dword(packet_d,secondary_sort->property_id);
-					packet_d = _es_copy_dword(packet_d,secondary_sort->ascending ? 0 : IPC3_SEARCH_SORT_FLAG_DESCENDING);
+					packet_d = _es_copy_dword(packet_d,_es_resolve_sort_ascending(secondary_sort->property_id,secondary_sort->ascending) ? 0 : IPC3_SEARCH_SORT_FLAG_DESCENDING);
 					
 					secondary_sort = secondary_sort->next;
 				}
@@ -769,9 +768,21 @@ static BOOL _es_ipc3_query(void)
 							case PROPERTY_FORMAT_TEXT30:
 							case PROPERTY_FORMAT_TEXT47:
 							case PROPERTY_FORMAT_EXTENSION:
+							case PROPERTY_FORMAT_FORMAT_TEXT30:
 								property_request_flags |= IPC3_SEARCH_PROPERTY_REQUEST_FLAG_HIGHLIGHT;
 								break;
 						}
+					}
+					
+					// these properties are normally integers.
+					// but we don't want to have to deal with formatting them in ES.
+					// so just request preformatted strings from Everything.
+					// eg: file-signature: a integer value of 10 = image/png
+					switch(property_get_format(column->property_id))
+					{
+							case PROPERTY_FORMAT_FORMAT_TEXT30:
+							property_request_flags |= IPC3_SEARCH_PROPERTY_REQUEST_FLAG_FORMAT;
+							break;
 					}
 					
 					packet_d = _es_copy_dword(packet_d,column->property_id);
@@ -787,7 +798,7 @@ static BOOL _es_ipc3_query(void)
 			if (ipc3_write_pipe_message(pipe_handle,IPC3_COMMAND_SEARCH,packet_cbuf.buf,packet_size))
 			{
 				ipc3_stream_pipe_t pipe_stream;
-				ipc3_stream_memory_t memory_stream;
+				ipc3_stream_pool_t memory_stream;
 				ipc3_result_list_t result_list;
 				int got_memory_stream;
 				
@@ -796,7 +807,7 @@ static BOOL _es_ipc3_query(void)
 				// we are committed to ipc3
 				// if we are exporting as EFU, make sure the attribute column is shown.
 				// but don't allow reordering.
-				if (_es_export_type == ES_EXPORT_TYPE_EFU)
+				if (_es_export_type == _ES_EXPORT_TYPE_EFU)
 				{
 					_es_add_standard_efu_columns(0,0,0,1,0);
 				}
@@ -809,27 +820,27 @@ static BOOL _es_ipc3_query(void)
 				// don't read any items yet.
 				ipc3_result_list_init(&result_list,(ipc3_stream_t *)&pipe_stream);
 				
-				if (es_get_result_count)
+				if (_es_get_result_count)
 				{
 					_es_output_noncell_result_count(result_list.folder_result_count + result_list.file_result_count);
 				}
 				else
-				if (es_get_total_size)
+				if (_es_get_total_size)
 				{
 					_es_output_noncell_total_size(result_list.total_result_size);
 				}
 				else
 				{
-					if (es_pause)
+					if (_es_pause)
 					{
-						// setup a memory stream.
+						// setup a pool stream.
 						// we read the entire stream into memory as it gets accessed.
 						// we store the stream position for each item index so we can quickly jump to a location.
-						ipc3_stream_memory_init(&memory_stream,(ipc3_stream_t *)&pipe_stream);
+						ipc3_stream_pool_init(&memory_stream,(ipc3_stream_t *)&pipe_stream);
 						
 						got_memory_stream = 1;
 						
-						// set the memory stream as the main stream.
+						// set the pool stream as the main stream.
 						result_list.stream = (ipc3_stream_t *)&memory_stream;
 						
 						// allocate index to stream offset array.
@@ -847,7 +858,7 @@ static BOOL _es_ipc3_query(void)
 						SIZE_T total_item_count;
 						
 						total_item_count = result_list.viewport_count;
-						if (es_header > 0)
+						if (_es_header > 0)
 						{
 							total_item_count = safe_size_add_one(total_item_count);
 						}
@@ -858,7 +869,7 @@ static BOOL _es_ipc3_query(void)
 
 				if (result_list.stream->is_error)
 				{
-					es_ret = ES_ERROR_IPC_ERROR;
+					_es_ret = ES_ERROR_IPC_ERROR;
 				}
 					
 				// don't try to process ipc2 or ipc1 if we sent the request successfully.
@@ -950,7 +961,7 @@ void DECLSPEC_NORETURN es_fatal(int error_code)
 			break;
 			
 		case ES_ERROR_NO_IPC:
-			msg = "Everything IPC window not found. Please make sure Everything is running.\r\n";
+			msg = "Everything IPC not found. Please make sure Everything is running.\r\n";
 			break;
 			
 		case ES_ERROR_NO_RESULTS:
@@ -973,28 +984,28 @@ void DECLSPEC_NORETURN es_fatal(int error_code)
 
 static void _es_console_fill(SIZE_T count,int ascii_ch)
 {
-	if (es_output_cibuf)
+	if (_es_output_cibuf)
 	{
 		SIZE_T i;
 		
 		for(i=0;i<count;i++)
 		{
-			if ((int)i + es_output_cibuf_x >= es_console_wide)
+			if ((int)i + _es_output_cibuf_x >= _es_console_wide)
 			{
 				break;
 			}
 
-			if ((int)i + es_output_cibuf_x >= 0)
+			if ((int)i + _es_output_cibuf_x >= 0)
 			{
-				es_output_cibuf[(int)i+es_output_cibuf_x].Attributes = es_output_color;
-				es_output_cibuf[(int)i+es_output_cibuf_x].Char.UnicodeChar = ascii_ch;
+				_es_output_cibuf[(int)i+_es_output_cibuf_x].Attributes = _es_output_color;
+				_es_output_cibuf[(int)i+_es_output_cibuf_x].Char.UnicodeChar = ascii_ch;
 			}
 		}
 		
-		es_output_cibuf_x += (int)count;
+		_es_output_cibuf_x += (int)count;
 	}
 	else
-	if (es_output_is_char)
+	if (_es_output_is_char)
 	{
 		wchar_buf_t wcbuf;
 		wchar_t *d;
@@ -1014,7 +1025,7 @@ static void _es_console_fill(SIZE_T count,int ascii_ch)
 
 		if (count <= ES_DWORD_MAX)
 		{
-			WriteConsole(es_output_handle,wcbuf.buf,(DWORD)count,&numwritten,0);
+			WriteConsole(_es_output_handle,wcbuf.buf,(DWORD)count,&numwritten,0);
 		}
 		
 		wchar_buf_kill(&wcbuf);
@@ -1039,7 +1050,7 @@ static void _es_console_fill(SIZE_T count,int ascii_ch)
 
 		if (count <= ES_DWORD_MAX)
 		{
-			WriteFile(es_output_handle,cbuf.buf,(DWORD)count,&numwritten,0);
+			WriteFile(_es_output_handle,cbuf.buf,(DWORD)count,&numwritten,0);
 		}
 		
 		utf8_buf_kill(&cbuf);
@@ -1047,7 +1058,7 @@ static void _es_console_fill(SIZE_T count,int ascii_ch)
 }
 
 // get the length in wchars from a wchar string.
-static SIZE_T __es_highlighted_wchar_string_get_length_in_wchars(const wchar_t *s)
+static SIZE_T _es_highlighted_wchar_string_get_length_in_wchars(const wchar_t *s)
 {
 	const wchar_t *p;
 	SIZE_T len;
@@ -1087,40 +1098,40 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 	
 	if (is_highlighted)
 	{
-		length_in_wchars = __es_highlighted_wchar_string_get_length_in_wchars(text);
+		length_in_wchars = _es_highlighted_wchar_string_get_length_in_wchars(text);
 	}
 	else
 	{
 		length_in_wchars = wchar_string_get_length_in_wchars(text);
 	}
 	
-	is_right_aligned = property_is_right_aligned(es_output_column->property_id);
-	column_width = column_width_get(es_output_column->property_id);
-	column_color = column_color_find(es_output_column->property_id);
+	is_right_aligned = property_is_right_aligned(_es_output_column->property_id);
+	column_width = column_width_get(_es_output_column->property_id);
+	column_color = column_color_find(_es_output_column->property_id);
 	did_set_color = 0;
 	
 	// setup colors
 	// pipe? console? cibuf?
-	if (es_output_cibuf)
+	if (_es_output_cibuf)
 	{
-		es_output_color = column_color ? column_color->color : es_default_attributes;
+		_es_output_color = column_color ? column_color->color : _es_default_attributes;
 	}
 	else
-	if (es_output_is_char)
+	if (_es_output_is_char)
 	{
 		if (column_color)
 		{
-			es_output_color = column_color->color;
-			SetConsoleTextAttribute(es_output_handle,column_color->color);
+			_es_output_color = column_color->color;
+			SetConsoleTextAttribute(_es_output_handle,column_color->color);
 
 			did_set_color = 1;
 		}
 	}
 		
 	// don't fill with CSV/TSV/EFU/TXT/M3U
-	if (_es_export_type == ES_EXPORT_TYPE_NONE)
+	if (_es_export_type == _ES_EXPORT_TYPE_NONE)
 	{
-		if (es_output_column != column_order_last)
+		if (_es_output_column != column_order_last)
 		{
 			if (is_right_aligned)
 			{
@@ -1147,21 +1158,21 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 					
 					fill_ch = ' ';
 					
-					if (!es_digit_grouping)
+					if (!_es_digit_grouping)
 					{
-						if (!es_is_in_header)
+						if (!_es_is_in_header)
 						{
-							if (es_output_column->property_id == EVERYTHING3_PROPERTY_ID_SIZE)
+							if (_es_output_column->property_id == EVERYTHING3_PROPERTY_ID_SIZE)
 							{
-								if (es_size_leading_zero)
+								if (_es_size_leading_zero)
 								{
 									fill_ch = '0';
 								}
 							}
 							else
-							if (es_output_column->property_id == EVERYTHING3_PROPERTY_ID_RUN_COUNT)
+							if (_es_output_column->property_id == EVERYTHING3_PROPERTY_ID_RUN_COUNT)
 							{
-								if (es_run_count_leading_zero)
+								if (_es_run_count_leading_zero)
 								{
 									fill_ch = '0';
 								}
@@ -1176,7 +1187,7 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 	}
 
 	// pipe? console? cibuf?
-	if (es_output_cibuf)
+	if (_es_output_cibuf)
 	{
 		if (is_highlighted)
 		{
@@ -1194,7 +1205,7 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 				SIZE_T wlen;
 				int is_highlight_change;
 
-				if ((int)cibuf_offset + es_output_cibuf_x >= es_console_wide)
+				if ((int)cibuf_offset + _es_output_cibuf_x >= _es_console_wide)
 				{
 					break;
 				}
@@ -1234,15 +1245,15 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 					
 					for(i=0;i<wlen;i++)
 					{
-						if ((int)i + (int)cibuf_offset + es_output_cibuf_x >= es_console_wide)
+						if ((int)i + (int)cibuf_offset + _es_output_cibuf_x >= _es_console_wide)
 						{
 							break;
 						}
 
-						if ((int)i + (int)cibuf_offset + es_output_cibuf_x >= 0)
+						if ((int)i + (int)cibuf_offset + _es_output_cibuf_x >= 0)
 						{
-							es_output_cibuf[(int)i+(int)cibuf_offset+es_output_cibuf_x].Attributes = is_in_highlight ? _es_highlight_color : es_output_color;
-							es_output_cibuf[(int)i+(int)cibuf_offset+es_output_cibuf_x].Char.UnicodeChar = start[i];
+							_es_output_cibuf[(int)i+(int)cibuf_offset+_es_output_cibuf_x].Attributes = is_in_highlight ? _es_highlight_color : _es_output_color;
+							_es_output_cibuf[(int)i+(int)cibuf_offset+_es_output_cibuf_x].Char.UnicodeChar = start[i];
 						}
 					}
 					
@@ -1261,23 +1272,23 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 			
 			for(i=0;i<length_in_wchars;i++)
 			{
-				if ((int)i + es_output_cibuf_x >= es_console_wide)
+				if ((int)i + _es_output_cibuf_x >= _es_console_wide)
 				{
 					break;
 				}
 
-				if ((int)i + es_output_cibuf_x >= 0)
+				if ((int)i + _es_output_cibuf_x >= 0)
 				{
-					es_output_cibuf[(int)i+es_output_cibuf_x].Attributes = es_output_color;
-					es_output_cibuf[(int)i+es_output_cibuf_x].Char.UnicodeChar = text[i];
+					_es_output_cibuf[(int)i+_es_output_cibuf_x].Attributes = _es_output_color;
+					_es_output_cibuf[(int)i+_es_output_cibuf_x].Char.UnicodeChar = text[i];
 				}
 			}
 		}
 		
-		es_output_cibuf_x += (int)length_in_wchars;
+		_es_output_cibuf_x += (int)length_in_wchars;
 	}
 	else
-	if (es_output_is_char)
+	if (_es_output_is_char)
 	{
 		if (length_in_wchars <= ES_DWORD_MAX)
 		{
@@ -1325,13 +1336,13 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 						p++;
 					}
 
-					SetConsoleTextAttribute(es_output_handle,is_in_highlight ? _es_highlight_color : es_output_color);
+					SetConsoleTextAttribute(_es_output_handle,is_in_highlight ? _es_highlight_color : _es_output_color);
 		
 					if (wlen <= ES_DWORD_MAX)
 					{
 						DWORD numwritten;
 						
-						WriteConsole(es_output_handle,start,(DWORD)wlen,&numwritten,0);
+						WriteConsole(_es_output_handle,start,(DWORD)wlen,&numwritten,0);
 					}
 
 					if (is_highlight_change)
@@ -1344,7 +1355,7 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 			{
 				DWORD numwritten;
 			
-				WriteConsole(es_output_handle,text,(DWORD)length_in_wchars,&numwritten,0);
+				WriteConsole(_es_output_handle,text,(DWORD)length_in_wchars,&numwritten,0);
 			}
 		}
 	}
@@ -1354,7 +1365,7 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 		{
 			int len;
 			
-			len = WideCharToMultiByte(es_cp,0,text,(int)length_in_wchars,0,0,0,0);
+			len = WideCharToMultiByte(_es_cp,0,text,(int)length_in_wchars,0,0,0,0);
 			if (len)
 			{
 				DWORD numwritten;
@@ -1364,9 +1375,9 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 
 				utf8_buf_grow_size(&cbuf,len);
 
-				WideCharToMultiByte(es_cp,0,text,(int)length_in_wchars,cbuf.buf,len,0,0);
+				WideCharToMultiByte(_es_cp,0,text,(int)length_in_wchars,cbuf.buf,len,0,0);
 				
-				WriteFile(es_output_handle,cbuf.buf,len,&numwritten,0);
+				WriteFile(_es_output_handle,cbuf.buf,len,&numwritten,0);
 				
 				utf8_buf_kill(&cbuf);
 			}
@@ -1374,9 +1385,9 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 	}
 
 	// don't fill with CSV/TSV/EFU/TXT/M3U
-	if (_es_export_type == ES_EXPORT_TYPE_NONE)
+	if (_es_export_type == _ES_EXPORT_TYPE_NONE)
 	{
-		if (es_output_column != column_order_last)
+		if (_es_output_column != column_order_last)
 		{
 			if (!is_right_aligned)
 			{
@@ -1414,7 +1425,7 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 	// restore color
 	if (did_set_color)
 	{
-		SetConsoleTextAttribute(es_output_handle,es_default_attributes);
+		SetConsoleTextAttribute(_es_output_handle,_es_default_attributes);
 	}
 }
 
@@ -1469,7 +1480,7 @@ static void _es_export_write_wchar_string_n(const wchar_t *text,SIZE_T wlen)
 		cp = CP_UTF8;
 		utf8_buf_init(&cbuf);
 
-		if (_es_export_type == ES_EXPORT_TYPE_M3U)		
+		if (_es_export_type == _ES_EXPORT_TYPE_M3U)		
 		{
 			cp = CP_ACP;
 		}
@@ -1613,20 +1624,20 @@ static BOOL _es_flush_export_buffer(void)
 	
 	if (_es_export_file != INVALID_HANDLE_VALUE)
 	{
-		if (_es_export_avail != ES_EXPORT_BUF_SIZE)
+		if (_es_export_avail != _ES_EXPORT_BUF_SIZE)
 		{
 			DWORD numwritten;
 			
-			if (WriteFile(_es_export_file,_es_export_buf,ES_EXPORT_BUF_SIZE - _es_export_avail,&numwritten,0))
+			if (WriteFile(_es_export_file,_es_export_buf,_ES_EXPORT_BUF_SIZE - _es_export_avail,&numwritten,0))
 			{
-				if (ES_EXPORT_BUF_SIZE - _es_export_avail == numwritten)
+				if (_ES_EXPORT_BUF_SIZE - _es_export_avail == numwritten)
 				{
 					ret = TRUE;
 				}
 			}
 			
 			_es_export_p = _es_export_buf;
-			_es_export_avail = ES_EXPORT_BUF_SIZE;
+			_es_export_avail = _ES_EXPORT_BUF_SIZE;
 		}	
 	}
 	
@@ -1635,18 +1646,18 @@ static BOOL _es_flush_export_buffer(void)
 
 static void _es_output_cell_text_property_wchar_string(const wchar_t *value)
 {
-	if ((_es_export_type == ES_EXPORT_TYPE_CSV) || (_es_export_type == ES_EXPORT_TYPE_TSV))
+	if ((_es_export_type == _ES_EXPORT_TYPE_CSV) || (_es_export_type == _ES_EXPORT_TYPE_TSV))
 	{
-		_es_output_cell_csv_wchar_string_with_optional_quotes((_es_export_type == ES_EXPORT_TYPE_CSV) ? es_csv_double_quote : es_double_quote,(_es_export_type == ES_EXPORT_TYPE_CSV) ? ',' : '\t',value,0);
+		_es_output_cell_csv_wchar_string_with_optional_quotes((_es_export_type == _ES_EXPORT_TYPE_CSV) ? _es_csv_double_quote : _es_double_quote,(_es_export_type == _ES_EXPORT_TYPE_CSV) ? ',' : '\t',value,0);
 	}
 	else
-	if (_es_export_type == ES_EXPORT_TYPE_EFU)
+	if (_es_export_type == _ES_EXPORT_TYPE_EFU)
 	{
 		// always double quote.
 		_es_output_cell_csv_wchar_string(value,0);
 	}
 	else
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		// always double quote.
 		wchar_buf_t property_name_wcbuf;
@@ -1655,7 +1666,7 @@ static void _es_output_cell_text_property_wchar_string(const wchar_t *value)
 		wchar_buf_init(&property_name_wcbuf);
 		wchar_buf_init(&json_string_wcbuf);
 
-		_es_get_nice_json_property_name(es_output_column->property_id,&property_name_wcbuf);
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		_es_escape_json_wchar_string(value,&json_string_wcbuf);
 		
 		_es_output_cell_printf(0,"\"%S\":\"%S\"",property_name_wcbuf.buf,json_string_wcbuf.buf);
@@ -1665,7 +1676,7 @@ static void _es_output_cell_text_property_wchar_string(const wchar_t *value)
 	}
 	else
 	{
-		if (es_double_quote)
+		if (_es_double_quote)
 		{
 			wchar_buf_t wcbuf;
 
@@ -1699,18 +1710,18 @@ static void _es_output_cell_text_property_utf8_string_n(const ES_UTF8 *value,SIZ
 
 static void _es_output_cell_highlighted_text_property_wchar_string(const wchar_t *value)
 {
-	if ((_es_export_type == ES_EXPORT_TYPE_CSV) || (_es_export_type == ES_EXPORT_TYPE_TSV))
+	if ((_es_export_type == _ES_EXPORT_TYPE_CSV) || (_es_export_type == _ES_EXPORT_TYPE_TSV))
 	{
-		_es_output_cell_csv_wchar_string_with_optional_quotes((_es_export_type == ES_EXPORT_TYPE_CSV) ? es_csv_double_quote : es_double_quote,(_es_export_type == ES_EXPORT_TYPE_CSV) ? ',' : '\t',value,1);
+		_es_output_cell_csv_wchar_string_with_optional_quotes((_es_export_type == _ES_EXPORT_TYPE_CSV) ? _es_csv_double_quote : _es_double_quote,(_es_export_type == _ES_EXPORT_TYPE_CSV) ? ',' : '\t',value,1);
 	}
 	else
-	if (_es_export_type == ES_EXPORT_TYPE_EFU)
+	if (_es_export_type == _ES_EXPORT_TYPE_EFU)
 	{
 		// always double quote.
 		_es_output_cell_csv_wchar_string(value,1);
 	}
 	else
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		// always double quote.
 		wchar_buf_t property_name_wcbuf;
@@ -1719,7 +1730,7 @@ static void _es_output_cell_highlighted_text_property_wchar_string(const wchar_t
 		wchar_buf_init(&property_name_wcbuf);
 		wchar_buf_init(&json_string_wcbuf);
 
-		_es_get_nice_json_property_name(es_output_column->property_id,&property_name_wcbuf);
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		_es_escape_json_wchar_string(value,&json_string_wcbuf);
 		
 		_es_output_cell_printf(1,"\"%S\":\"%S\"",property_name_wcbuf.buf,json_string_wcbuf.buf);
@@ -1729,7 +1740,7 @@ static void _es_output_cell_highlighted_text_property_wchar_string(const wchar_t
 	}
 	else
 	{
-		if (es_double_quote)
+		if (_es_double_quote)
 		{
 			wchar_buf_t wcbuf;
 
@@ -1763,13 +1774,13 @@ static void _es_output_cell_highlighted_text_property_utf8_string(const ES_UTF8 
 
 static void _es_output_cell_unknown_property(void)
 {	
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		wchar_buf_t property_name_wcbuf;
 		
 		wchar_buf_init(&property_name_wcbuf);
 
-		_es_get_nice_json_property_name(es_output_column->property_id,&property_name_wcbuf);
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
 		_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
 
@@ -1784,13 +1795,13 @@ static void _es_output_cell_unknown_property(void)
 
 static void _es_output_cell_size_property(int is_dir,ES_UINT64 value)
 {
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		wchar_buf_t property_name_wcbuf;
 		
 		wchar_buf_init(&property_name_wcbuf);
 
-		_es_get_nice_json_property_name(es_output_column->property_id,&property_name_wcbuf);
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
 		if (value == ES_UINT64_MAX)
 		{
@@ -1807,7 +1818,7 @@ static void _es_output_cell_size_property(int is_dir,ES_UINT64 value)
 	if (value == ES_UINT64_MAX)
 	{
 		// unknown size.
-		if ((_es_export_type == ES_EXPORT_TYPE_NONE) && (is_dir))
+		if ((_es_export_type == _ES_EXPORT_TYPE_NONE) && (is_dir))
 		{
 			_es_output_cell_printf(0,"<DIR>");
 		}
@@ -1820,7 +1831,7 @@ static void _es_output_cell_size_property(int is_dir,ES_UINT64 value)
 	}
 	else
 	{
-		if (_es_export_type == ES_EXPORT_TYPE_NONE)
+		if (_es_export_type == _ES_EXPORT_TYPE_NONE)
 		{
 			wchar_buf_t wcbuf;
 
@@ -1842,7 +1853,7 @@ static void _es_output_cell_size_property(int is_dir,ES_UINT64 value)
 
 static void _es_output_cell_filetime_property(ES_UINT64 value)
 {
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		wchar_buf_t property_name_wcbuf;
 		wchar_buf_t filetime_wcbuf;
@@ -1850,14 +1861,14 @@ static void _es_output_cell_filetime_property(ES_UINT64 value)
 		wchar_buf_init(&property_name_wcbuf);
 		wchar_buf_init(&filetime_wcbuf);
 
-		_es_get_nice_json_property_name(es_output_column->property_id,&property_name_wcbuf);
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
 		if (value == ES_UINT64_MAX)
 		{
 			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
 		}
 		else
-		if (es_date_format)
+		if (_es_date_format)
 		{
 			_es_format_filetime(value,&filetime_wcbuf);
 		
@@ -1879,11 +1890,11 @@ static void _es_output_cell_filetime_property(ES_UINT64 value)
 		_es_output_cell_printf(0,"");
 	}
 	else
-	if ((_es_export_type == ES_EXPORT_TYPE_NONE) || (es_date_format))
+	if ((_es_export_type == _ES_EXPORT_TYPE_NONE) || (_es_date_format))
 	{
 		wchar_buf_t wcbuf;
 
-		// format filetime if we specify a es_date_format
+		// format filetime if we specify a _es_date_format
 		wchar_buf_init(&wcbuf);
 
 		_es_format_filetime(value,&wcbuf);
@@ -1901,13 +1912,13 @@ static void _es_output_cell_filetime_property(ES_UINT64 value)
 
 static void _es_output_cell_duration_property(ES_UINT64 value)
 {
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		wchar_buf_t property_name_wcbuf;
 		
 		wchar_buf_init(&property_name_wcbuf);
 
-		_es_get_nice_json_property_name(es_output_column->property_id,&property_name_wcbuf);
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
 		if (value == ES_UINT64_MAX)
 		{
@@ -1929,7 +1940,7 @@ static void _es_output_cell_duration_property(ES_UINT64 value)
 	}
 	else
 	{
-		if (_es_export_type == ES_EXPORT_TYPE_NONE)
+		if (_es_export_type == _ES_EXPORT_TYPE_NONE)
 		{
 			wchar_buf_t wcbuf;
 
@@ -1951,13 +1962,13 @@ static void _es_output_cell_duration_property(ES_UINT64 value)
 
 static void _es_output_cell_attribute_property(DWORD file_attributes)
 {
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		wchar_buf_t property_name_wcbuf;
 		
 		wchar_buf_init(&property_name_wcbuf);
 
-		_es_get_nice_json_property_name(es_output_column->property_id,&property_name_wcbuf);
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
 		if (file_attributes == INVALID_FILE_ATTRIBUTES)
 		{
@@ -1978,7 +1989,7 @@ static void _es_output_cell_attribute_property(DWORD file_attributes)
 		_es_output_cell_printf(0,"");
 	}
 	else
-	if (_es_export_type == ES_EXPORT_TYPE_NONE)
+	if (_es_export_type == _ES_EXPORT_TYPE_NONE)
 	{
 		wchar_buf_t wcbuf;
 
@@ -2000,13 +2011,13 @@ static void _es_output_cell_attribute_property(DWORD file_attributes)
 
 static void _es_output_cell_number_property(ES_UINT64 value,ES_UINT64 empty_value)
 {
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		wchar_buf_t property_name_wcbuf;
 		
 		wchar_buf_init(&property_name_wcbuf);
 
-		_es_get_nice_json_property_name(es_output_column->property_id,&property_name_wcbuf);
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
 		if (value == empty_value)
 		{
@@ -2027,7 +2038,7 @@ static void _es_output_cell_number_property(ES_UINT64 value,ES_UINT64 empty_valu
 		_es_output_cell_printf(0,"");
 	}
 	else
-	if (_es_export_type == ES_EXPORT_TYPE_NONE)
+	if (_es_export_type == _ES_EXPORT_TYPE_NONE)
 	{
 		wchar_buf_t wcbuf;
 		int allow_digit_grouping;
@@ -2036,7 +2047,7 @@ static void _es_output_cell_number_property(ES_UINT64 value,ES_UINT64 empty_valu
 
 		allow_digit_grouping = 0;
 	
-		switch(property_get_format(es_output_column->property_id))
+		switch(property_get_format(_es_output_column->property_id))
 		{
 			case PROPERTY_FORMAT_NUMBER6:
 			case PROPERTY_FORMAT_NUMBER7:
@@ -2053,8 +2064,54 @@ static void _es_output_cell_number_property(ES_UINT64 value,ES_UINT64 empty_valu
 	}
 	else
 	{
-		// raw filetime.
 		_es_output_cell_printf(0,"%I64u",value);
+	}
+}
+
+static void _es_output_cell_fixed_q1k_property(ES_UINT64 value,ES_UINT64 empty_value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		wchar_buf_t fixed_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == empty_value)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_format_fixed_q1k(value,0,&fixed_wcbuf);
+			
+			_es_output_cell_printf(0,"\"%S\":%f",property_name_wcbuf.buf,value);
+		}
+
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == empty_value)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
+
+		wchar_buf_init(&wcbuf);
+
+		_es_format_fixed_q1k(value,(_es_export_type == _ES_EXPORT_TYPE_NONE) ? 1 : 0,&wcbuf);
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&wcbuf);
 	}
 }
 
@@ -2066,13 +2123,13 @@ static void _es_output_cell_dimensions_property(EVERYTHING3_DIMENSIONS *dimensio
 
 	_es_format_dimensions(dimensions_value,&wcbuf);
 	
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		wchar_buf_t property_name_wcbuf;
 		
 		wchar_buf_init(&property_name_wcbuf);
 
-		_es_get_nice_json_property_name(es_output_column->property_id,&property_name_wcbuf);
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
 		// formatted dimensions doesn't need to be json escaped.
 		_es_output_cell_printf(0,"\"%S\":\"%S\"",property_name_wcbuf.buf,wcbuf.buf);
@@ -2113,13 +2170,13 @@ static void _es_output_cell_data_property(const BYTE *data,SIZE_T size)
 	
 	*d = 0;
 
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		wchar_buf_t property_name_wcbuf;
 		
 		wchar_buf_init(&property_name_wcbuf);
 
-		_es_get_nice_json_property_name(es_output_column->property_id,&property_name_wcbuf);
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
 		// hex data text doesn't need to be escaped.
 		_es_output_cell_printf(0,"\"%S\":\"%S\"",property_name_wcbuf.buf,wcbuf.buf);
@@ -2136,21 +2193,21 @@ static void _es_output_cell_data_property(const BYTE *data,SIZE_T size)
 
 static void _es_output_cell_separator(void)
 {
-	if (es_output_column != column_order_start)
+	if (_es_output_column != column_order_start)
 	{
 		const ES_UTF8 *separator_text;
 	
-		if ((_es_export_type == ES_EXPORT_TYPE_CSV) || (_es_export_type == ES_EXPORT_TYPE_TSV))
+		if ((_es_export_type == _ES_EXPORT_TYPE_CSV) || (_es_export_type == _ES_EXPORT_TYPE_TSV))
 		{
-			separator_text = (_es_export_type == ES_EXPORT_TYPE_CSV) ? "," : "\t";
+			separator_text = (_es_export_type == _ES_EXPORT_TYPE_CSV) ? "," : "\t";
 		}
 		else
-		if (_es_export_type == ES_EXPORT_TYPE_EFU)
+		if (_es_export_type == _ES_EXPORT_TYPE_EFU)
 		{
 			separator_text = ",";
 		}
 		else
-		if (_es_export_type == ES_EXPORT_TYPE_JSON)
+		if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 		{
 			separator_text = ",";
 		}
@@ -2176,7 +2233,7 @@ static void _es_output_noncell_wchar_string_n(const wchar_t *text,SIZE_T length_
 	}
 	else
 	{
-		if (es_output_cibuf)
+		if (_es_output_cibuf)
 		{
 			SIZE_T i;
 			SIZE_T ci_x;
@@ -2185,30 +2242,30 @@ static void _es_output_noncell_wchar_string_n(const wchar_t *text,SIZE_T length_
 		
 			for(i=0;i<length_in_wchars;i++)
 			{
-				if ((int)ci_x + es_output_cibuf_x >= es_console_wide)
+				if ((int)ci_x + _es_output_cibuf_x >= _es_console_wide)
 				{
 					break;
 				}
 				
 				if (text[i] == '\t')
 				{
-					if ((int)ci_x + es_output_cibuf_x >= 0)
+					if ((int)ci_x + _es_output_cibuf_x >= 0)
 					{
-						es_output_cibuf[(int)ci_x+es_output_cibuf_x].Attributes = es_default_attributes;
-						es_output_cibuf[(int)ci_x+es_output_cibuf_x].Char.UnicodeChar = ' ';
+						_es_output_cibuf[(int)ci_x+_es_output_cibuf_x].Attributes = _es_default_attributes;
+						_es_output_cibuf[(int)ci_x+_es_output_cibuf_x].Char.UnicodeChar = ' ';
 					}
 
 					ci_x++;
 					
-					while (((int)ci_x + es_output_cibuf_x + es_output_cibuf_hscroll) & 7)
+					while (((int)ci_x + _es_output_cibuf_x + _es_output_cibuf_hscroll) & 7)
 					{
-						if ((int)ci_x + es_output_cibuf_x < es_console_wide)
+						if ((int)ci_x + _es_output_cibuf_x < _es_console_wide)
 						{
-							if ((int)ci_x + es_output_cibuf_x >= 0)
+							if ((int)ci_x + _es_output_cibuf_x >= 0)
 							{
-								es_output_cibuf[(int)ci_x+es_output_cibuf_x].Attributes = es_default_attributes;
-								//es_output_cibuf[(int)ci_x+es_output_cibuf_x].Char.UnicodeChar = '0'+(((int)ci_x + es_output_cibuf_x + es_output_cibuf_hscroll) % 8);
-								es_output_cibuf[(int)ci_x+es_output_cibuf_x].Char.UnicodeChar = ' ';
+								_es_output_cibuf[(int)ci_x+_es_output_cibuf_x].Attributes = _es_default_attributes;
+								//_es_output_cibuf[(int)ci_x+_es_output_cibuf_x].Char.UnicodeChar = '0'+(((int)ci_x + _es_output_cibuf_x + _es_output_cibuf_hscroll) % 8);
+								_es_output_cibuf[(int)ci_x+_es_output_cibuf_x].Char.UnicodeChar = ' ';
 							}
 						}
 						
@@ -2217,27 +2274,27 @@ static void _es_output_noncell_wchar_string_n(const wchar_t *text,SIZE_T length_
 				}
 				else
 				{
-					if ((int)ci_x + es_output_cibuf_x >= 0)
+					if ((int)ci_x + _es_output_cibuf_x >= 0)
 					{
-						es_output_cibuf[(int)ci_x+es_output_cibuf_x].Attributes = es_default_attributes;
-						es_output_cibuf[(int)ci_x+es_output_cibuf_x].Char.UnicodeChar = text[i];
+						_es_output_cibuf[(int)ci_x+_es_output_cibuf_x].Attributes = _es_default_attributes;
+						_es_output_cibuf[(int)ci_x+_es_output_cibuf_x].Char.UnicodeChar = text[i];
 					}
 
 					ci_x++;
 				}
 			}
 			
-			es_output_cibuf_x += (int)ci_x;	
+			_es_output_cibuf_x += (int)ci_x;	
 		}
 		else
 		{
-			if (es_output_is_char)
+			if (_es_output_is_char)
 			{
 				if (length_in_wchars <= ES_DWORD_MAX)
 				{
 					DWORD numwritten;
 				
-					WriteConsole(es_output_handle,text,(DWORD)length_in_wchars,&numwritten,0);
+					WriteConsole(_es_output_handle,text,(DWORD)length_in_wchars,&numwritten,0);
 				}
 			}
 			else
@@ -2246,7 +2303,7 @@ static void _es_output_noncell_wchar_string_n(const wchar_t *text,SIZE_T length_
 				{
 					int len;
 					
-					len = WideCharToMultiByte(es_cp,0,text,(int)length_in_wchars,0,0,0,0);
+					len = WideCharToMultiByte(_es_cp,0,text,(int)length_in_wchars,0,0,0,0);
 					if (len)
 					{
 						DWORD numwritten;
@@ -2256,9 +2313,9 @@ static void _es_output_noncell_wchar_string_n(const wchar_t *text,SIZE_T length_
 
 						utf8_buf_grow_size(&cbuf,len);
 
-						WideCharToMultiByte(es_cp,0,text,(int)length_in_wchars,cbuf.buf,len,0,0);
+						WideCharToMultiByte(_es_cp,0,text,(int)length_in_wchars,cbuf.buf,len,0,0);
 						
-						WriteFile(es_output_handle,cbuf.buf,len,&numwritten,0);
+						WriteFile(_es_output_handle,cbuf.buf,len,&numwritten,0);
 						
 						utf8_buf_kill(&cbuf);
 					}
@@ -2299,34 +2356,34 @@ static void _es_output_noncell_printf(const ES_UTF8 *format,...)
 
 static BOOL _es_output_header(void)
 {
-	if (es_header > 0)
+	if (_es_header > 0)
 	{
 		wchar_buf_t property_name_wcbuf;
 
 		wchar_buf_init(&property_name_wcbuf);
 		
-		es_is_in_header = 1;
+		_es_is_in_header = 1;
 		
 		_es_output_line_begin(0);
 		
-		es_output_column = column_order_start;
+		_es_output_column = column_order_start;
 		
-		while(es_output_column)
+		while(_es_output_column)
 		{
 			_es_output_cell_separator();
 
-			_es_get_nice_property_name(es_output_column->property_id,&property_name_wcbuf);
+			_es_get_nice_property_name(_es_output_column->property_id,&property_name_wcbuf);
 
 			// no quotes
 			// never highlight.
 			_es_output_cell_wchar_string(property_name_wcbuf.buf,0);
 
-			es_output_column = es_output_column->order_next;
+			_es_output_column = _es_output_column->order_next;
 		}
 
 		_es_output_line_end(0);
 
-		es_is_in_header = 0;
+		_es_is_in_header = 0;
 		
 		wchar_buf_kill(&property_name_wcbuf);
 		
@@ -2338,7 +2395,7 @@ static BOOL _es_output_header(void)
 
 static void _es_output_page_begin(void)
 {
-	es_output_cibuf_y = 0;	
+	_es_output_cibuf_y = 0;	
 }
 
 static void _es_output_page_end(void)
@@ -2347,11 +2404,11 @@ static void _es_output_page_end(void)
 
 static void _es_output_line_begin(int is_first)
 {
-	es_output_cibuf_x = -es_output_cibuf_hscroll;
+	_es_output_cibuf_x = -_es_output_cibuf_hscroll;
 
-	es_output_column = column_order_start;
+	_es_output_column = column_order_start;
 	
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		if (is_first)
 		{
@@ -2364,7 +2421,7 @@ static void _es_output_line_begin(int is_first)
 
 static void _es_output_line_end(int is_more)
 {
-	if (_es_export_type == ES_EXPORT_TYPE_JSON)
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		_es_output_noncell_printf("}");
 
@@ -2378,21 +2435,21 @@ static void _es_output_line_end(int is_more)
 		}
 	}
 	
-	if (es_output_cibuf)
+	if (_es_output_cibuf)
 	{
 		int wlen;
 
 		// fill right side of screen
 		
-		if (es_output_cibuf_x)
+		if (_es_output_cibuf_x)
 		{
-			if (es_output_cibuf_x + es_output_cibuf_hscroll > es_max_wide)
+			if (_es_output_cibuf_x + _es_output_cibuf_hscroll > _es_max_wide)
 			{
-				es_max_wide = es_output_cibuf_x + es_output_cibuf_hscroll;
+				_es_max_wide = _es_output_cibuf_x + _es_output_cibuf_hscroll;
 			}
 		}
 
-		wlen = es_console_wide - es_output_cibuf_x;
+		wlen = _es_console_wide - _es_output_cibuf_x;
 		
 		if (wlen > 0)
 		{
@@ -2400,15 +2457,15 @@ static void _es_output_line_end(int is_more)
 			
 			for(bufi=0;bufi<wlen;bufi++)
 			{
-				if (bufi + es_output_cibuf_x >= es_console_wide)
+				if (bufi + _es_output_cibuf_x >= _es_console_wide)
 				{
 					break;
 				}
 
-				if (bufi + es_output_cibuf_x >= 0)
+				if (bufi + _es_output_cibuf_x >= 0)
 				{
-					es_output_cibuf[bufi+es_output_cibuf_x].Attributes = es_default_attributes;
-					es_output_cibuf[bufi+es_output_cibuf_x].Char.UnicodeChar = ' ';
+					_es_output_cibuf[bufi+_es_output_cibuf_x].Attributes = _es_default_attributes;
+					_es_output_cibuf[bufi+_es_output_cibuf_x].Char.UnicodeChar = ' ';
 				}
 			}
 		}
@@ -2419,28 +2476,28 @@ static void _es_output_line_end(int is_more)
 			COORD buf_pos;
 			SMALL_RECT write_rect;
 			
-			buf_size.X = es_console_wide;
+			buf_size.X = _es_console_wide;
 			buf_size.Y = 1;
 			
 			buf_pos.X = 0;
 			buf_pos.Y = 0;
 			
-			write_rect.Left = es_console_window_x;
-			write_rect.Top = es_console_window_y + es_output_cibuf_y;
-			write_rect.Right = es_console_window_x + es_console_wide;
-			write_rect.Bottom = es_console_window_y + es_output_cibuf_y + 1;
+			write_rect.Left = _es_console_window_x;
+			write_rect.Top = _es_console_window_y + _es_output_cibuf_y;
+			write_rect.Right = _es_console_window_x + _es_console_wide;
+			write_rect.Bottom = _es_console_window_y + _es_output_cibuf_y + 1;
 			
-			WriteConsoleOutput(es_output_handle,es_output_cibuf,buf_size,buf_pos,&write_rect);
+			WriteConsoleOutput(_es_output_handle,_es_output_cibuf,buf_size,buf_pos,&write_rect);
 			
-			es_output_cibuf_x += wlen;				
+			_es_output_cibuf_x += wlen;				
 		}
 	
 		// output nothing.
-		es_output_cibuf_y++;
+		_es_output_cibuf_y++;
 	}
 	else
 	{
-		switch(es_newline_type)
+		switch(_es_newline_type)
 		{
 			case 0:
 				_es_output_noncell_printf("\r\n");
@@ -2502,15 +2559,20 @@ static void _es_output_ipc1_results(EVERYTHING_IPC_LIST *list,SIZE_T index_start
 		}
 	}
 	
+	if (index_start + run >= list->numitems)
+	{
+		run = list->numitems - index_start;
+	}
+	
 	while(run)
 	{
 		_es_output_line_begin(everything_ipc_item == list->items);
 		
-		while(es_output_column)
+		while(_es_output_column)
 		{
 			_es_output_cell_separator();
 			
-			switch(es_output_column->property_id)
+			switch(_es_output_column->property_id)
 			{
 				case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
 					_es_output_cell_attribute_property((everything_ipc_item->flags & EVERYTHING_IPC_FOLDER) ? FILE_ATTRIBUTE_DIRECTORY : 0);
@@ -2519,7 +2581,7 @@ static void _es_output_ipc1_results(EVERYTHING_IPC_LIST *list,SIZE_T index_start
 				case EVERYTHING3_PROPERTY_ID_PATH_AND_NAME:
 					wchar_buf_path_cat_filename(EVERYTHING_IPC_ITEMPATH(list,everything_ipc_item),EVERYTHING_IPC_ITEMFILENAME(list,everything_ipc_item),&filename_wcbuf);
 
-					if ((es_folder_append_path_separator) && (everything_ipc_item->flags & EVERYTHING_IPC_FOLDER))
+					if ((_es_folder_append_path_separator) && (everything_ipc_item->flags & EVERYTHING_IPC_FOLDER))
 					{
 						wchar_buf_cat_path_separator(&filename_wcbuf);
 					}
@@ -2541,7 +2603,7 @@ static void _es_output_ipc1_results(EVERYTHING_IPC_LIST *list,SIZE_T index_start
 
 			}
 			
-			es_output_column = es_output_column->order_next;
+			_es_output_column = _es_output_column->order_next;
 		}									
 		
 		everything_ipc_item++;
@@ -2581,26 +2643,26 @@ static void _es_output_ipc2_results(EVERYTHING_IPC_LIST2 *list,SIZE_T index_star
 			run--;
 		}
 	}
-
+	
+	if (i + run >= list->numitems)
+	{
+		run = list->numitems - i;
+	}
+	
 	while(run)
 	{
-		if (i >= list->numitems)
-		{
-			break;
-		}
-	
 		_es_output_line_begin(i == 0);
 			
-		while(es_output_column)
+		while(_es_output_column)
 		{
 			void *data;
 			
 			_es_output_cell_separator();
 			
-			data = _es_ipc2_get_column_data(list,i,es_output_column->property_id,_es_highlight);
+			data = _es_ipc2_get_column_data(list,i,_es_output_column->property_id,_es_highlight);
 			if (data)
 			{
-				switch(es_output_column->property_id)
+				switch(_es_output_column->property_id)
 				{
 					case EVERYTHING3_PROPERTY_ID_NAME:
 					case EVERYTHING3_PROPERTY_ID_PATH:
@@ -2618,9 +2680,9 @@ static void _es_output_ipc2_results(EVERYTHING_IPC_LIST2 *list,SIZE_T index_star
 							os_copy_memory(column_wcbuf.buf,((BYTE *)data) + sizeof(DWORD),length * sizeof(wchar_t));
 							column_wcbuf.buf[length] = 0;
 
-							if (es_folder_append_path_separator)
+							if (_es_folder_append_path_separator)
 							{
-								if (es_output_column->property_id == EVERYTHING3_PROPERTY_ID_PATH_AND_NAME)
+								if (_es_output_column->property_id == EVERYTHING3_PROPERTY_ID_PATH_AND_NAME)
 								{
 									if (items[i].flags & EVERYTHING_IPC_FOLDER)
 									{
@@ -2729,7 +2791,7 @@ static void _es_output_ipc2_results(EVERYTHING_IPC_LIST2 *list,SIZE_T index_star
 			}
 			else
 			{
-				switch(es_output_column->property_id)
+				switch(_es_output_column->property_id)
 				{
 					case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
 
@@ -2744,7 +2806,7 @@ static void _es_output_ipc2_results(EVERYTHING_IPC_LIST2 *list,SIZE_T index_star
 				}
 			}
 			
-			es_output_column = es_output_column->order_next;
+			_es_output_column = _es_output_column->order_next;
 		}
 
 		run--;
@@ -2762,7 +2824,7 @@ static void _es_output_ipc2_results(EVERYTHING_IPC_LIST2 *list,SIZE_T index_star
 // count should include the header if shown
 static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index_start,SIZE_T count)
 {
-	SIZE_T viewport_run;
+	SIZE_T run;
 	utf8_buf_t property_text_cbuf;
 	int is_first_line;
 	SIZE_T index;
@@ -2773,26 +2835,32 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 	utf8_buf_init(&property_text_cbuf);
 	
 	index = index_start;
-	viewport_run = count;
+	run = count;
 	stream = result_list->stream;
 	property_request_count = result_list->property_request_count;
 	property_request_array = (ipc3_result_list_property_request_t *)result_list->property_request_cbuf.buf;
 	
 	_es_output_page_begin();
 
-	if (viewport_run)
+	if (run)
 	{
 		// output header.
 		if (_es_output_header())
 		{
 			// don't inc i.
-			viewport_run--;
+			run--;
 		}
+	}
+	
+	// clip run.
+	if (run > result_list->viewport_count)
+	{
+		run = result_list->viewport_count;
 	}
 	
 	is_first_line = 1;
 	
-	while(viewport_run)
+	while(run)
 	{
 		BYTE item_flags;
 		
@@ -2809,16 +2877,16 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 			SIZE_T property_request_run;
 			const ipc3_result_list_property_request_t *property_request_p;
 			
-			es_output_column = column_order_start;
+			_es_output_column = column_order_start;
 			
 			property_request_run = property_request_count;
 			property_request_p = property_request_array;
 			
-			while(es_output_column)
+			while(_es_output_column)
 			{
 				_es_output_cell_separator();
 				
-				if ((property_request_run) && (es_output_column->property_id == property_request_p->property_id))
+				if ((property_request_run) && (_es_output_column->property_id == property_request_p->property_id))
 				{
 					if (property_request_p->flags & (IPC3_SEARCH_PROPERTY_REQUEST_FLAG_FORMAT|IPC3_SEARCH_PROPERTY_REQUEST_FLAG_HIGHLIGHT))
 					{
@@ -2857,7 +2925,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 									property_text_cbuf.buf[len] = 0;
 								}
 								
-								switch(property_get_format(es_output_column->property_id))
+								switch(property_get_format(_es_output_column->property_id))
 								{
 									case PROPERTY_FORMAT_TEXT30:
 									case PROPERTY_FORMAT_TEXT47:
@@ -2866,7 +2934,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										break;
 										
 									default:
-										debug_error_printf("unhandled format %d for %d\n",property_get_format(es_output_column->property_id),property_request_p->value_type);
+										debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
 										_es_output_cell_unknown_property();
 										break;
 
@@ -2882,7 +2950,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 
 									ipc3_stream_read_data(stream,&byte_value,sizeof(BYTE));
 								
-									switch(property_get_format(es_output_column->property_id))
+									switch(property_get_format(_es_output_column->property_id))
 									{
 										case PROPERTY_FORMAT_NUMBER:
 										case PROPERTY_FORMAT_NUMBER1:
@@ -2897,7 +2965,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 											break;
 											
 										default:
-											debug_error_printf("unhandled format %d for %d\n",property_get_format(es_output_column->property_id),property_request_p->value_type);
+											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
 											_es_output_cell_unknown_property();
 											break;
 
@@ -2914,7 +2982,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 
 									ipc3_stream_read_data(stream,&word_value,sizeof(WORD));
 									
-									switch(property_get_format(es_output_column->property_id))
+									switch(property_get_format(_es_output_column->property_id))
 									{
 										case PROPERTY_FORMAT_NUMBER:
 										case PROPERTY_FORMAT_NUMBER1:
@@ -2929,7 +2997,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 											break;
 											
 										default:
-											debug_error_printf("unhandled format %d for %d\n",property_get_format(es_output_column->property_id),property_request_p->value_type);
+											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
 											_es_output_cell_unknown_property();
 											break;
 
@@ -2947,7 +3015,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 
 									ipc3_stream_read_data(stream,&dword_value,sizeof(DWORD));
 									
-									switch(property_get_format(es_output_column->property_id))
+									switch(property_get_format(_es_output_column->property_id))
 									{
 										case PROPERTY_FORMAT_ATTRIBUTES:
 											_es_output_cell_attribute_property(dword_value);
@@ -2964,6 +3032,15 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										case PROPERTY_FORMAT_HEX_NUMBER:
 											_es_output_cell_number_property(dword_value,ES_DWORD_MAX);
 											break;
+											
+										case PROPERTY_FORMAT_FIXED_Q1K:
+											_es_output_cell_fixed_q1k_property(dword_value,ES_DWORD_MAX);
+											break;
+											
+										default:
+											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
+											_es_output_cell_unknown_property();
+											break;
 									}
 								}
 								
@@ -2976,7 +3053,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 
 									ipc3_stream_read_data(stream,&uint64_value,sizeof(ES_UINT64));
 
-									switch(property_get_format(es_output_column->property_id))
+									switch(property_get_format(_es_output_column->property_id))
 									{
 										case PROPERTY_FORMAT_SIZE:
 											_es_output_cell_size_property(item_flags & IPC3_RESULT_LIST_ITEM_FLAG_FOLDER ? 1 : 0,uint64_value);
@@ -3003,7 +3080,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 											break;
 											
 										default:
-											debug_error_printf("unhandled format %d for %d\n",property_get_format(es_output_column->property_id),property_request_p->value_type);
+											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
 											_es_output_cell_unknown_property();
 											break;
 									}
@@ -3018,10 +3095,10 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 
 									ipc3_stream_read_data(stream,&uint128_value,sizeof(EVERYTHING3_UINT128));
 									
-									switch(property_get_format(es_output_column->property_id))
+									switch(property_get_format(_es_output_column->property_id))
 									{
 										default:
-											debug_error_printf("unhandled format %d for %d\n",property_get_format(es_output_column->property_id),property_request_p->value_type);
+											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
 											_es_output_cell_unknown_property();
 											break;
 									}
@@ -3036,14 +3113,14 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 
 									ipc3_stream_read_data(stream,&dimensions_value,sizeof(EVERYTHING3_DIMENSIONS));
 
-									switch(property_get_format(es_output_column->property_id))
+									switch(property_get_format(_es_output_column->property_id))
 									{
 										case PROPERTY_FORMAT_DIMENSIONS:
 											_es_output_cell_dimensions_property(&dimensions_value);
 											break;
 											
 										default:
-											debug_error_printf("unhandled format %d for %d\n",property_get_format(es_output_column->property_id),property_request_p->value_type);
+											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
 											_es_output_cell_unknown_property();
 											break;
 									}
@@ -3058,7 +3135,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 									
 									size_t_value = ipc3_stream_read_size_t(stream);
 
-									switch(property_get_format(es_output_column->property_id))
+									switch(property_get_format(_es_output_column->property_id))
 									{	
 										case PROPERTY_FORMAT_NUMBER:
 										case PROPERTY_FORMAT_NUMBER1:
@@ -3073,7 +3150,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 											break;
 											
 										default:
-											debug_error_printf("unhandled format %d for %d\n",property_get_format(es_output_column->property_id),property_request_p->value_type);
+											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
 											_es_output_cell_unknown_property();
 											break;
 									}
@@ -3087,6 +3164,14 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 									__int32 int32_value;
 
 									ipc3_stream_read_data(stream,&int32_value,sizeof(__int32));
+									
+									switch(property_get_format(_es_output_column->property_id))
+									{	
+										default:
+											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
+											_es_output_cell_unknown_property();
+											break;
+									}
 								}
 								
 								break;
@@ -3104,7 +3189,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 									
 									property_text_cbuf.buf[len] = 0;
 								
-									switch(property_get_format(es_output_column->property_id))
+									switch(property_get_format(_es_output_column->property_id))
 									{	
 										case PROPERTY_FORMAT_DATA1:
 										case PROPERTY_FORMAT_DATA2:
@@ -3120,7 +3205,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 											break;
 											
 										default:
-											debug_error_printf("unhandled format %d for %d\n",property_get_format(es_output_column->property_id),property_request_p->value_type);
+											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
 											_es_output_cell_unknown_property();
 											break;
 									}
@@ -3140,6 +3225,27 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 									ipc3_stream_read_data(stream,property_text_cbuf.buf,len);
 									
 									property_text_cbuf.buf[len] = 0;
+									
+									switch(property_get_format(_es_output_column->property_id))
+									{	
+										case PROPERTY_FORMAT_DATA1:
+										case PROPERTY_FORMAT_DATA2:
+										case PROPERTY_FORMAT_DATA4:
+										case PROPERTY_FORMAT_DATA8:
+										case PROPERTY_FORMAT_DATA16:
+										case PROPERTY_FORMAT_DATA32:
+										case PROPERTY_FORMAT_DATA64:
+										case PROPERTY_FORMAT_DATA128:
+										case PROPERTY_FORMAT_DATA256:
+										case PROPERTY_FORMAT_DATA512:
+											_es_output_cell_data_property(property_text_cbuf.buf,property_text_cbuf.length_in_bytes);
+											break;
+											
+										default:
+											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
+											_es_output_cell_unknown_property();
+											break;
+									}
 								}
 
 								break;
@@ -3158,7 +3264,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 				else
 				{
 					// empty
-					if (es_output_column->property_id == EVERYTHING3_PROPERTY_ID_ATTRIBUTES)
+					if (_es_output_column->property_id == EVERYTHING3_PROPERTY_ID_ATTRIBUTES)
 					{
 						// always output known attributes. (EFU export)
 						_es_output_cell_attribute_property(item_flags & IPC3_RESULT_LIST_ITEM_FLAG_FOLDER ? FILE_ATTRIBUTE_DIRECTORY : 0);
@@ -3169,7 +3275,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 					}
 				}
 				
-				es_output_column = es_output_column->order_next;
+				_es_output_column = _es_output_column->order_next;
 			}
 			
 			// read remaining pipe data.
@@ -3291,9 +3397,9 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 			}
 		}
 
-		viewport_run--;
+		run--;
 
-		_es_output_line_end(viewport_run ? 1 : 0);
+		_es_output_line_end(run ? 1 : 0);
 
 		is_first_line = 0;
 	}
@@ -3357,26 +3463,26 @@ static LRESULT __stdcall _es_window_proc(HWND hwnd,UINT msg,WPARAM wParam,LPARAM
 			
 			switch(cds->dwData)
 			{
-				case ES_COPYDATA_IPCTEST_QUERYCOMPLETEW:
+				case _ES_COPYDATA_IPCTEST_QUERYCOMPLETEW:
 
-					if (es_no_result_error)
+					if (_es_no_result_error)
 					{
 						if (((EVERYTHING_IPC_LIST *)cds->lpData)->totitems == 0)
 						{
-							es_ret = ES_ERROR_NO_RESULTS;
+							_es_ret = ES_ERROR_NO_RESULTS;
 						}
 					}
 
-					if (es_get_result_count)
+					if (_es_get_result_count)
 					{
 						_es_output_noncell_result_count(((EVERYTHING_IPC_LIST *)cds->lpData)->totitems);
 					}
 					else
-					if (es_get_total_size)
+					if (_es_get_total_size)
 					{
 						// version 2 or later required.
 						// IPC unavailable.
-						es_ret = ES_ERROR_NO_IPC;
+						_es_ret = ES_ERROR_NO_IPC;
 					}
 					else
 					{
@@ -3451,7 +3557,7 @@ static LRESULT __stdcall _es_window_proc(HWND hwnd,UINT msg,WPARAM wParam,LPARAM
 							utf8_buf_kill(&indexes_cbuf);
 						}
 					
-						if (es_pause)
+						if (_es_pause)
 						{
 							_es_output_pause(ES_IPC_VERSION_FLAG_IPC1,list);
 						}
@@ -3460,7 +3566,7 @@ static LRESULT __stdcall _es_window_proc(HWND hwnd,UINT msg,WPARAM wParam,LPARAM
 							SIZE_T total_lines;
 							
 							total_lines = list->numitems;
-							if (es_header > 0)
+							if (_es_header > 0)
 							{
 								total_lines = safe_size_add_one(total_lines);
 							}
@@ -3475,27 +3581,27 @@ static LRESULT __stdcall _es_window_proc(HWND hwnd,UINT msg,WPARAM wParam,LPARAM
 					
 					return TRUE;
 					
-				case ES_COPYDATA_IPCTEST_QUERYCOMPLETE2W:
+				case _ES_COPYDATA_IPCTEST_QUERYCOMPLETE2W:
 				{
-					if (es_no_result_error)
+					if (_es_no_result_error)
 					{
 						if (((EVERYTHING_IPC_LIST2 *)cds->lpData)->totitems == 0)
 						{
-							es_ret = ES_ERROR_NO_RESULTS;
+							_es_ret = ES_ERROR_NO_RESULTS;
 						}
 					}
 				
-					if (es_get_result_count)
+					if (_es_get_result_count)
 					{
 						_es_output_noncell_result_count(((EVERYTHING_IPC_LIST2 *)cds->lpData)->totitems);
 					}
 					else
-					if (es_get_total_size)
+					if (_es_get_total_size)
 					{
 						_es_output_ipc2_total_size((EVERYTHING_IPC_LIST2 *)cds->lpData,((EVERYTHING_IPC_LIST2 *)cds->lpData)->numitems);
 					}
 					else
-					if (es_pause)
+					if (_es_pause)
 					{
 						_es_output_pause(ES_IPC_VERSION_FLAG_IPC2,cds->lpData);
 					}
@@ -3504,7 +3610,7 @@ static LRESULT __stdcall _es_window_proc(HWND hwnd,UINT msg,WPARAM wParam,LPARAM
 						SIZE_T total_lines;
 						
 						total_lines = ((EVERYTHING_IPC_LIST2 *)cds->lpData)->numitems;
-						if (es_header > 0)
+						if (_es_header > 0)
 						{
 							total_lines = safe_size_add_one(total_lines);
 						}
@@ -3795,8 +3901,12 @@ static int _es_main(void)
 	
 	get_folder_size_filename = NULL;
 	es_instance_name_wcbuf = &instance_name_wcbuf;
-	es_search_wcbuf = &search_wcbuf;
+	_es_search_wcbuf = &search_wcbuf;
 	
+	// I am trying to avoid bloating the exe size by using large global varibales.
+	// instead I store most large buffers on the main stack.
+	// ideally we should use a .bss section, but vs makes this painful and unportable.
+	// typically, ES will make 0 allocations.
 	column_color_pool = &local_column_color_pool;
 	column_width_pool = &local_column_width_pool;
 	column_pool = &local_column_pool;
@@ -3808,49 +3918,49 @@ static int _es_main(void)
 	
 	perform_search = 1;
 	
-	es_output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+	_es_output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
 	
-	es_cp = GetConsoleCP();
+	_es_cp = GetConsoleCP();
 
 	// get console info.
 	
 	{
 		DWORD mode;
 
-		if (GetConsoleMode(es_output_handle,&mode))
+		if (GetConsoleMode(_es_output_handle,&mode))
 		{
 			CONSOLE_SCREEN_BUFFER_INFO csbi;
 			
-			if (GetConsoleScreenBufferInfo(es_output_handle,&csbi))
+			if (GetConsoleScreenBufferInfo(_es_output_handle,&csbi))
 			{
-				es_console_wide = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-				es_console_high = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+				_es_console_wide = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+				_es_console_high = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
 
-				es_console_window_x = csbi.srWindow.Left;
-				es_console_window_y = csbi.dwCursorPosition.Y;
+				_es_console_window_x = csbi.srWindow.Left;
+				_es_console_window_y = csbi.dwCursorPosition.Y;
 				
-				if ((!es_console_wide) || (!es_console_high))
+				if ((!_es_console_wide) || (!_es_console_high))
 				{
-					es_console_wide = csbi.dwSize.X;
-					es_console_high = csbi.dwSize.Y;
+					_es_console_wide = csbi.dwSize.X;
+					_es_console_high = csbi.dwSize.Y;
 				}
 				
-				es_console_size_high = csbi.dwSize.Y;
+				_es_console_size_high = csbi.dwSize.Y;
 				
-				es_default_attributes = csbi.wAttributes;
+				_es_default_attributes = csbi.wAttributes;
 			}
 		}
 
-		if (GetFileType(es_output_handle) == FILE_TYPE_CHAR)
+		if (GetFileType(_es_output_handle) == FILE_TYPE_CHAR)
 		{
-			es_output_is_char = 1;
+			_es_output_is_char = 1;
 		}
 	}
 			
 	// load default settings.	
 	_es_load_settings();
 	
-	es_command_line = GetCommandLine();
+	_es_command_line = GetCommandLine();
 	
 /*
 	// code page test
@@ -3863,16 +3973,16 @@ static int _es_main(void)
 //	printf("command line %S\n",command_line);
 */
 	// expect the executable name in the first argv.
-	if (es_command_line)
+	if (_es_command_line)
 	{
 		_es_get_argv(&argv_wcbuf);
 	}
 	
-	if (es_command_line)
+	if (_es_command_line)
 	{
 		_es_get_argv(&argv_wcbuf);
 		
-		if (es_command_line)
+		if (_es_command_line)
 		{
 			// I am often calling:
 			// es -
@@ -3903,35 +4013,35 @@ static int _es_main(void)
 				{
 					_es_expect_command_argv(&argv_wcbuf);
 				
-					es_run_history_size = sizeof(EVERYTHING_IPC_RUN_HISTORY);
-					es_run_history_size = safe_size_add(es_run_history_size,safe_size_mul_sizeof_wchar(safe_size_add_one(argv_wcbuf.length_in_wchars)));
+					_es_run_history_size = sizeof(EVERYTHING_IPC_RUN_HISTORY);
+					_es_run_history_size = safe_size_add(_es_run_history_size,safe_size_mul_sizeof_wchar(safe_size_add_one(argv_wcbuf.length_in_wchars)));
 
-					es_run_history_data = mem_alloc(es_run_history_size);
+					_es_run_history_data = mem_alloc(_es_run_history_size);
 
-					wchar_string_copy_wchar_string_n((wchar_t *)(((EVERYTHING_IPC_RUN_HISTORY *)es_run_history_data)+1),argv_wcbuf.buf,argv_wcbuf.length_in_wchars);
+					wchar_string_copy_wchar_string_n((wchar_t *)(((EVERYTHING_IPC_RUN_HISTORY *)_es_run_history_data)+1),argv_wcbuf.buf,argv_wcbuf.length_in_wchars);
 					
 					_es_expect_command_argv(&argv_wcbuf);
 					
-					((EVERYTHING_IPC_RUN_HISTORY *)es_run_history_data)->run_count = wchar_string_to_int(argv_wcbuf.buf);
-					es_run_history_command = EVERYTHING_IPC_COPYDATA_SET_RUN_COUNTW;
+					((EVERYTHING_IPC_RUN_HISTORY *)_es_run_history_data)->run_count = wchar_string_to_int(argv_wcbuf.buf);
+					_es_run_history_command = EVERYTHING_IPC_COPYDATA_SET_RUN_COUNTW;
 				}
 				else			
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"inc-run-count"))
 				{
 					_es_expect_command_argv(&argv_wcbuf);
 					
-					es_run_history_size = (wchar_string_get_length_in_wchars(argv_wcbuf.buf) + 1) * sizeof(wchar_t);
-					es_run_history_data = wchar_string_alloc_wchar_string_n(argv_wcbuf.buf,argv_wcbuf.length_in_wchars);
-					es_run_history_command = EVERYTHING_IPC_COPYDATA_INC_RUN_COUNTW;
+					_es_run_history_size = (wchar_string_get_length_in_wchars(argv_wcbuf.buf) + 1) * sizeof(wchar_t);
+					_es_run_history_data = wchar_string_alloc_wchar_string_n(argv_wcbuf.buf,argv_wcbuf.length_in_wchars);
+					_es_run_history_command = EVERYTHING_IPC_COPYDATA_INC_RUN_COUNTW;
 				}
 				else			
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"get-run-count"))
 				{
 					_es_expect_command_argv(&argv_wcbuf);
 
-					es_run_history_size = (wchar_string_get_length_in_wchars(argv_wcbuf.buf) + 1) * sizeof(wchar_t);
-					es_run_history_data = wchar_string_alloc_wchar_string_n(argv_wcbuf.buf,argv_wcbuf.length_in_wchars);
-					es_run_history_command = EVERYTHING_IPC_COPYDATA_GET_RUN_COUNTW;
+					_es_run_history_size = (wchar_string_get_length_in_wchars(argv_wcbuf.buf) + 1) * sizeof(wchar_t);
+					_es_run_history_data = wchar_string_alloc_wchar_string_n(argv_wcbuf.buf,argv_wcbuf.length_in_wchars);
+					_es_run_history_command = EVERYTHING_IPC_COPYDATA_GET_RUN_COUNTW;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"get-folder-size"))
@@ -4036,7 +4146,7 @@ static int _es_main(void)
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"save-db"))
 				{
-					es_save_db = 1;
+					_es_save_db = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"highlight-color"))
@@ -4058,7 +4168,7 @@ static int _es_main(void)
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"m3u"))
 				{
-					_es_export_type = ES_EXPORT_TYPE_M3U;
+					_es_export_type = _ES_EXPORT_TYPE_M3U;
 				}
 				else				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"export-m3u"))
@@ -4068,7 +4178,7 @@ static int _es_main(void)
 					_es_export_file = os_create_file(argv_wcbuf.buf);
 					if (_es_export_file != INVALID_HANDLE_VALUE)
 					{
-						_es_export_type = ES_EXPORT_TYPE_M3U;
+						_es_export_type = _ES_EXPORT_TYPE_M3U;
 					}
 					else
 					{
@@ -4078,7 +4188,7 @@ static int _es_main(void)
 				else					
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"m3u8"))
 				{
-					_es_export_type = ES_EXPORT_TYPE_M3U8;
+					_es_export_type = _ES_EXPORT_TYPE_M3U8;
 				}
 				else				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"export-m3u8"))
@@ -4088,7 +4198,7 @@ static int _es_main(void)
 					_es_export_file = os_create_file(argv_wcbuf.buf);
 					if (_es_export_file != INVALID_HANDLE_VALUE)
 					{
-						_es_export_type = ES_EXPORT_TYPE_M3U8;
+						_es_export_type = _ES_EXPORT_TYPE_M3U8;
 					}
 					else
 					{
@@ -4098,17 +4208,17 @@ static int _es_main(void)
 				else		
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"csv"))
 				{
-					_es_export_type = ES_EXPORT_TYPE_CSV;
+					_es_export_type = _ES_EXPORT_TYPE_CSV;
 				}
 				else				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"tsv"))
 				{
-					_es_export_type = ES_EXPORT_TYPE_TSV;
+					_es_export_type = _ES_EXPORT_TYPE_TSV;
 				}
 				else				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"json"))
 				{
-					_es_export_type = ES_EXPORT_TYPE_JSON;
+					_es_export_type = _ES_EXPORT_TYPE_JSON;
 				}
 				else				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"export-csv"))
@@ -4118,7 +4228,7 @@ static int _es_main(void)
 					_es_export_file = os_create_file(argv_wcbuf.buf);
 					if (_es_export_file != INVALID_HANDLE_VALUE)
 					{
-						_es_export_type = ES_EXPORT_TYPE_CSV;
+						_es_export_type = _ES_EXPORT_TYPE_CSV;
 					}
 					else
 					{
@@ -4133,7 +4243,7 @@ static int _es_main(void)
 					_es_export_file = os_create_file(argv_wcbuf.buf);
 					if (_es_export_file != INVALID_HANDLE_VALUE)
 					{
-						_es_export_type = ES_EXPORT_TYPE_TSV;
+						_es_export_type = _ES_EXPORT_TYPE_TSV;
 					}
 					else
 					{
@@ -4148,7 +4258,7 @@ static int _es_main(void)
 					_es_export_file = os_create_file(argv_wcbuf.buf);
 					if (_es_export_file != INVALID_HANDLE_VALUE)
 					{
-						_es_export_type = ES_EXPORT_TYPE_JSON;
+						_es_export_type = _ES_EXPORT_TYPE_JSON;
 					}
 					else
 					{
@@ -4158,7 +4268,7 @@ static int _es_main(void)
 				else		
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"efu"))
 				{
-					_es_export_type = ES_EXPORT_TYPE_EFU;
+					_es_export_type = _ES_EXPORT_TYPE_EFU;
 				}
 				else		
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"export-efu"))
@@ -4168,7 +4278,7 @@ static int _es_main(void)
 					_es_export_file = os_create_file(argv_wcbuf.buf);
 					if (_es_export_file != INVALID_HANDLE_VALUE)
 					{
-						_es_export_type = ES_EXPORT_TYPE_EFU;
+						_es_export_type = _ES_EXPORT_TYPE_EFU;
 					}
 					else
 					{
@@ -4178,7 +4288,7 @@ static int _es_main(void)
 				else		
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"txt"))
 				{
-					_es_export_type = ES_EXPORT_TYPE_TXT;
+					_es_export_type = _ES_EXPORT_TYPE_TXT;
 				}
 				else				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"export-txt"))
@@ -4188,7 +4298,7 @@ static int _es_main(void)
 					_es_export_file = os_create_file(argv_wcbuf.buf);
 					if (_es_export_file != INVALID_HANDLE_VALUE)
 					{
-						_es_export_type = ES_EXPORT_TYPE_TXT;
+						_es_export_type = _ES_EXPORT_TYPE_TXT;
 					}
 					else
 					{
@@ -4200,7 +4310,7 @@ static int _es_main(void)
 				{
 					_es_expect_command_argv(&argv_wcbuf);
 					
-					es_cp = wchar_string_to_int(argv_wcbuf.buf);
+					_es_cp = wchar_string_to_int(argv_wcbuf.buf);
 				}
 				else
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"w")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"ww")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"whole-word")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"whole-words")))
@@ -4316,46 +4426,46 @@ static int _es_main(void)
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"size-leading-zero"))
 				{
-					es_size_leading_zero = 1;
+					_es_size_leading_zero = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-size-leading-zero"))
 				{
-					es_size_leading_zero = 0;
+					_es_size_leading_zero = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"run-count-leading-zero"))
 				{
-					es_run_count_leading_zero = 1;
+					_es_run_count_leading_zero = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-run-count-leading-zero"))
 				{
-					es_run_count_leading_zero = 0;
+					_es_run_count_leading_zero = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-digit-grouping"))
 				{
-					es_digit_grouping = 0;
+					_es_digit_grouping = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"digit-grouping"))
 				{
-					es_digit_grouping = 1;
+					_es_digit_grouping = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"size-format"))
 				{
 					_es_expect_command_argv(&argv_wcbuf);
 					
-					es_size_format = wchar_string_to_int(argv_wcbuf.buf);
+					_es_size_format = wchar_string_to_int(argv_wcbuf.buf);
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"date-format"))
 				{
 					_es_expect_command_argv(&argv_wcbuf);
 
-					es_display_date_format = wchar_string_to_int(argv_wcbuf.buf);
+					_es_display_date_format = wchar_string_to_int(argv_wcbuf.buf);
 				}
 				else			
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"export-date-format"))
@@ -4367,39 +4477,39 @@ static int _es_main(void)
 				else			
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"pause")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"more")))
 				{
-					es_pause = 1;
+					_es_pause = 1;
 				}
 				else
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"no-pause")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"no-more")))
 				{
-					es_pause = 0;
+					_es_pause = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"empty-search-help"))
 				{
-					es_empty_search_help = 1;
-					es_hide_empty_search_results = 0;
+					_es_empty_search_help = 1;
+					_es_hide_empty_search_results = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-empty-search-help"))
 				{
-					es_empty_search_help = 0;
+					_es_empty_search_help = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"hide-empty-search-results"))
 				{
-					es_hide_empty_search_results = 1;
-					es_empty_search_help = 0;
+					_es_hide_empty_search_results = 1;
+					_es_empty_search_help = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-hide-empty-search-results"))
 				{
-					es_hide_empty_search_results = 0;
+					_es_hide_empty_search_results = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"save-settings"))
 				{
-					es_save = 1;
+					_es_save = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"clear-settings"))
@@ -4637,24 +4747,24 @@ static int _es_main(void)
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"header"))
 				{	
-					es_header = 1; 
+					_es_header = 1; 
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-header"))
 				{	
-					es_header = -1; 
+					_es_header = -1; 
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"double-quote"))
 				{	
-					es_double_quote = 1; 
-					es_csv_double_quote = 1;
+					_es_double_quote = 1; 
+					_es_csv_double_quote = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-double-quote"))
 				{	
-					es_double_quote = 0; 
-					es_csv_double_quote = 0;
+					_es_double_quote = 0; 
+					_es_csv_double_quote = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"version"))
@@ -4666,42 +4776,42 @@ static int _es_main(void)
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"get-everything-version"))
 				{
-					es_get_everything_version = 1;
+					_es_get_everything_version = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"utf8-bom"))
 				{
-					es_utf8_bom = 1;
+					_es_utf8_bom = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-utf8-bom"))
 				{
-					es_utf8_bom = 0;
+					_es_utf8_bom = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"folder-append-path-separator"))
 				{
-					es_folder_append_path_separator = 1;
+					_es_folder_append_path_separator = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-folder-append-path-separator"))
 				{
-					es_folder_append_path_separator = 0;
+					_es_folder_append_path_separator = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"nul"))
 				{
-					es_newline_type = 2;
+					_es_newline_type = 2;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"lf"))
 				{
-					es_newline_type = 1;
+					_es_newline_type = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"crlf"))
 				{
-					es_newline_type = 0;
+					_es_newline_type = 0;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"on"))
@@ -4771,14 +4881,14 @@ static int _es_main(void)
 				{
 					_es_expect_command_argv(&argv_wcbuf);
 					
-					es_max_results = safe_size_from_uint64(wchar_string_to_uint64(argv_wcbuf.buf));
+					_es_max_results = safe_size_from_uint64(wchar_string_to_uint64(argv_wcbuf.buf));
 				}
 				else
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"o")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"offset")))
 				{
 					_es_expect_command_argv(&argv_wcbuf);
 					
-					es_offset = safe_size_from_uint64(wchar_string_to_uint64(argv_wcbuf.buf));
+					_es_offset = safe_size_from_uint64(wchar_string_to_uint64(argv_wcbuf.buf));
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"time-out"))
@@ -4807,17 +4917,17 @@ static int _es_main(void)
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"get-result-count"))
 				{
-					es_get_result_count = 1;
+					_es_get_result_count = 1;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"get-total-size"))
 				{
-					es_get_total_size = 1;
+					_es_get_total_size = 1;
 				}
 				else
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"no-result-error")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"no-results-error")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"error-on-no-results")))
 				{
-					es_no_result_error = 1;
+					_es_no_result_error = 1;
 				}
 				else
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"q")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"search")))
@@ -4840,14 +4950,14 @@ static int _es_main(void)
 					// like 7zip --
 					// or powershell --%
 					// this doesn't remove quotes.
-					es_command_line = wchar_string_skip_ws(es_command_line);
+					_es_command_line = wchar_string_skip_ws(_es_command_line);
 							
 					if (search_wcbuf.length_in_wchars)
 					{
 						wchar_buf_cat_wchar(&search_wcbuf,' ');
 					}
 
-					wchar_buf_cat_wchar_string(&search_wcbuf,es_command_line);
+					wchar_buf_cat_wchar_string(&search_wcbuf,_es_command_line);
 					
 					break;
 				}
@@ -5007,7 +5117,7 @@ static int _es_main(void)
 				}
 
 				_es_get_argv(&argv_wcbuf);
-				if (!es_command_line)
+				if (!_es_command_line)
 				{
 					break;
 				}
@@ -5016,7 +5126,7 @@ static int _es_main(void)
 	}
 	
 	// save settings.
-	if (es_save)
+	if (_es_save)
 	{
 		if (_es_save_settings())
 		{
@@ -5031,11 +5141,11 @@ static int _es_main(void)
 	}
 	
 	// get everything version
-	if (es_get_everything_version)
+	if (_es_get_everything_version)
 	{
-		es_everything_hwnd = _es_find_ipc_window();
+		_es_everything_hwnd = _es_find_ipc_window();
 		
-		if (es_everything_hwnd)
+		if (_es_everything_hwnd)
 		{
 			int major;
 			int minor;
@@ -5043,10 +5153,10 @@ static int _es_main(void)
 			int build;
 
 			// wait for DB_IS_LOADED so we don't get 0 results
-			major = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
-			minor = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
-			revision = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_REVISION,0);
-			build = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_BUILD_NUMBER,0);
+			major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
+			minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
+			revision = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_REVISION,0);
+			build = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_BUILD_NUMBER,0);
 				
 			_es_output_noncell_printf("%u.%u.%u.%u\r\n",major,minor,revision,build);
 		}
@@ -5061,11 +5171,11 @@ static int _es_main(void)
 	// reindex?
 	if (es_reindex)
 	{
-		es_everything_hwnd = _es_find_ipc_window();
+		_es_everything_hwnd = _es_find_ipc_window();
 		
-		if (es_everything_hwnd)
+		if (_es_everything_hwnd)
 		{
-			SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_REBUILD_DB,0);
+			SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_REBUILD_DB,0);
 			
 			// poll until db is available.
 			_es_wait_for_db_loaded();
@@ -5079,7 +5189,7 @@ static int _es_main(void)
 	}
 	
 	// run history command
-	if (es_run_history_command)
+	if (_es_run_history_command)
 	{
 		_es_do_run_history_command();
 
@@ -5097,13 +5207,13 @@ static int _es_main(void)
 	
 	// save db
 	// do this after a reindex.
-	if (es_save_db)
+	if (_es_save_db)
 	{
-		es_everything_hwnd = _es_find_ipc_window();
+		_es_everything_hwnd = _es_find_ipc_window();
 		
-		if (es_everything_hwnd)
+		if (_es_everything_hwnd)
 		{
-			SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_SAVE_DB,0);
+			SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_SAVE_DB,0);
 			
 			// wait until not busy..
 			_es_wait_for_db_not_busy();
@@ -5119,21 +5229,21 @@ static int _es_main(void)
 	// Exit Everything?
 	if (_es_exit_everything)
 	{
-		es_everything_hwnd = _es_find_ipc_window();
+		_es_everything_hwnd = _es_find_ipc_window();
 		
-		if (es_everything_hwnd)
+		if (_es_everything_hwnd)
 		{
 			DWORD dwProcessId;
 
 			// wait for Everything to exit.
-			if (GetWindowThreadProcessId(es_everything_hwnd,&dwProcessId))
+			if (GetWindowThreadProcessId(_es_everything_hwnd,&dwProcessId))
 			{
 				HANDLE h;
 				
 				h = OpenProcess(SYNCHRONIZE,FALSE,dwProcessId);
 				if (h)
 				{
-					SendMessage(es_everything_hwnd,WM_CLOSE,0,0);
+					SendMessage(_es_everything_hwnd,WM_CLOSE,0,0);
 
 					WaitForSingleObject(h,es_timeout ? es_timeout : INFINITE);
 				
@@ -5162,9 +5272,9 @@ static int _es_main(void)
 		// empty search?
 		// if max results is set, treat the search as non-empty.
 		// -useful if you want to see the top ten largest files etc..
-		if ((!search_wcbuf.length_in_wchars) && (!filter_wcbuf.length_in_wchars) && (es_max_results == 0xffffffff) && (!es_get_result_count) && (!es_get_total_size))
+		if ((!search_wcbuf.length_in_wchars) && (!filter_wcbuf.length_in_wchars) && (_es_max_results == 0xffffffff) && (!_es_get_result_count) && (!_es_get_total_size))
 		{
-			if ((es_empty_search_help) && (es_output_is_char))
+			if ((_es_empty_search_help) && (_es_output_is_char))
 			{
 				// don't show help if we are redirecting to a file.
 				_es_help();
@@ -5172,21 +5282,21 @@ static int _es_main(void)
 				goto exit;
 			}
 
-			if (es_hide_empty_search_results)
+			if (_es_hide_empty_search_results)
 			{
 				goto exit;
 			}
 		}
 		
 		// efu doesn't want name or path columns.
-		if (_es_export_type == ES_EXPORT_TYPE_EFU)
+		if (_es_export_type == _ES_EXPORT_TYPE_EFU)
 		{
 			column_remove(EVERYTHING3_PROPERTY_ID_NAME);
 			column_remove(EVERYTHING3_PROPERTY_ID_PATH);
 		}
 		
 		// add filename column
-		if (!es_no_default_filename_column)
+		if (!_es_no_default_filename_column)
 		{
 			if (!column_find(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME))
 			{
@@ -5198,7 +5308,7 @@ static int _es_main(void)
 						
 						filename_column = column_add(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME);
 						
-						if (_es_export_type != ES_EXPORT_TYPE_NONE)
+						if (_es_export_type != _ES_EXPORT_TYPE_NONE)
 						{
 							// move KEY to first column.
 							column_remove_order(filename_column);
@@ -5216,9 +5326,9 @@ static int _es_main(void)
 			// use export format, which might differ to the display format.
 			// for display we typically want YYYY-MM-DD
 			// for export we typically want raw filetimes.
-			es_date_format = _es_export_date_format;
+			_es_date_format = _es_export_date_format;
 			
-			if (es_utf8_bom)
+			if (_es_utf8_bom)
 			{
 				if (_es_export_file != INVALID_HANDLE_VALUE)
 				{
@@ -5237,7 +5347,7 @@ static int _es_main(void)
 			// disable pause
 			if (_es_export_file != INVALID_HANDLE_VALUE)
 			{
-				es_pause = 0;
+				_es_pause = 0;
 			}
 		
 			// remove highlighting.
@@ -5249,56 +5359,56 @@ static int _es_main(void)
 			
 			if (_es_export_file != INVALID_HANDLE_VALUE)
 			{
-				_es_export_buf = mem_alloc(ES_EXPORT_BUF_SIZE);
+				_es_export_buf = mem_alloc(_ES_EXPORT_BUF_SIZE);
 				_es_export_p = _es_export_buf;
-				_es_export_avail = ES_EXPORT_BUF_SIZE;
+				_es_export_avail = _ES_EXPORT_BUF_SIZE;
 			}
 			
-			if ((_es_export_type == ES_EXPORT_TYPE_CSV) || (_es_export_type == ES_EXPORT_TYPE_TSV))
+			if ((_es_export_type == _ES_EXPORT_TYPE_CSV) || (_es_export_type == _ES_EXPORT_TYPE_TSV))
 			{
-				if (!es_header)
+				if (!_es_header)
 				{
-					es_header = 1;
+					_es_header = 1;
 				}
 			}
 			else
-			if (_es_export_type == ES_EXPORT_TYPE_JSON)
+			if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 			{
 				// no header
-				es_header = -1;
+				_es_header = -1;
 			}
 			else
-			if (_es_export_type == ES_EXPORT_TYPE_EFU)
+			if (_es_export_type == _ES_EXPORT_TYPE_EFU)
 			{
 				// add standard columns now.
 				// we don't want to change columns once we have sent the IPC requests off.
 				// this may resolve es_ipc_version
 			
-				if (!es_header)
+				if (!_es_header)
 				{
-					es_header = 1;
+					_es_header = 1;
 				}
 			}
 			else
-			if ((_es_export_type == ES_EXPORT_TYPE_TXT) || (_es_export_type == ES_EXPORT_TYPE_M3U) || (_es_export_type == ES_EXPORT_TYPE_M3U8))
+			if ((_es_export_type == _ES_EXPORT_TYPE_TXT) || (_es_export_type == _ES_EXPORT_TYPE_M3U) || (_es_export_type == _ES_EXPORT_TYPE_M3U8))
 			{
-				if (_es_export_type == ES_EXPORT_TYPE_M3U)		
+				if (_es_export_type == _ES_EXPORT_TYPE_M3U)		
 				{
-					es_cp = CP_ACP;
+					_es_cp = CP_ACP;
 				}
 
 				// reset columns and force Filename.
 				column_clear_all();
 				column_add(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME);
 				
-				if (_es_export_type == ES_EXPORT_TYPE_TXT)
+				if (_es_export_type == _ES_EXPORT_TYPE_TXT)
 				{
 					// don't show header unless user wants it.
 				}
 				else
 				{
 					// never show header.
-					es_header = -1;
+					_es_header = -1;
 				}
 			}
 		}
@@ -5307,7 +5417,7 @@ static int _es_main(void)
 			// use display format, which might differ to the export format.
 			// for display we typically want YYYY-MM-DD
 			// for export we typically want raw filetimes.
-			es_date_format = es_display_date_format;
+			_es_date_format = _es_display_date_format;
 		}
 		
 		// fix search filter
@@ -5337,13 +5447,13 @@ static int _es_main(void)
 			wchar_buf_kill(&new_search_wcbuf);
 		}
 		
-		if (es_get_result_count)
+		if (_es_get_result_count)
 		{
 			// no columns.
 			column_clear_all();
 
 			// don't show any results.
-			es_max_results = 0;
+			_es_max_results = 0;
 			
 			// reset sort to name ascending.
 			secondary_sort_clear_all();
@@ -5351,7 +5461,7 @@ static int _es_main(void)
 			_es_primary_sort_ascending = 1;
 		}
 
-		if (es_get_total_size)
+		if (_es_get_total_size)
 		{
 			// just request size column.
 			column_clear_all();
@@ -5374,8 +5484,8 @@ static int _es_main(void)
 			}
 		}
 
-		es_everything_hwnd = _es_find_ipc_window();
-		if (es_everything_hwnd)
+		_es_everything_hwnd = _es_find_ipc_window();
+		if (_es_everything_hwnd)
 		{
 			if (es_ipc_version & ES_IPC_VERSION_FLAG_IPC2)
 			{
@@ -5426,9 +5536,9 @@ message_loop:
 
 exit:
 
-	if (es_reply_hwnd)
+	if (_es_reply_hwnd)
 	{
-		DestroyWindow(es_reply_hwnd);
+		DestroyWindow(_es_reply_hwnd);
 	}
 
 	secondary_sort_clear_all();
@@ -5436,9 +5546,9 @@ exit:
 	column_color_clear_all();
 	column_width_clear_all();
 
-	if (es_run_history_data)
+	if (_es_run_history_data)
 	{
-		mem_free(es_run_history_data);
+		mem_free(_es_run_history_data);
 	}
 
 	_es_flush_export_buffer();
@@ -5453,9 +5563,9 @@ exit:
 		CloseHandle(_es_export_file);
 	}
 	
-	if (es_ret != ES_ERROR_SUCCESS)
+	if (_es_ret != ES_ERROR_SUCCESS)
 	{
-		es_fatal(es_ret);
+		es_fatal(_es_ret);
 	}
 
 	array_kill(&local_secondary_sort_array);
@@ -5482,7 +5592,7 @@ int main(int argc,char **argv)
 // get the window classname with the instance name if specified.
 static void _es_get_window_classname(wchar_buf_t *wcbuf)
 {
-	wchar_buf_copy_wchar_string(wcbuf,EVERYTHING_IPC_WNDCLASS);
+	wchar_buf_copy_utf8_string(wcbuf,EVERYTHING_IPC_WNDCLASSA);
 	
 	if (es_instance_name_wcbuf->length_in_wchars)
 	{
@@ -5496,7 +5606,6 @@ static void _es_get_window_classname(wchar_buf_t *wcbuf)
 static HWND _es_find_ipc_window(void)
 {
 	DWORD tickstart;
-	DWORD tick;
 	wchar_buf_t window_class_wcbuf;
 	HWND ret;
 
@@ -5511,6 +5620,7 @@ static HWND _es_find_ipc_window(void)
 	for(;;)
 	{
 		HWND hwnd;
+		DWORD tick;
 		
 		hwnd = FindWindow(window_class_wcbuf.buf,0);
 
@@ -5523,12 +5633,12 @@ static HWND _es_find_ipc_window(void)
 				int minor;
 				int is_db_loaded;
 				
-				major = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
-				minor = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
+				major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
+				minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
 				
 				if (((major == 1) && (minor >= 4)) || (major > 1))
 				{
-					is_db_loaded = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_LOADED,0);
+					is_db_loaded = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_LOADED,0);
 					
 					if (!is_db_loaded)
 					{
@@ -5551,9 +5661,6 @@ wait:
 			es_fatal(ES_ERROR_NO_IPC);
 		}
 		
-		// try again..
-		Sleep(10);
-		
 		tick = GetTickCount();
 		
 		if (tick - tickstart > es_timeout)
@@ -5563,6 +5670,9 @@ wait:
 			// wait for Everything to post this message to all top level windows when its up and running.
 			es_fatal(ES_ERROR_NO_IPC);
 		}
+
+		// try again..
+		Sleep(10);
 	}
 	
 	wchar_buf_kill(&window_class_wcbuf);
@@ -5596,12 +5706,12 @@ static void _es_wait_for_db_loaded(void)
 			int is_db_loaded;
 			
 			// wait for DB_IS_LOADED so we don't get 0 results
-			major = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
-			minor = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
+			major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
+			minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
 			
 			if (((major == 1) && (minor >= 4)) || (major > 1))
 			{
-				is_db_loaded = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_LOADED,0);
+				is_db_loaded = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_LOADED,0);
 				
 				if (is_db_loaded)
 				{
@@ -5665,14 +5775,14 @@ static void _es_wait_for_db_not_busy(void)
 			int minor;
 			
 			// wait for DB_IS_LOADED so we don't get 0 results
-			major = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
-			minor = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
+			major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
+			minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
 			
 			if (((major == 1) && (minor >= 4)) || (major > 1))
 			{
 				int is_busy;
 				
-				is_busy = (int)SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_BUSY,0);
+				is_busy = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_BUSY,0);
 				
 				if (!is_busy)
 				{
@@ -6009,7 +6119,7 @@ static void _es_format_size(ES_UINT64 size,wchar_buf_t *wcbuf)
 	
 	if (size != 0xffffffffffffffffI64)
 	{
-		if (es_size_format == 0)
+		if (_es_size_format == 0)
 		{
 			// auto size.
 			if (size < 1000)
@@ -6116,19 +6226,19 @@ static void _es_format_size(ES_UINT64 size,wchar_buf_t *wcbuf)
 			}
 		}
 		else
-		if (es_size_format == 2)
+		if (_es_size_format == 2)
 		{
 			_es_format_number(((size) + 1023) / 1024,1,wcbuf);
 			wchar_buf_cat_utf8_string(wcbuf," KB");
 		}
 		else
-		if (es_size_format == 3)
+		if (_es_size_format == 3)
 		{
 			_es_format_number(((size) + 1048575) / 1048576,1,wcbuf);
 			wchar_buf_cat_utf8_string(wcbuf," MB");
 		}
 		else
-		if (es_size_format == 4)
+		if (_es_size_format == 4)
 		{
 			_es_format_number(((size) + 1073741823) / 1073741824,1,wcbuf);
 			wchar_buf_cat_utf8_string(wcbuf," GB");
@@ -6208,7 +6318,7 @@ static void _es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf)
 	
 	if (filetime != 0xffffffffffffffffI64)
 	{
-		switch(es_date_format)
+		switch(_es_date_format)
 		{	
 			default:
 			case 0: // system format
@@ -6338,7 +6448,82 @@ static void _es_format_number(ES_UINT64 number,int allow_digit_grouping,wchar_bu
 			{
 				if (allow_digit_grouping)
 				{
-					if (es_digit_grouping)
+					if (_es_digit_grouping)
+					{
+						*--d = ',';
+					}
+				}
+					
+				comma = 0;
+			}
+		
+			*--d = '0' + (int)(i % 10);
+			
+			i /= 10;
+			
+			comma++;
+		}
+	}
+	else
+	{
+		*--d = '0';
+	}	
+	
+	wchar_buf_copy_utf8_string(out_wcbuf,d);
+}
+
+static void _es_format_fixed_q1k(ES_UINT64 number,int allow_digit_grouping,wchar_buf_t *out_wcbuf)
+{
+	ES_UTF8 *d;
+	int comma;
+	ES_UTF8 buf[256];
+	int fraction_part;
+	ES_UINT64 int_part;
+	
+	int_part = number / 1000;
+	fraction_part = (int)(number % 1000);
+	
+	d = buf + 256;
+	*--d = 0;
+	comma = 0;
+	
+	*--d = '0' + (fraction_part % 10);
+	*--d = '0' + ((fraction_part / 10) % 10);
+	*--d = '0' + (fraction_part / 100);
+	
+	{
+		int i;
+		ES_UTF8 *trailing_zero_p;
+		
+		trailing_zero_p = buf + 256 - 1 - 1;
+		
+		for(i=0;i<2;i++)
+		{
+			if (*trailing_zero_p != '0')
+			{
+				break;
+			}
+
+			*trailing_zero_p = 0;
+			trailing_zero_p--;
+		}
+	}
+	
+	*--d = '.';
+
+	if (int_part)
+	{
+		ES_UINT64 i;
+		
+		i = int_part;
+		
+		while(i)
+		{
+			if (comma >= 3)
+			{
+				if (allow_digit_grouping)
+				{
+					if (_es_digit_grouping)
 					{
 						*--d = ',';
 					}
@@ -6380,9 +6565,9 @@ static void _es_get_argv(wchar_buf_t *wcbuf)
 	int inquote;
 	wchar_t *d;
 	
-	if (!*es_command_line)
+	if (!*_es_command_line)
 	{
-		es_command_line = NULL;
+		_es_command_line = NULL;
 		
 		return;
 	}
@@ -6393,7 +6578,7 @@ static void _es_get_argv(wchar_buf_t *wcbuf)
 	{
 		const wchar_t *p;
 
-		p = wchar_string_skip_ws(es_command_line);
+		p = wchar_string_skip_ws(_es_command_line);
 		
 		inquote = 0;
 		
@@ -6447,7 +6632,7 @@ static void _es_get_argv(wchar_buf_t *wcbuf)
 		if (pass) 
 		{
 			*d = 0;
-			es_command_line = p;
+			_es_command_line = p;
 			return;
 		}
 		else
@@ -6457,14 +6642,14 @@ static void _es_get_argv(wchar_buf_t *wcbuf)
 		}		
 	}
 	
-	es_command_line = NULL;
+	_es_command_line = NULL;
 }
 
 static void _es_expect_argv(wchar_buf_t *wcbuf)
 {
 	_es_get_argv(wcbuf);
 	
-	if (!es_command_line)
+	if (!_es_command_line)
 	{
 		es_fatal(ES_ERROR_EXPECTED_SWITCH_PARAMETER);
 	}
@@ -6477,9 +6662,9 @@ static void _es_get_command_argv(wchar_buf_t *wcbuf)
 	int inquote;
 	wchar_t *d;
 	
-	if (!*es_command_line)
+	if (!*_es_command_line)
 	{
-		es_command_line = NULL;
+		_es_command_line = NULL;
 
 		return;
 	}
@@ -6490,7 +6675,7 @@ static void _es_get_command_argv(wchar_buf_t *wcbuf)
 	{
 		const wchar_t *p;
 
-		p = wchar_string_skip_ws(es_command_line);
+		p = wchar_string_skip_ws(_es_command_line);
 		
 		inquote = 0;
 		
@@ -6537,7 +6722,7 @@ static void _es_get_command_argv(wchar_buf_t *wcbuf)
 		if (pass) 
 		{
 			*d = 0;
-			es_command_line = p;
+			_es_command_line = p;
 			return;
 		}
 		else
@@ -6547,14 +6732,14 @@ static void _es_get_command_argv(wchar_buf_t *wcbuf)
 		}		
 	}
 	
-	es_command_line = NULL;
+	_es_command_line = NULL;
 }
 
 static void _es_expect_command_argv(wchar_buf_t *wcbuf)
 {
 	_es_get_command_argv(wcbuf);
 	
-	if (!es_command_line)
+	if (!_es_command_line)
 	{
 		es_fatal(ES_ERROR_EXPECTED_SWITCH_PARAMETER);
 	}
@@ -6634,21 +6819,21 @@ static BOOL _es_save_settings_with_filename(const wchar_t *filename)
 		config_write_int(file_handle,"match_path",_es_match_path);
 		config_write_int(file_handle,"match_case",_es_match_case);
 		config_write_int(file_handle,"match_diacritics",_es_match_diacritics);
-		config_write_int(file_handle,"size_leading_zero",es_size_leading_zero);
-		config_write_int(file_handle,"run_count_leading_zero",es_run_count_leading_zero);
-		config_write_int(file_handle,"digit_grouping",es_digit_grouping);
-		config_write_uint64(file_handle,"offset",es_offset);
-		config_write_uint64(file_handle,"max_results",es_max_results);
+		config_write_int(file_handle,"size_leading_zero",_es_size_leading_zero);
+		config_write_int(file_handle,"run_count_leading_zero",_es_run_count_leading_zero);
+		config_write_int(file_handle,"digit_grouping",_es_digit_grouping);
+		config_write_uint64(file_handle,"offset",_es_offset);
+		config_write_uint64(file_handle,"max_results",_es_max_results);
 		config_write_dword(file_handle,"timeout",es_timeout);
-		config_write_int(file_handle,"size_format",es_size_format);
-		config_write_int(file_handle,"date_format",es_display_date_format);
+		config_write_int(file_handle,"size_format",_es_size_format);
+		config_write_int(file_handle,"date_format",_es_display_date_format);
 		config_write_int(file_handle,"export_date_format",_es_export_date_format);
-		config_write_int(file_handle,"pause",es_pause);
-		config_write_int(file_handle,"empty_search_help",es_empty_search_help);
-		config_write_int(file_handle,"hide_empty_search_results",es_hide_empty_search_results);
-		config_write_int(file_handle,"utf8_bom",es_utf8_bom);
-		config_write_int(file_handle,"folder_append_path_separator",es_folder_append_path_separator);
-		config_write_int(file_handle,"es_newline_type",es_newline_type);
+		config_write_int(file_handle,"pause",_es_pause);
+		config_write_int(file_handle,"empty_search_help",_es_empty_search_help);
+		config_write_int(file_handle,"hide_empty_search_results",_es_hide_empty_search_results);
+		config_write_int(file_handle,"utf8_bom",_es_utf8_bom);
+		config_write_int(file_handle,"folder_append_path_separator",_es_folder_append_path_separator);
+		config_write_int(file_handle,"_es_newline_type",_es_newline_type);
 		
 		// columns
 		
@@ -6806,7 +6991,7 @@ static BOOL _es_save_settings(void)
 	// <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
 	// which disables the virtual store.
 	
-	if (!es_loaded_appdata_ini)
+	if (!_es_loaded_appdata_ini)
 	{
 		if (_es_save_settings_with_appdata(0))
 		{
@@ -6856,21 +7041,21 @@ static BOOL _es_load_settings_with_filename(const wchar_t *filename)
 		_es_match_path = config_read_int(&ini,"match_path",_es_match_path);
 		_es_match_case = config_read_int(&ini,"match_case",_es_match_case);
 		_es_match_diacritics = config_read_int(&ini,"match_diacritics",_es_match_diacritics);
-		es_size_leading_zero = config_read_int(&ini,"size_leading_zero",es_size_leading_zero);
-		es_run_count_leading_zero = config_read_int(&ini,"run_count_leading_zero",es_run_count_leading_zero);
-		es_digit_grouping = config_read_int(&ini,"digit_grouping",es_digit_grouping);
-		es_offset = safe_size_from_uint64(config_read_uint64(&ini,"offset",es_offset));
-		es_max_results = safe_size_from_uint64(config_read_uint64(&ini,"max_results",es_max_results));
+		_es_size_leading_zero = config_read_int(&ini,"size_leading_zero",_es_size_leading_zero);
+		_es_run_count_leading_zero = config_read_int(&ini,"run_count_leading_zero",_es_run_count_leading_zero);
+		_es_digit_grouping = config_read_int(&ini,"digit_grouping",_es_digit_grouping);
+		_es_offset = safe_size_from_uint64(config_read_uint64(&ini,"offset",_es_offset));
+		_es_max_results = safe_size_from_uint64(config_read_uint64(&ini,"max_results",_es_max_results));
 		es_timeout = config_read_dword(&ini,"timeout",es_timeout);
-		es_size_format = config_read_int(&ini,"size_format",es_size_format);
-		es_display_date_format = config_read_int(&ini,"date_format",es_display_date_format);
+		_es_size_format = config_read_int(&ini,"size_format",_es_size_format);
+		_es_display_date_format = config_read_int(&ini,"date_format",_es_display_date_format);
 		_es_export_date_format = config_read_int(&ini,"export_date_format",_es_export_date_format);
-		es_pause = config_read_int(&ini,"pause",es_pause);
-		es_empty_search_help = config_read_int(&ini,"empty_search_help",es_empty_search_help);
-		es_hide_empty_search_results = config_read_int(&ini,"hide_empty_search_results",es_hide_empty_search_results);
-		es_utf8_bom = config_read_int(&ini,"utf8_bom",es_utf8_bom);
-		es_folder_append_path_separator = config_read_int(&ini,"folder_append_path_separator",es_folder_append_path_separator);
-		es_newline_type = config_read_int(&ini,"newline_type",es_newline_type);
+		_es_pause = config_read_int(&ini,"pause",_es_pause);
+		_es_empty_search_help = config_read_int(&ini,"empty_search_help",_es_empty_search_help);
+		_es_hide_empty_search_results = config_read_int(&ini,"hide_empty_search_results",_es_hide_empty_search_results);
+		_es_utf8_bom = config_read_int(&ini,"utf8_bom",_es_utf8_bom);
+		_es_folder_append_path_separator = config_read_int(&ini,"folder_append_path_separator",_es_folder_append_path_separator);
+		_es_newline_type = config_read_int(&ini,"newline_type",_es_newline_type);
 		
 		// columns
 		
@@ -6950,7 +7135,7 @@ static void _es_load_settings(void)
 	
 	if (_es_load_settings_with_appdata(1))
 	{
-		es_loaded_appdata_ini = 1;
+		_es_loaded_appdata_ini = 1;
 	}
 }
 
@@ -6966,21 +7151,21 @@ static void _es_append_filter(wchar_buf_t *wcbuf,const ES_UTF8 *filter)
 
 static void _es_do_run_history_command(void)
 {	
-	es_everything_hwnd = _es_find_ipc_window();
-	if (es_everything_hwnd)
+	_es_everything_hwnd = _es_find_ipc_window();
+	if (_es_everything_hwnd)
 	{
-		if (es_run_history_size <= ES_DWORD_MAX)
+		if (_es_run_history_size <= ES_DWORD_MAX)
 		{
 			COPYDATASTRUCT cds;
 			DWORD run_count;
 
-			cds.cbData = (DWORD)es_run_history_size;
-			cds.dwData = es_run_history_command;
-			cds.lpData = es_run_history_data;
+			cds.cbData = (DWORD)_es_run_history_size;
+			cds.dwData = _es_run_history_command;
+			cds.lpData = _es_run_history_data;
 			
-			run_count = (DWORD)SendMessage(es_everything_hwnd,WM_COPYDATA,0,(LPARAM)&cds);
+			run_count = (DWORD)SendMessage(_es_everything_hwnd,WM_COPYDATA,0,(LPARAM)&cds);
 
-			if (es_run_history_command == EVERYTHING_IPC_COPYDATA_GET_RUN_COUNTW)
+			if (_es_run_history_command == EVERYTHING_IPC_COPYDATA_GET_RUN_COUNTW)
 			{
 				_es_output_noncell_printf("%u\r\n",run_count);
 			}
@@ -7383,24 +7568,7 @@ static int _es_get_ipc_sort_type_from_property_id(DWORD property_id,int sort_asc
 {
 	int is_ascending;
 	
-	is_ascending = 0;
-	
-	// resolve sort_ascending..
-	if (sort_ascending)
-	{
-		// descending.
-		if (sort_ascending > 0)
-		{
-			is_ascending = 1;
-		}
-	}
-	else
-	{
-		if (property_get_default_sort_ascending(property_id))
-		{
-			is_ascending = 1;
-		}
-	}
+	is_ascending = _es_resolve_sort_ascending(property_id,sort_ascending);
 	
 	switch(property_id)
 	{
@@ -7450,7 +7618,7 @@ static int _es_get_ipc_sort_type_from_property_id(DWORD property_id,int sort_asc
 // only create the reply window once.
 static void _es_get_reply_window(void)
 {
-	if (!es_reply_hwnd)
+	if (!_es_reply_hwnd)
 	{
 		WNDCLASSEX wcex;
 	
@@ -7471,8 +7639,8 @@ static void _es_get_reply_window(void)
 			}
 		}
 		
-		es_reply_hwnd = CreateWindow(TEXT("ES_IPC"),TEXT(""),0,0,0,0,0,0,0,GetModuleHandle(0),0);
-		if (!es_reply_hwnd)
+		_es_reply_hwnd = CreateWindow(TEXT("ES_IPC"),TEXT(""),0,0,0,0,0,0,0,GetModuleHandle(0),0);
+		if (!_es_reply_hwnd)
 		{
 			es_fatal(ES_ERROR_CREATE_WINDOW);
 		}
@@ -7490,7 +7658,7 @@ static void _es_get_reply_window(void)
 
 				if (_es_pChangeWindowMessageFilterEx)
 				{
-					_es_pChangeWindowMessageFilterEx(es_reply_hwnd,WM_COPYDATA,_ES_MSGFLT_ALLOW,0);
+					_es_pChangeWindowMessageFilterEx(_es_reply_hwnd,WM_COPYDATA,_ES_MSGFLT_ALLOW,0);
 				}
 			}
 		}
@@ -7842,23 +8010,23 @@ got_property_id:
 					{
 						case EVERYTHING3_PROPERTY_ID_PATH_AND_NAME:
 							// don't default to adding the filename column if it is not already shown.
-							es_no_default_filename_column = 1;
+							_es_no_default_filename_column = 1;
 							break;
 
 						case EVERYTHING3_PROPERTY_ID_SIZE:
-							es_no_default_size_column = 1;
+							_es_no_default_size_column = 1;
 							break;
 
 						case EVERYTHING3_PROPERTY_ID_DATE_MODIFIED:
-							es_no_default_date_modified_column = 1;
+							_es_no_default_date_modified_column = 1;
 							break;
 
 						case EVERYTHING3_PROPERTY_ID_DATE_CREATED:
-							es_no_default_date_created_column = 1;
+							_es_no_default_date_created_column = 1;
 							break;
 
 						case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
-							es_no_default_attribute_column = 1;
+							_es_no_default_attribute_column = 1;
 							break;
 
 					}
@@ -8147,7 +8315,7 @@ static void _es_add_standard_efu_columns(int size,int date_modified,int date_cre
 
 	if (size)
 	{
-		if (!es_no_default_size_column)
+		if (!_es_no_default_size_column)
 		{
 			if (!size_column)
 			{
@@ -8160,7 +8328,7 @@ static void _es_add_standard_efu_columns(int size,int date_modified,int date_cre
 
 	if (date_modified)
 	{
-		if (!es_no_default_date_modified_column)
+		if (!_es_no_default_date_modified_column)
 		{
 			if (!date_modified_column)
 			{
@@ -8173,7 +8341,7 @@ static void _es_add_standard_efu_columns(int size,int date_modified,int date_cre
 
 	if (date_created)
 	{
-		if (!es_no_default_date_created_column)
+		if (!_es_no_default_date_created_column)
 		{
 			if (!date_created_column)
 			{
@@ -8187,7 +8355,7 @@ static void _es_add_standard_efu_columns(int size,int date_modified,int date_cre
 	// FILE_ATTRIBUTE_DIRECTORY is always available.
 	if (attributes)
 	{
-		if (!es_no_default_attribute_column)
+		if (!_es_no_default_attribute_column)
 		{
 			if (!attribute_column)
 			{
@@ -8252,7 +8420,7 @@ static void _es_add_standard_efu_columns(int size,int date_modified,int date_cre
 // If unknown, returns FALSE.
 static BOOL _es_ipc2_is_file_info_indexed(DWORD file_info_type)
 {
-	if (SendMessage(es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_FILE_INFO_INDEXED,file_info_type))
+	if (SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_FILE_INFO_INDEXED,file_info_type))
 	{
 		return TRUE;
 	}
@@ -8272,7 +8440,7 @@ static void _es_output_pause(DWORD ipc_version,const void *data)
 	int info_line;
 	SIZE_T total_lines;
 	
-	info_line = es_console_high - 1;
+	info_line = _es_console_high - 1;
 	
 	total_lines = 0;
 	
@@ -8292,7 +8460,7 @@ static void _es_output_pause(DWORD ipc_version,const void *data)
 	}
 	
 	// include the header in the total line count.
-	if (es_header > 0)
+	if (_es_header > 0)
 	{
 		total_lines = safe_size_add_one(total_lines);
 	}
@@ -8306,37 +8474,37 @@ static void _es_output_pause(DWORD ipc_version,const void *data)
 	{
 		int i;
 		
-		if (es_console_window_y + info_line + 1 > es_console_size_high)
+		if (_es_console_window_y + info_line + 1 > _es_console_size_high)
 		{
-			for(i=0;i<(es_console_window_y + info_line + 1) - es_console_size_high;i++)
+			for(i=0;i<(_es_console_window_y + info_line + 1) - _es_console_size_high;i++)
 			{
 				DWORD numwritten;
 				
-				WriteFile(es_output_handle,"\r\n",2,&numwritten,0);
+				WriteFile(_es_output_handle,"\r\n",2,&numwritten,0);
 			}
 										
-			es_console_window_y = es_console_size_high - (int)(info_line + 1);
+			_es_console_window_y = _es_console_size_high - (int)(info_line + 1);
 		}
 	}
 	
 	std_input_handle = GetStdHandle(STD_INPUT_HANDLE);
 
-	es_output_cibuf = mem_alloc(es_console_wide * sizeof(CHAR_INFO));
+	_es_output_cibuf = mem_alloc(_es_console_wide * sizeof(CHAR_INFO));
 	
 	// set cursor pos to the bottom of the screen
 	{
 		COORD cur_pos;
-		cur_pos.X = es_console_window_x;
-		cur_pos.Y = es_console_window_y + (int)info_line;
+		cur_pos.X = _es_console_window_x;
+		cur_pos.Y = _es_console_window_y + (int)info_line;
 		
-		SetConsoleCursorPosition(es_output_handle,cur_pos);
+		SetConsoleCursorPosition(_es_output_handle,cur_pos);
 	}
 
 	// write out some basic usage at the bottom
 	{
 		DWORD numwritten;
 
-		WriteFile(es_output_handle,ES_PAUSE_TEXT,(DWORD)utf8_string_get_length_in_bytes(ES_PAUSE_TEXT),&numwritten,0);
+		WriteFile(_es_output_handle,_ES_PAUSE_TEXT,(DWORD)utf8_string_get_length_in_bytes(_ES_PAUSE_TEXT),&numwritten,0);
 	}
 
 	start_index = 0;
@@ -8351,27 +8519,27 @@ static void _es_output_pause(DWORD ipc_version,const void *data)
 		switch(ipc_version)
 		{
 			case ES_IPC_VERSION_FLAG_IPC1:
-				_es_output_ipc1_results((EVERYTHING_IPC_LIST *)data,start_index,es_console_high-1);
+				_es_output_ipc1_results((EVERYTHING_IPC_LIST *)data,start_index,_es_console_high-1);
 				break;
 				
 			case ES_IPC_VERSION_FLAG_IPC2:
-				_es_output_ipc2_results((EVERYTHING_IPC_LIST2 *)data,start_index,es_console_high-1);
+				_es_output_ipc2_results((EVERYTHING_IPC_LIST2 *)data,start_index,_es_console_high-1);
 				break;	
 				
 			case ES_IPC_VERSION_FLAG_IPC3:
 			
-				// reposition the memory stream to the current start index.
+				// reposition the pool stream to the current start index.
 				// if this isn't cached, we will read from the pipe stream, find the correct offset and cache the result.
 				ipc3_result_list_seek_to_offset_from_index((ipc3_result_list_t *)data,start_index);
 				
-				_es_output_ipc3_results((ipc3_result_list_t *)data,start_index,es_console_high-1);
+				_es_output_ipc3_results((ipc3_result_list_t *)data,start_index,_es_console_high-1);
 				break;
 		}
 		
 		// is everything is shown?
-		if (es_max_wide <= es_console_wide)
+		if (_es_max_wide <= _es_console_wide)
 		{
-			if (total_lines < (SIZE_T)es_console_high)
+			if (total_lines < (SIZE_T)_es_console_high)
 			{
 				goto exit;
 			}
@@ -8391,11 +8559,11 @@ start:
 					{
 						if (ir.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
 						{
-							if (total_lines < (SIZE_T)es_console_high + 1)
+							if (total_lines < (SIZE_T)_es_console_high + 1)
 							{
 								goto exit;
 							}
-							if (start_index == total_lines - es_console_high + 1)
+							if (start_index == total_lines - _es_console_high + 1)
 							{
 								goto exit;
 							}
@@ -8405,12 +8573,12 @@ start:
 						else
 						if (ir.Event.KeyEvent.wVirtualKeyCode == VK_SPACE)
 						{
-							if (total_lines < (SIZE_T)es_console_high + 1)
+							if (total_lines < (SIZE_T)_es_console_high + 1)
 							{
 								goto exit;
 							}
 							
-							if (start_index == total_lines - es_console_high + 1)
+							if (start_index == total_lines - _es_console_high + 1)
 							{
 								goto exit;
 							}
@@ -8421,28 +8589,28 @@ start:
 						else
 						if (ir.Event.KeyEvent.wVirtualKeyCode == VK_RIGHT)
 						{
-							es_output_cibuf_hscroll += 5;
+							_es_output_cibuf_hscroll += 5;
 							
-							if (es_max_wide > es_console_wide)
+							if (_es_max_wide > _es_console_wide)
 							{
-								if (es_output_cibuf_hscroll > es_max_wide - es_console_wide)
+								if (_es_output_cibuf_hscroll > _es_max_wide - _es_console_wide)
 								{
-									es_output_cibuf_hscroll = es_max_wide - es_console_wide;
+									_es_output_cibuf_hscroll = _es_max_wide - _es_console_wide;
 								}
 							}
 							else
 							{
-								es_output_cibuf_hscroll = 0;
+								_es_output_cibuf_hscroll = 0;
 							}
 							break;
 						}
 						else
 						if (ir.Event.KeyEvent.wVirtualKeyCode == VK_LEFT)
 						{
-							es_output_cibuf_hscroll -= 5;
-							if (es_output_cibuf_hscroll < 0)
+							_es_output_cibuf_hscroll -= 5;
+							if (_es_output_cibuf_hscroll < 0)
 							{
-								es_output_cibuf_hscroll = 0;
+								_es_output_cibuf_hscroll = 0;
 							}
 							break;
 						}
@@ -8461,7 +8629,7 @@ start:
 						else
 						if (ir.Event.KeyEvent.wVirtualKeyCode == VK_PRIOR)
 						{
-							start_index -= es_console_high - 1;
+							start_index -= _es_console_high - 1;
 							break;
 						}
 						else
@@ -8473,7 +8641,7 @@ start:
 						else
 						if (ir.Event.KeyEvent.wVirtualKeyCode == VK_END)
 						{
-							start_index = (int)total_lines - es_console_high + 1;
+							start_index = (int)total_lines - _es_console_high + 1;
 							break;
 						}
 						else
@@ -8484,7 +8652,7 @@ start:
 						else
 						if (_es_is_valid_key(&ir))
 						{
-							start_index += es_console_high - 1;
+							start_index += _es_console_high - 1;
 							break;
 						}
 					}
@@ -8500,11 +8668,11 @@ start:
 			start_index = 0;
 		}
 		else
-		if (total_lines > (SIZE_T)es_console_high + 1)
+		if (total_lines > (SIZE_T)_es_console_high + 1)
 		{
-			if (start_index > (int)total_lines - es_console_high + 1)
+			if (start_index > (int)total_lines - _es_console_high + 1)
 			{
-				start_index = (int)total_lines - es_console_high + 1;
+				start_index = (int)total_lines - _es_console_high + 1;
 			}
 		}
 		else
@@ -8517,9 +8685,9 @@ start:
 			last_start_index = start_index;
 		}
 		else
-		if (last_hscroll != es_output_cibuf_hscroll)
+		if (last_hscroll != _es_output_cibuf_hscroll)
 		{
-			last_hscroll = es_output_cibuf_hscroll;
+			last_hscroll = _es_output_cibuf_hscroll;
 		}
 		else
 		{
@@ -8530,35 +8698,35 @@ start:
 exit:						
 	
 	// remove text.
-	if (es_output_cibuf)
+	if (_es_output_cibuf)
 	{
 		// set cursor pos to the bottom of the screen
 		{
 			COORD cur_pos;
-			cur_pos.X = es_console_window_x;
-			cur_pos.Y = es_console_window_y + (int)info_line;
+			cur_pos.X = _es_console_window_x;
+			cur_pos.Y = _es_console_window_y + (int)info_line;
 			
-			SetConsoleCursorPosition(es_output_handle,cur_pos);
+			SetConsoleCursorPosition(_es_output_handle,cur_pos);
 		}
 
 		// write out some basic usage at the bottom
 		{
 			DWORD numwritten;
 	
-			WriteFile(es_output_handle,ES_BLANK_PAUSE_TEXT,(DWORD)utf8_string_get_length_in_bytes(ES_BLANK_PAUSE_TEXT),&numwritten,0);
+			WriteFile(_es_output_handle,_ES_BLANK_PAUSE_TEXT,(DWORD)utf8_string_get_length_in_bytes(_ES_BLANK_PAUSE_TEXT),&numwritten,0);
 		}
 	
 		// reset cursor pos.
 		{
 			COORD cur_pos;
-			cur_pos.X = es_console_window_x;
-			cur_pos.Y = es_console_window_y + (int)info_line;
+			cur_pos.X = _es_console_window_x;
+			cur_pos.Y = _es_console_window_y + (int)info_line;
 			
-			SetConsoleCursorPosition(es_output_handle,cur_pos);
+			SetConsoleCursorPosition(_es_output_handle,cur_pos);
 		}
 		
 		// free
-		mem_free(es_output_cibuf);
+		mem_free(_es_output_cibuf);
 	}								
 }
 
@@ -8570,4 +8738,23 @@ static void _es_output_noncell_total_size(ES_UINT64 total_size)
 static void _es_output_noncell_result_count(ES_UINT64 result_count)
 {
 	_es_output_noncell_printf("%I64u\r\n",result_count);
+}
+
+// if ascending is 0, use the default ascending order from the property id.
+// returns TRUE if sort is ascending.
+// Otherwise, returns FALSE.
+static BOOL _es_resolve_sort_ascending(DWORD property_id,int ascending)
+{
+	if (ascending < 0)
+	{
+		return FALSE;
+	}
+
+	if (ascending > 0)
+	{
+		return TRUE;
+	}
+	
+	// get default sort ascending.
+	return property_get_default_sort_ascending(property_id);
 }

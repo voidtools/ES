@@ -171,11 +171,11 @@ typedef struct ipc3_stream_pipe_s
 }ipc3_stream_pipe_t;
 
 // memory stream.
-typedef struct ipc3_stream_memory_s
+typedef struct ipc3_stream_pool_s
 {
 	ipc3_stream_t base;
 	
-	// an array of ipc3_stream_memory_chunk_t *
+	// an array of ipc3_stream_pool_chunk_t *
 	array_t chunk_array;
 	
 	// current position.
@@ -189,7 +189,7 @@ typedef struct ipc3_stream_memory_s
 	// the original source input stream.
 	struct ipc3_stream_s *source_stream;
 		
-}ipc3_stream_memory_t;
+}ipc3_stream_pool_t;
 
 typedef struct ipc3_result_list_property_request_s
 {
@@ -256,7 +256,7 @@ void ipc3_stream_close(ipc3_stream_t *stream);
 BOOL ipc3_is_property_indexed(HANDLE pipe_handle,DWORD property_id);
 void ipc3_result_list_init(ipc3_result_list_t *result_list,ipc3_stream_t *stream);
 void ipc3_result_list_kill(ipc3_result_list_t *result_list);
-void ipc3_stream_memory_init(ipc3_stream_memory_t *stream,ipc3_stream_t *source_stream);
+void ipc3_stream_pool_init(ipc3_stream_pool_t *stream,ipc3_stream_t *source_stream);
 void ipc3_stream_seek(ipc3_stream_t *stream,ES_UINT64 position_from_start);
 ES_UINT64 ipc3_stream_tell(ipc3_stream_t *stream);
 void ipc3_result_list_seek_to_offset_from_index(ipc3_result_list_t *result_list,SIZE_T start_index);

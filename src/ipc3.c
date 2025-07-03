@@ -35,10 +35,10 @@ static void _ipc3_stream_pipe_seek_proc(ipc3_stream_t *stream,ES_UINT64 position
 static ES_UINT64 _ipc3_stream_pipe_tell_proc(ipc3_stream_t *stream);
 static SIZE_T _ipc3_stream_pipe_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T size);
 static void _ipc3_stream_pipe_close_proc(ipc3_stream_t *stream);
-static void _ipc3_stream_memory_seek_proc(ipc3_stream_t *stream,ES_UINT64 position_from_start);
-static ES_UINT64 _ipc3_stream_memory_tell_proc(ipc3_stream_t *stream);
-static SIZE_T _ipc3_stream_memory_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T size);
-static void _ipc3_stream_memory_close_proc(ipc3_stream_t *stream);
+static void _ipc3_stream_pool_seek_proc(ipc3_stream_t *stream,ES_UINT64 position_from_start);
+static ES_UINT64 _ipc3_stream_pool_tell_proc(ipc3_stream_t *stream);
+static SIZE_T _ipc3_stream_pool_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T size);
+static void _ipc3_stream_pool_close_proc(ipc3_stream_t *stream);
 
 static ipc3_stream_vtbl_t _ipc3_stream_pipe_vtbl =
 {
@@ -48,12 +48,12 @@ static ipc3_stream_vtbl_t _ipc3_stream_pipe_vtbl =
 	_ipc3_stream_pipe_close_proc,
 };
 
-static ipc3_stream_vtbl_t _ipc3_stream_memory_vtbl =
+static ipc3_stream_vtbl_t _ipc3_stream_pool_vtbl =
 {
-	_ipc3_stream_memory_seek_proc,
-	_ipc3_stream_memory_tell_proc,
-	_ipc3_stream_memory_read_proc,
-	_ipc3_stream_memory_close_proc,
+	_ipc3_stream_pool_seek_proc,
+	_ipc3_stream_pool_tell_proc,
+	_ipc3_stream_pool_read_proc,
+	_ipc3_stream_pool_close_proc,
 };
 
 // write some data to a pipe handle.
@@ -410,18 +410,52 @@ BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size)
 // connect to Everything pipe server.
 // returns a pipe handle 
 // returns INVALID_HANDLE_VALUE if not pipe servers are available.
-//TODO: es_timeout
 HANDLE ipc3_connect_pipe(void)
 {
+	DWORD tickstart;
 	wchar_buf_t pipe_name_wcbuf;
+	wchar_buf_t window_class_wcbuf;
 	HANDLE pipe_handle;
 	
 	wchar_buf_init(&pipe_name_wcbuf);
+	wchar_buf_init(&window_class_wcbuf);
+
+	tickstart = GetTickCount();
 
 	ipc3_get_pipe_name(&pipe_name_wcbuf);
 		
-	pipe_handle = CreateFile(pipe_name_wcbuf.buf,GENERIC_READ|GENERIC_WRITE,0,0,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,0);
+	for(;;)
+	{
+		DWORD tick;
+		
+		pipe_handle = CreateFile(pipe_name_wcbuf.buf,GENERIC_READ|GENERIC_WRITE,0,0,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,0);
+		if (pipe_handle != INVALID_HANDLE_VALUE)
+		{
+			break;
+		}
+		
+		if (!es_timeout)
+		{
+			// no pipe server.
+			break;
+		}
+		
+		tick = GetTickCount();
+		
+		if (tick - tickstart > es_timeout)
+		{
+			// no pipe server and timed out.
+			// do not timeout again.
+			es_timeout = 0;
+			
+			break;
+		}
+
+		// try again..
+		Sleep(10);
+	}
 	
+	wchar_buf_kill(&window_class_wcbuf);
 	wchar_buf_kill(&pipe_name_wcbuf);
 	
 	return pipe_handle;
@@ -843,11 +877,12 @@ void ipc3_result_list_kill(ipc3_result_list_t *result_list)
 	utf8_buf_kill(&result_list->property_request_cbuf);
 }
 
-// initialize a memory stream
+// setup the vtbl object, save a reference to the source stream (doesn't hold ownership)
+// set the current position to 0.
 // the source stream MUST exist while this stream exists.
-void ipc3_stream_memory_init(ipc3_stream_memory_t *stream,ipc3_stream_t *source_stream)
+void ipc3_stream_pool_init(ipc3_stream_pool_t *stream,ipc3_stream_t *source_stream)
 {
-	stream->base.vtbl = &_ipc3_stream_memory_vtbl;
+	stream->base.vtbl = &_ipc3_stream_pool_vtbl;
 	stream->base.is_error = 0;
 	stream->base.is_64bit = source_stream->is_64bit;
 	
@@ -858,37 +893,37 @@ void ipc3_stream_memory_init(ipc3_stream_memory_t *stream,ipc3_stream_t *source_
 	stream->avail = 0;
 	stream->is_last = 0;
 	
-	array_init(&((ipc3_stream_memory_t *)stream)->chunk_array);
+	array_init(&((ipc3_stream_pool_t *)stream)->chunk_array);
 }
 
-// seek to a specific location in a memory stream.
+// seek to a specific location in a pool stream.
 // we can calculate the chunk index from the position as we have fixed sized chunks.
 // add the remainder to the current chunk.
-static void _ipc3_stream_memory_seek_proc(ipc3_stream_t *stream,ES_UINT64 position_from_start)
+static void _ipc3_stream_pool_seek_proc(ipc3_stream_t *stream,ES_UINT64 position_from_start)
 {
 	SIZE_T chunk_index;
 	
 	chunk_index = safe_size_from_uint64(position_from_start / _IPC3_STREAM_MEMORY_CHUNK_SIZE);
 
-	if (chunk_index < ((ipc3_stream_memory_t *)stream)->chunk_array.count)
+	if (chunk_index < ((ipc3_stream_pool_t *)stream)->chunk_array.count)
 	{
 		BYTE *chunk;
 		SIZE_T chunk_offset;
 		
-		chunk = ((ipc3_stream_memory_t *)stream)->chunk_array.indexes[chunk_index];
+		chunk = ((ipc3_stream_pool_t *)stream)->chunk_array.indexes[chunk_index];
 		
-		((ipc3_stream_memory_t *)stream)->chunk_cur = chunk_index;
+		((ipc3_stream_pool_t *)stream)->chunk_cur = chunk_index;
 		
 		chunk_offset = (SIZE_T)(position_from_start % _IPC3_STREAM_MEMORY_CHUNK_SIZE);
 		
-		((ipc3_stream_memory_t *)stream)->p = chunk + chunk_offset;
-		((ipc3_stream_memory_t *)stream)->avail = _IPC3_STREAM_MEMORY_CHUNK_SIZE - chunk_offset;
+		((ipc3_stream_pool_t *)stream)->p = chunk + chunk_offset;
+		((ipc3_stream_pool_t *)stream)->avail = _IPC3_STREAM_MEMORY_CHUNK_SIZE - chunk_offset;
 	}
 	else
 	if (position_from_start == 0)
 	{
 		// we haven't read anything yet if 
-		// ((ipc3_stream_memory_t *)stream)->chunk_array.count
+		// ((ipc3_stream_pool_t *)stream)->chunk_array.count
 		// is zero.
 	}
 	else
@@ -898,29 +933,29 @@ static void _ipc3_stream_memory_seek_proc(ipc3_stream_t *stream,ES_UINT64 positi
 	}
 }
 
-// get the current position of a memory stream
+// get the current position of a pool stream
 // calculated from the current chunk index and the current position in the current chunk.
-static ES_UINT64 _ipc3_stream_memory_tell_proc(ipc3_stream_t *stream)
+static ES_UINT64 _ipc3_stream_pool_tell_proc(ipc3_stream_t *stream)
 {	
 	BYTE *chunk;
 	
-	if (((ipc3_stream_memory_t *)stream)->chunk_cur == SIZE_MAX)
+	if (((ipc3_stream_pool_t *)stream)->chunk_cur == SIZE_MAX)
 	{
 		// haven't read anything yet..
 		return 0;
 	}
 	
-	chunk = ((ipc3_stream_memory_t *)stream)->chunk_array.indexes[((ipc3_stream_memory_t *)stream)->chunk_cur];
+	chunk = ((ipc3_stream_pool_t *)stream)->chunk_array.indexes[((ipc3_stream_pool_t *)stream)->chunk_cur];
 	
-	return (((ipc3_stream_memory_t *)stream)->chunk_cur * _IPC3_STREAM_MEMORY_CHUNK_SIZE) + ((ipc3_stream_memory_t *)stream)->p - chunk;
+	return (((ipc3_stream_pool_t *)stream)->chunk_cur * _IPC3_STREAM_MEMORY_CHUNK_SIZE) + ((ipc3_stream_pool_t *)stream)->p - chunk;
 }
 
-// the read proc for a memory stream.
+// the read proc for a pool stream.
 // tries to read from the current chunk if data is available.
 // if not, it setups the next chunk and tries again..
 // returns the number of bytes read.
 // MUST set is_error on any errors.
-static SIZE_T _ipc3_stream_memory_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T size)
+static SIZE_T _ipc3_stream_pool_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T size)
 {
 	BYTE *d;
 	SIZE_T run;
@@ -937,16 +972,16 @@ static SIZE_T _ipc3_stream_memory_read_proc(ipc3_stream_t *stream,void *buf,SIZE
 	{
 		SIZE_T copy_size;
 		
-		if (!((ipc3_stream_memory_t *)stream)->avail)
+		if (!((ipc3_stream_pool_t *)stream)->avail)
 		{
 			// is there some data to read from the memory?
-			if ((((ipc3_stream_memory_t *)stream)->chunk_cur == SIZE_MAX) || (((ipc3_stream_memory_t *)stream)->chunk_cur + 1 >= ((ipc3_stream_memory_t *)stream)->chunk_array.count))
+			if ((((ipc3_stream_pool_t *)stream)->chunk_cur == SIZE_MAX) || (((ipc3_stream_pool_t *)stream)->chunk_cur + 1 >= ((ipc3_stream_pool_t *)stream)->chunk_array.count))
 			{
 				BYTE *chunk;
 				SIZE_T numread;
 				
 				// already got last chunk.
-				if (((ipc3_stream_memory_t *)stream)->is_last)
+				if (((ipc3_stream_pool_t *)stream)->is_last)
 				{
 					stream->is_error = 1;
 					
@@ -963,55 +998,55 @@ static SIZE_T _ipc3_stream_memory_read_proc(ipc3_stream_t *stream,void *buf,SIZE
 				}
 				
 				// add to our chunk list.
-				array_insert(&((ipc3_stream_memory_t *)stream)->chunk_array,SIZE_MAX,chunk);
+				array_insert(&((ipc3_stream_pool_t *)stream)->chunk_array,SIZE_MAX,chunk);
 				
 				// now actually try to read from the source stream, which might fail..
-				numread = ipc3_stream_try_read_data(((ipc3_stream_memory_t *)stream)->source_stream,chunk,_IPC3_STREAM_MEMORY_CHUNK_SIZE);
+				numread = ipc3_stream_try_read_data(((ipc3_stream_pool_t *)stream)->source_stream,chunk,_IPC3_STREAM_MEMORY_CHUNK_SIZE);
 				
 				if (numread != _IPC3_STREAM_MEMORY_CHUNK_SIZE)
 				{
 					// read last chunk.
-					((ipc3_stream_memory_t *)stream)->is_last = 1;
+					((ipc3_stream_pool_t *)stream)->is_last = 1;
 					
-					((ipc3_stream_memory_t *)stream)->last_chunk_numread = numread;
+					((ipc3_stream_pool_t *)stream)->last_chunk_numread = numread;
 				}
 			}
 
 			// next chunk..
-			if (((ipc3_stream_memory_t *)stream)->chunk_cur == SIZE_MAX)
+			if (((ipc3_stream_pool_t *)stream)->chunk_cur == SIZE_MAX)
 			{
-				((ipc3_stream_memory_t *)stream)->chunk_cur = 0;
+				((ipc3_stream_pool_t *)stream)->chunk_cur = 0;
 			}
 			else
 			{
-				((ipc3_stream_memory_t *)stream)->chunk_cur++;
+				((ipc3_stream_pool_t *)stream)->chunk_cur++;
 			}
 			
 			// setup current position
-			((ipc3_stream_memory_t *)stream)->p = ((ipc3_stream_memory_t *)stream)->chunk_array.indexes[((ipc3_stream_memory_t *)stream)->chunk_cur];
+			((ipc3_stream_pool_t *)stream)->p = ((ipc3_stream_pool_t *)stream)->chunk_array.indexes[((ipc3_stream_pool_t *)stream)->chunk_cur];
 
 			// setup available size.
 			// if we are the last chunk use the last numread size.
-			if ((((ipc3_stream_memory_t *)stream)->is_last) && (((ipc3_stream_memory_t *)stream)->chunk_cur == ((ipc3_stream_memory_t *)stream)->chunk_array.count - 1))
+			if ((((ipc3_stream_pool_t *)stream)->is_last) && (((ipc3_stream_pool_t *)stream)->chunk_cur == ((ipc3_stream_pool_t *)stream)->chunk_array.count - 1))
 			{
-				((ipc3_stream_memory_t *)stream)->avail = ((ipc3_stream_memory_t *)stream)->last_chunk_numread;
+				((ipc3_stream_pool_t *)stream)->avail = ((ipc3_stream_pool_t *)stream)->last_chunk_numread;
 			}
 			else
 			{
-				((ipc3_stream_memory_t *)stream)->avail = _IPC3_STREAM_MEMORY_CHUNK_SIZE;
+				((ipc3_stream_pool_t *)stream)->avail = _IPC3_STREAM_MEMORY_CHUNK_SIZE;
 			}
 		}
 		
 		copy_size = run;
-		if (copy_size > ((ipc3_stream_memory_t *)stream)->avail)
+		if (copy_size > ((ipc3_stream_pool_t *)stream)->avail)
 		{
-			copy_size = ((ipc3_stream_memory_t *)stream)->avail;
+			copy_size = ((ipc3_stream_pool_t *)stream)->avail;
 		}
 		
-		CopyMemory(d,((ipc3_stream_memory_t *)stream)->p,copy_size);
+		CopyMemory(d,((ipc3_stream_pool_t *)stream)->p,copy_size);
 		
-		((ipc3_stream_memory_t *)stream)->p += copy_size;
-		((ipc3_stream_memory_t *)stream)->avail -= copy_size;
+		((ipc3_stream_pool_t *)stream)->p += copy_size;
+		((ipc3_stream_pool_t *)stream)->avail -= copy_size;
 		
 		d += copy_size;
 		run -= copy_size;
@@ -1020,25 +1055,25 @@ static SIZE_T _ipc3_stream_memory_read_proc(ipc3_stream_t *stream,void *buf,SIZE
 	return d - (BYTE *)buf;
 }
 
-// close a memory stream.
+// close a pool stream.
 // releases chunks and kills the array
-static void _ipc3_stream_memory_close_proc(ipc3_stream_t *stream)
+static void _ipc3_stream_pool_close_proc(ipc3_stream_t *stream)
 {
 	// free chunks.
 	
 	{
 		SIZE_T chunk_index;
 		
-		for(chunk_index=0;chunk_index<((ipc3_stream_memory_t *)stream)->chunk_array.count;chunk_index++)
+		for(chunk_index=0;chunk_index<((ipc3_stream_pool_t *)stream)->chunk_array.count;chunk_index++)
 		{
-			mem_free(((ipc3_stream_memory_t *)stream)->chunk_array.indexes[chunk_index]);
+			mem_free(((ipc3_stream_pool_t *)stream)->chunk_array.indexes[chunk_index]);
 		}
 	}
 	
-	array_kill(&((ipc3_stream_memory_t *)stream)->chunk_array);
+	array_kill(&((ipc3_stream_pool_t *)stream)->chunk_array);
 }
 
-// seek to the specified position from the start of the memory stream.
+// seek to the specified position from the start of the pool stream.
 void ipc3_stream_seek(ipc3_stream_t *stream,ES_UINT64 position_from_start)
 {
 	stream->vtbl->seek_proc(stream,position_from_start);
@@ -1062,6 +1097,12 @@ void ipc3_result_list_seek_to_offset_from_index(ipc3_result_list_t *result_list,
 	ipc3_stream_t *stream;
 
 	stream = result_list->stream;
+
+	if (start_index >= result_list->viewport_count)
+	{
+		// bad request index.
+		es_fatal(ES_ERROR_IPC_ERROR);
+	}
 
 	if (start_index < result_list->index_to_stream_offset_valid_count)
 	{

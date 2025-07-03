@@ -20,6 +20,10 @@
 //#define INT32_MIN	(-2147483647 - 1)
 //#define INT32_MAX	2147483647
 
+#define ES_IPC_VERSION_FLAG_IPC1	0x00000001 // Everything 1.3
+#define ES_IPC_VERSION_FLAG_IPC2	0x00000002 // Everything 1.4
+#define ES_IPC_VERSION_FLAG_IPC3	0x00000004 // Everything 1.5
+
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
@@ -54,3 +58,5 @@ typedef BYTE ES_UTF8;
 void DECLSPEC_NORETURN es_fatal(int error_code);
 
 extern wchar_buf_t *es_instance_name_wcbuf;
+extern DWORD es_timeout;
+extern DWORD es_ipc_version; // allow all ipc versions
