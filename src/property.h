@@ -2,7 +2,9 @@
 enum 
 {
 	PROPERTY_FORMAT_NONE,
+	PROPERTY_FORMAT_TEXT16, // 16 characters
 	PROPERTY_FORMAT_TEXT30, // 30 characters
+	PROPERTY_FORMAT_TEXT32, // 32 characters
 	PROPERTY_FORMAT_TEXT47, // 47 characters
 	PROPERTY_FORMAT_SIZE, // 123456789
 	PROPERTY_FORMAT_EXTENSION, // 4 characters
@@ -15,9 +17,20 @@ enum
 	PROPERTY_FORMAT_NUMBER5, // 12345 (no comma)
 	PROPERTY_FORMAT_NUMBER6, // 12,345
 	PROPERTY_FORMAT_NUMBER7, // 123,456
+	PROPERTY_FORMAT_NUMBER9, // 1,234,567
 	PROPERTY_FORMAT_NUMBER,  // 123,456,789
+	PROPERTY_FORMAT_KBPS, // 9999 kbps
+	PROPERTY_FORMAT_RATING, // *****
 	PROPERTY_FORMAT_HEX_NUMBER, // 0xdeadbeef
 	PROPERTY_FORMAT_DIMENSIONS, // 123x456
+	PROPERTY_FORMAT_F_STOP, // f/9.99
+	PROPERTY_FORMAT_EXPOSURE_TIME, // 1/350 sec
+	PROPERTY_FORMAT_ISO_SPEED, // ISO-9999
+	PROPERTY_FORMAT_EXPOSURE_BIAS, // +1.234 step
+	PROPERTY_FORMAT_FOCAL_LENGTH, // 999.999 mm
+	PROPERTY_FORMAT_SUBJECT_DISTANCE, // 999.999 m
+	PROPERTY_FORMAT_BCPS, // 9.999 bcps
+	PROPERTY_FORMAT_35MM_FOCAL_LENGTH, // 99999 mm
 	PROPERTY_FORMAT_FIXED_Q1K, // 0.123
 	PROPERTY_FORMAT_FIXED_Q1M, // 0.123456
 	PROPERTY_FORMAT_DURATION, // 1:23:45
@@ -34,7 +47,8 @@ enum
 	PROPERTY_FORMAT_DATA256, // data
 	PROPERTY_FORMAT_DATA512, // data
 	PROPERTY_FORMAT_FORMAT_TEXT16, // formatted 16 characters
-	PROPERTY_FORMAT_FORMAT_TEXT30, // formatted 30 characters
+	PROPERTY_FORMAT_FORMAT_TEXT24, // formatted 30 characters
+	PROPERTY_FORMAT_FORMAT_TEXT32, // formatted 30 characters
 	PROPERTY_FORMAT_COUNT,
 };
 
@@ -53,7 +67,7 @@ BYTE property_get_format(DWORD property_id);
 BOOL property_is_right_aligned(DWORD property_id);
 void property_get_canonical_name(DWORD property_id,wchar_buf_t *out_wcbuf);
 DWORD property_id_from_old_column_id(int i);
-DWORD property_find(const wchar_t *s);
+DWORD property_find(const wchar_t *s,int allow_property_system);
 BOOL property_get_default_sort_ascending(DWORD property_id);
 int proerty_get_default_width(DWORD property_id);
 

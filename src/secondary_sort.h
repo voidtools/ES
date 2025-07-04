@@ -1,6 +1,7 @@
 
 typedef struct secondary_sort_s
 {
+	// next secondary sort.
 	struct secondary_sort_s *next;
 	
 	// EVERYTHING3_PROPERTY_ID_*

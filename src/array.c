@@ -46,16 +46,19 @@ void array_kill(array_t *a)
 	}
 }
 
+// empty an array.
+// Any allocated memory is returned to the system.
 void array_empty(array_t *a)
 {
 	array_kill(a);
 	array_init(a);
 }
 
+// binary search for an item in a sorted array.
 // returns a pointer to the found item.
-// Otherwise, returns NULL and sets out_insertion_index.
-// call array_insert with this index to add a new item.
-void *array_find_or_get_insertion_index(const array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data,SIZE_T *out_insertion_index)
+// returns NULL if the item is not found and stores the insertion_index for a new item in out_insertion_index.
+// call array_insert with this index to add the new item.
+void *array_find_or_get_insertion_index(const array_t *a,int (*compare_proc)(const void *a,const void *b),const void *compare_data,SIZE_T *out_insertion_index)
 {
 	SIZE_T blo;
 	SIZE_T bhi;
@@ -75,7 +78,7 @@ void *array_find_or_get_insertion_index(const array_t *a,int (*compare)(const vo
 		
 		bpos = blo + ((bhi - blo) / 2);
 
-		i = compare(array_base[bpos],compare_data);
+		i = compare_proc(array_base[bpos],compare_data);
 		
 		if (i > 0)
 		{
@@ -101,7 +104,7 @@ void *array_find_or_get_insertion_index(const array_t *a,int (*compare)(const vo
 
 // returns a pointer to the found item.
 // returns NULL if not found.
-void *array_find(const array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data)
+void *array_find(const array_t *a,int (*compare_proc)(const void *a,const void *b),const void *compare_data)
 {
 	SIZE_T blo;
 	SIZE_T bhi;
@@ -119,7 +122,7 @@ void *array_find(const array_t *a,int (*compare)(const void *a,const void *b),co
 		
 		bpos = blo + ((bhi - blo) / 2);
 
-		i = compare(array_base[bpos],compare_data);
+		i = compare_proc(array_base[bpos],compare_data);
 		
 		if (i > 0)
 		{
@@ -193,7 +196,7 @@ void array_insert(array_t *a,SIZE_T insertion_index,void *item)
 
 // returns a pointer to the item if found and removes it from the array.
 // caller should free the returned item.
-void *array_remove(array_t *a,int (*compare)(const void *a,const void *b),const void *compare_data)
+void *array_remove(array_t *a,int (*compare_proc)(const void *a,const void *b),const void *compare_data)
 {
 	SIZE_T blo;
 	SIZE_T bhi;
@@ -211,7 +214,7 @@ void *array_remove(array_t *a,int (*compare)(const void *a,const void *b),const 
 		
 		bpos = blo + ((bhi - blo) / 2);
 
-		i = compare(array_base[bpos],compare_data);
+		i = compare_proc(array_base[bpos],compare_data);
 		
 		if (i > 0)
 		{

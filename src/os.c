@@ -68,8 +68,8 @@ void *os_zero_memory(void *dst,SIZE_T size)
 }
 
 // replaces the old file with a new file.
-// the operation should be atomic.
-// However, this is no longer true as the NTFS rename can get flushed to disk before the actual data.
+// Ideally, the operation should be atomic.
+// However, it is not as the NTFS rename can get flushed to disk before the actual ini data.
 // for ES.ini this will have to do.
 int os_replace_file(const wchar_t *old_name,const wchar_t *new_name)
 {

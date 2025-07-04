@@ -113,6 +113,9 @@ SIZE_T safe_size_mul(SIZE_T a,SIZE_T b)
 	return a * b;
 }
 
+// convert a UINT64 value to a SIZE_T value.
+// returns the converted SIZE_T value.
+// if the value overflows, returns SIZE_MAX.
 SIZE_T safe_size_from_uint64(ES_UINT64 a)
 {
 	if (a <= SIZE_MAX)

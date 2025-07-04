@@ -27,7 +27,7 @@
 
 #include "es.h"
 
-// pools must be set in main()
+// pool and array must be set in main()
 pool_t *secondary_sort_pool = NULL; // pool of secondary_sort_t
 array_t *secondary_sort_array = NULL; // array of secondary_sort_t sorted by property id.
 secondary_sort_t *secondary_sort_start = NULL;
@@ -86,6 +86,9 @@ secondary_sort_t *secondary_sort_add(DWORD property_id,int ascending)
 	return sort;
 }
 
+// clears all secondary sorts.
+// empties the array and pools.
+// sets the sort list to an empty list.
 void secondary_sort_clear_all(void)
 {
 	array_empty(secondary_sort_array);

@@ -29,7 +29,7 @@
 
 #define _IPC3_STREAM_PIPE_MAX_BUF_SIZE			65536
 
-#define _IPC3_STREAM_MEMORY_CHUNK_SIZE			65536
+#define _IPC3_STREAM_POOL_CHUNK_SIZE			65536
 
 static void _ipc3_stream_pipe_seek_proc(ipc3_stream_t *stream,ES_UINT64 position_from_start);
 static ES_UINT64 _ipc3_stream_pipe_tell_proc(ipc3_stream_t *stream);
@@ -545,6 +545,24 @@ BOOL ipc3_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size
 	return FALSE;
 }
 
+// same as ipc3_ioctl
+// except, the out_size is expected.
+// returns FALSE if out_size doesn't match numread.
+BOOL ipc3_ioctl_expect_output_size(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size)
+{
+	SIZE_T numread;
+	
+	if (ipc3_ioctl(pipe_handle,command,in_buf,in_size,out_buf,out_size,&numread))
+	{
+		if (out_size == numread)
+		{
+			return TRUE;
+		}
+	}
+	
+	return FALSE;
+}
+
 // get the instance name and store it in wcbuf.
 // instance_name must be non-NULL.
 void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf)
@@ -736,7 +754,7 @@ static SIZE_T _ipc3_stream_pipe_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T
 			chunk_size = ((ipc3_stream_pipe_t *)stream)->avail;
 		}
 		
-		CopyMemory(d,((ipc3_stream_pipe_t *)stream)->p,chunk_size);
+		os_copy_memory(d,((ipc3_stream_pipe_t *)stream)->p,chunk_size);
 		
 		((ipc3_stream_pipe_t *)stream)->p += chunk_size;
 		((ipc3_stream_pipe_t *)stream)->avail -= chunk_size;
@@ -764,16 +782,12 @@ static void _ipc3_stream_pipe_close_proc(ipc3_stream_t *stream)
 BOOL ipc3_is_property_indexed(HANDLE pipe_handle,DWORD property_id)
 {
 	DWORD value;
-	SIZE_T numread;
 	
-	if (ipc3_ioctl(pipe_handle,IPC3_COMMAND_IS_PROPERTY_INDEXED,&property_id,sizeof(DWORD),&value,sizeof(DWORD),&numread))
+	if (ipc3_ioctl_expect_output_size(pipe_handle,IPC3_COMMAND_IS_PROPERTY_INDEXED,&property_id,sizeof(DWORD),&value,sizeof(DWORD)))
 	{
-		if (numread == sizeof(DWORD))
+		if (value)
 		{
-			if (value)
-			{
-				return TRUE;
-			}
+			return TRUE;
 		}
 	}
 	
@@ -903,7 +917,7 @@ static void _ipc3_stream_pool_seek_proc(ipc3_stream_t *stream,ES_UINT64 position
 {
 	SIZE_T chunk_index;
 	
-	chunk_index = safe_size_from_uint64(position_from_start / _IPC3_STREAM_MEMORY_CHUNK_SIZE);
+	chunk_index = safe_size_from_uint64(position_from_start / _IPC3_STREAM_POOL_CHUNK_SIZE);
 
 	if (chunk_index < ((ipc3_stream_pool_t *)stream)->chunk_array.count)
 	{
@@ -914,10 +928,10 @@ static void _ipc3_stream_pool_seek_proc(ipc3_stream_t *stream,ES_UINT64 position
 		
 		((ipc3_stream_pool_t *)stream)->chunk_cur = chunk_index;
 		
-		chunk_offset = (SIZE_T)(position_from_start % _IPC3_STREAM_MEMORY_CHUNK_SIZE);
+		chunk_offset = (SIZE_T)(position_from_start % _IPC3_STREAM_POOL_CHUNK_SIZE);
 		
 		((ipc3_stream_pool_t *)stream)->p = chunk + chunk_offset;
-		((ipc3_stream_pool_t *)stream)->avail = _IPC3_STREAM_MEMORY_CHUNK_SIZE - chunk_offset;
+		((ipc3_stream_pool_t *)stream)->avail = _IPC3_STREAM_POOL_CHUNK_SIZE - chunk_offset;
 	}
 	else
 	if (position_from_start == 0)
@@ -947,7 +961,7 @@ static ES_UINT64 _ipc3_stream_pool_tell_proc(ipc3_stream_t *stream)
 	
 	chunk = ((ipc3_stream_pool_t *)stream)->chunk_array.indexes[((ipc3_stream_pool_t *)stream)->chunk_cur];
 	
-	return (((ipc3_stream_pool_t *)stream)->chunk_cur * _IPC3_STREAM_MEMORY_CHUNK_SIZE) + ((ipc3_stream_pool_t *)stream)->p - chunk;
+	return (((ipc3_stream_pool_t *)stream)->chunk_cur * _IPC3_STREAM_POOL_CHUNK_SIZE) + ((ipc3_stream_pool_t *)stream)->p - chunk;
 }
 
 // the read proc for a pool stream.
@@ -1001,9 +1015,9 @@ static SIZE_T _ipc3_stream_pool_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T
 				array_insert(&((ipc3_stream_pool_t *)stream)->chunk_array,SIZE_MAX,chunk);
 				
 				// now actually try to read from the source stream, which might fail..
-				numread = ipc3_stream_try_read_data(((ipc3_stream_pool_t *)stream)->source_stream,chunk,_IPC3_STREAM_MEMORY_CHUNK_SIZE);
+				numread = ipc3_stream_try_read_data(((ipc3_stream_pool_t *)stream)->source_stream,chunk,_IPC3_STREAM_POOL_CHUNK_SIZE);
 				
-				if (numread != _IPC3_STREAM_MEMORY_CHUNK_SIZE)
+				if (numread != _IPC3_STREAM_POOL_CHUNK_SIZE)
 				{
 					// read last chunk.
 					((ipc3_stream_pool_t *)stream)->is_last = 1;
@@ -1033,7 +1047,7 @@ static SIZE_T _ipc3_stream_pool_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T
 			}
 			else
 			{
-				((ipc3_stream_pool_t *)stream)->avail = _IPC3_STREAM_MEMORY_CHUNK_SIZE;
+				((ipc3_stream_pool_t *)stream)->avail = _IPC3_STREAM_POOL_CHUNK_SIZE;
 			}
 		}
 		
@@ -1043,7 +1057,7 @@ static SIZE_T _ipc3_stream_pool_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T
 			copy_size = ((ipc3_stream_pool_t *)stream)->avail;
 		}
 		
-		CopyMemory(d,((ipc3_stream_pool_t *)stream)->p,copy_size);
+		os_copy_memory(d,((ipc3_stream_pool_t *)stream)->p,copy_size);
 		
 		((ipc3_stream_pool_t *)stream)->p += copy_size;
 		((ipc3_stream_pool_t *)stream)->avail -= copy_size;
@@ -1415,3 +1429,33 @@ BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value)
 	return d;
 }
 
+DWORD ipc3_find_property(const wchar_t *search)
+{
+	DWORD ret;
+	HANDLE pipe_handle;
+
+	ret = EVERYTHING3_INVALID_PROPERTY_ID;
+	
+	pipe_handle = ipc3_connect_pipe();
+	if (pipe_handle != INVALID_HANDLE_VALUE)
+	{
+		utf8_buf_t search_cbuf;
+		DWORD ipc3_property_id;
+		
+		utf8_buf_init(&search_cbuf);
+
+		utf8_buf_copy_wchar_string(&search_cbuf,search);
+		
+		if (ipc3_ioctl_expect_output_size(pipe_handle,IPC3_COMMAND_FIND_PROPERTY_FROM_NAME,search_cbuf.buf,search_cbuf.length_in_bytes,&ipc3_property_id,sizeof(DWORD)))
+		{
+			// found the property id.
+			ret = ipc3_property_id;
+		}
+
+		utf8_buf_kill(&search_cbuf);
+
+		CloseHandle(pipe_handle);
+	}
+
+	return ret;
+}

@@ -95,6 +95,10 @@
 #define _ES_EXPORT_TYPE_TSV			6
 #define _ES_EXPORT_TYPE_JSON		7
 
+#define _ES_MODE_SEARCH						0
+#define _ES_MODE_GET_EVERYTHING_VERSION		1
+#define _ES_MODE_LIST_PROPERTIES			2
+
 #define _ES_EXPORT_BUF_SIZE			65536
 
 #define _ES_PAUSE_TEXT				"ESC=Quit; Up,Down,Left,Right,Page Up,Page Down,Home,End=Scroll"
@@ -117,7 +121,8 @@ static void _es_output_cell_wchar_string(const wchar_t *text,int is_highlighted)
 static void _es_export_write_data(const ES_UTF8 *text,SIZE_T length_in_bytes);
 static void _es_export_write_wchar_string_n(const wchar_t *text,SIZE_T wlen);
 static void _es_format_number(ES_UINT64 number,int allow_digit_grouping,wchar_buf_t *out_wcbuf);
-static void _es_format_fixed_q1k(ES_UINT64 number,int allow_digit_grouping,wchar_buf_t *out_wcbuf);
+static void _es_format_fixed_q1k(ES_UINT64 number,int allow_digit_grouping,int is_signed,int allow_integer_representation,wchar_buf_t *out_wcbuf);
+static void _es_format_fixed_q1m(ES_UINT64 number,int allow_digit_grouping,int is_signed,wchar_buf_t *out_wcbuf);
 static void _es_format_dimensions(EVERYTHING3_DIMENSIONS *dimensions_value,wchar_buf_t *out_wcbuf);
 static int _es_compare_list_items(const EVERYTHING_IPC_ITEM *a,const EVERYTHING_IPC_ITEM *b);
 static void _es_output_cell_text_property_wchar_string(const wchar_t *value);
@@ -130,7 +135,18 @@ static void _es_output_cell_filetime_property(ES_UINT64 value);
 static void _es_output_cell_duration_property(ES_UINT64 value);
 static void _es_output_cell_attribute_property(DWORD file_attributes);
 static void _es_output_cell_number_property(ES_UINT64 value,ES_UINT64 empty_value);
-static void _es_output_cell_fixed_q1k_property(ES_UINT64 value,ES_UINT64 empty_value);
+static void _es_output_cell_kbps_property(ES_UINT64 value,ES_UINT64 empty_value);
+static void _es_output_cell_rating_property(BYTE value);
+static void _es_output_cell_fixed_q1k_property(ES_UINT64 value,ES_UINT64 empty_value,int is_signed);
+static void _es_output_cell_fixed_q1m_property(ES_UINT64 value,ES_UINT64 empty_value,int is_signed);
+static void _es_output_cell_f_stop_property(__int32 value);
+static void _es_output_cell_exposure_time_property(__int32 value);
+static void _es_output_cell_iso_speed_property(WORD value);
+static void _es_output_cell_exposure_bias_property(__int32 value);
+static void _es_output_cell_focal_length_property(__int32 value);
+static void _es_output_cell_subject_distance_property(__int32 value);
+static void _es_output_cell_bcps_property(__int32 value);
+static void _es_output_cell_35mm_focal_length_property(WORD value);
 static void _es_output_cell_dimensions_property(EVERYTHING3_DIMENSIONS *dimensions_value);
 static void _es_output_cell_data_property(const BYTE *data,SIZE_T size);
 static void _es_output_cell_separator(void);
@@ -273,7 +289,6 @@ static SIZE_T _es_run_history_size = 0;
 static char _es_header = 0; // 0 == resolve based on export type; >0 == show; <0 == hide.
 static char _es_double_quote = 0; // always use double quotes for filenames.
 static char _es_csv_double_quote = 1; // always use double quotes for CSV for consistancy.
-static char _es_get_everything_version = 0;
 static char _es_utf8_bom = 0;
 static wchar_buf_t *_es_search_wcbuf = NULL;
 static HWND _es_reply_hwnd = 0;
@@ -288,6 +303,7 @@ static char _es_no_default_date_created_column = 0; // EFU only
 static char _es_no_default_attribute_column = 0; // EFU only
 static char _es_folder_append_path_separator = 1; // append a trailing '\\' at the end of folder path and names.
 static char _es_newline_type = 0; // 0==CRLF, 1==LF, 2==NUL
+static char _es_mode = _ES_MODE_SEARCH;
 
 wchar_buf_t *es_instance_name_wcbuf = NULL;
 DWORD es_timeout = 0;
@@ -765,10 +781,14 @@ static BOOL _es_ipc3_query(void)
 					{	
 						switch(property_get_format(column->property_id))
 						{
+							case PROPERTY_FORMAT_TEXT16:
 							case PROPERTY_FORMAT_TEXT30:
+							case PROPERTY_FORMAT_TEXT32:
 							case PROPERTY_FORMAT_TEXT47:
 							case PROPERTY_FORMAT_EXTENSION:
-							case PROPERTY_FORMAT_FORMAT_TEXT30:
+							case PROPERTY_FORMAT_FORMAT_TEXT16:
+							case PROPERTY_FORMAT_FORMAT_TEXT24:
+							case PROPERTY_FORMAT_FORMAT_TEXT32:
 								property_request_flags |= IPC3_SEARCH_PROPERTY_REQUEST_FLAG_HIGHLIGHT;
 								break;
 						}
@@ -780,7 +800,9 @@ static BOOL _es_ipc3_query(void)
 					// eg: file-signature: a integer value of 10 = image/png
 					switch(property_get_format(column->property_id))
 					{
-							case PROPERTY_FORMAT_FORMAT_TEXT30:
+							case PROPERTY_FORMAT_FORMAT_TEXT16:
+							case PROPERTY_FORMAT_FORMAT_TEXT24:
+							case PROPERTY_FORMAT_FORMAT_TEXT32:
 							property_request_flags |= IPC3_SEARCH_PROPERTY_REQUEST_FLAG_FORMAT;
 							break;
 					}
@@ -898,6 +920,34 @@ static int _es_compare_list_items(const EVERYTHING_IPC_ITEM *a,const EVERYTHING_
 {
 	int cmp_ret;
 
+	// folders first.
+	if (a->flags & EVERYTHING_IPC_FOLDER)
+	{
+		if (b->flags & EVERYTHING_IPC_FOLDER)
+		{
+			// both folders.
+			// fall through.
+		}
+		else
+		{
+			// A<B
+			return -1;
+		}
+	}
+	else
+	{
+		if (b->flags & EVERYTHING_IPC_FOLDER)
+		{
+			// A>B
+			return 1;
+		}
+		else
+		{
+			// both files
+			// fall through.
+		}
+	}
+	
 	cmp_ret = CompareString(LOCALE_USER_DEFAULT,NORM_IGNORECASE,EVERYTHING_IPC_ITEMPATH(_es_sort_list,a),-1,EVERYTHING_IPC_ITEMPATH(_es_sort_list,b),-1);
 	
 //debug_printf("cmp %S %S %d\n",EVERYTHING_IPC_ITEMPATH(_es_sort_list,a),EVERYTHING_IPC_ITEMPATH(_es_sort_list,b),cmp_ret)	;
@@ -1095,7 +1145,7 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 	SIZE_T column_width;
 	column_color_t *column_color;
 	int did_set_color;
-	
+
 	if (is_highlighted)
 	{
 		length_in_wchars = _es_highlighted_wchar_string_get_length_in_wchars(text);
@@ -1108,6 +1158,7 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 	is_right_aligned = property_is_right_aligned(_es_output_column->property_id);
 	column_width = column_width_get(_es_output_column->property_id);
 	column_color = column_color_find(_es_output_column->property_id);
+	_es_output_color = _es_default_attributes;
 	did_set_color = 0;
 	
 	// setup colors
@@ -1337,6 +1388,7 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 					}
 
 					SetConsoleTextAttribute(_es_output_handle,is_in_highlight ? _es_highlight_color : _es_output_color);
+					did_set_color = 1;
 		
 					if (wlen <= ES_DWORD_MAX)
 					{
@@ -2051,6 +2103,7 @@ static void _es_output_cell_number_property(ES_UINT64 value,ES_UINT64 empty_valu
 		{
 			case PROPERTY_FORMAT_NUMBER6:
 			case PROPERTY_FORMAT_NUMBER7:
+			case PROPERTY_FORMAT_NUMBER9:
 			case PROPERTY_FORMAT_NUMBER:
 				allow_digit_grouping = 1;
 				break;
@@ -2068,7 +2121,124 @@ static void _es_output_cell_number_property(ES_UINT64 value,ES_UINT64 empty_valu
 	}
 }
 
-static void _es_output_cell_fixed_q1k_property(ES_UINT64 value,ES_UINT64 empty_value)
+static void _es_output_cell_kbps_property(ES_UINT64 value,ES_UINT64 empty_value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == empty_value)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_output_cell_printf(0,"\"%S\":%I64u",property_name_wcbuf.buf,value);
+		}
+
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == empty_value)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	if (_es_export_type == _ES_EXPORT_TYPE_NONE)
+	{
+		wchar_buf_t wcbuf;
+
+		wchar_buf_init(&wcbuf);
+
+		wchar_buf_printf(&wcbuf,"%I64u kbps",value / 1000);
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&wcbuf);
+	}
+	else
+	{
+		_es_output_cell_printf(0,"%I64u",value);
+	}
+}
+
+static void _es_output_cell_rating_property(BYTE value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == ES_BYTE_MAX)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_output_cell_printf(0,"\"%S\":%u",property_name_wcbuf.buf,(DWORD)value);
+		}
+
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == ES_BYTE_MAX)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	if (_es_export_type == _ES_EXPORT_TYPE_NONE)
+	{
+		wchar_buf_t wcbuf;
+
+		wchar_buf_init(&wcbuf);
+
+		if (value >= 1)
+		{
+			wchar_buf_cat_wchar(&wcbuf,'*');
+
+			if (value >= 13)
+			{
+				wchar_buf_cat_wchar(&wcbuf,'*');
+
+				if (value >= 38)
+				{
+					wchar_buf_cat_wchar(&wcbuf,'*');
+
+					if (value >= 63)
+					{
+						wchar_buf_cat_wchar(&wcbuf,'*');
+
+						if (value >= 88)
+						{
+							wchar_buf_cat_wchar(&wcbuf,'*');
+						}
+					}
+				}
+			}
+		}
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&wcbuf);
+	}
+	else
+	{
+		_es_output_cell_printf(0,"%u",(DWORD)value);
+	}
+}
+
+static void _es_output_cell_fixed_q1k_property(ES_UINT64 value,ES_UINT64 empty_value,int is_signed)
 {
 	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
@@ -2086,9 +2256,9 @@ static void _es_output_cell_fixed_q1k_property(ES_UINT64 value,ES_UINT64 empty_v
 		}
 		else
 		{
-			_es_format_fixed_q1k(value,0,&fixed_wcbuf);
+			_es_format_fixed_q1k(value,0,is_signed,0,&fixed_wcbuf);
 			
-			_es_output_cell_printf(0,"\"%S\":%f",property_name_wcbuf.buf,value);
+			_es_output_cell_printf(0,"\"%S\":%S",property_name_wcbuf.buf,fixed_wcbuf.buf);
 		}
 
 		wchar_buf_kill(&fixed_wcbuf);
@@ -2107,7 +2277,455 @@ static void _es_output_cell_fixed_q1k_property(ES_UINT64 value,ES_UINT64 empty_v
 
 		wchar_buf_init(&wcbuf);
 
-		_es_format_fixed_q1k(value,(_es_export_type == _ES_EXPORT_TYPE_NONE) ? 1 : 0,&wcbuf);
+		_es_format_fixed_q1k(value,(_es_export_type == _ES_EXPORT_TYPE_NONE) ? 1 : 0,is_signed,0,&wcbuf);
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&wcbuf);
+	}
+}
+
+static void _es_output_cell_fixed_q1m_property(ES_UINT64 value,ES_UINT64 empty_value,int is_signed)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		wchar_buf_t fixed_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == empty_value)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_format_fixed_q1m(value,0,is_signed,&fixed_wcbuf);
+			
+			_es_output_cell_printf(0,"\"%S\":%S",property_name_wcbuf.buf,fixed_wcbuf.buf);
+		}
+
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == empty_value)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
+
+		wchar_buf_init(&wcbuf);
+
+		_es_format_fixed_q1m(value,(_es_export_type == _ES_EXPORT_TYPE_NONE) ? 1 : 0,is_signed,&wcbuf);
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&wcbuf);
+	}
+}
+
+static void _es_output_cell_f_stop_property(__int32 value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		wchar_buf_t fixed_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == INT_MIN)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_format_fixed_q1k(value,0,1,0,&fixed_wcbuf);
+			_es_output_cell_printf(0,"\"%S\":%S",property_name_wcbuf.buf,fixed_wcbuf.buf);
+		}
+
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == INT_MIN)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
+		wchar_buf_t fixed_wcbuf;
+
+		wchar_buf_init(&wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_format_fixed_q1k(value,0,1,1,&fixed_wcbuf);
+		wchar_buf_printf(&wcbuf,"f/%S",fixed_wcbuf.buf);
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&wcbuf);
+	}
+}
+
+static void _es_output_cell_exposure_time_property(__int32 value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		wchar_buf_t fixed_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == INT_MIN)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_output_cell_printf(0,"\"%S\":%d",property_name_wcbuf.buf,value);
+		}
+
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == INT_MIN)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
+
+		wchar_buf_init(&wcbuf);
+
+		if (value >= 0)
+		{
+			_es_format_fixed_q1k(value,0,1,0,&wcbuf);
+			wchar_buf_cat_printf(&wcbuf," sec");
+		}
+		else
+		{
+			wchar_buf_printf(&wcbuf,"1/%u sec",(DWORD)-value);
+		}
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&wcbuf);
+	}
+}
+
+static void _es_output_cell_iso_speed_property(WORD value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		wchar_buf_t fixed_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == ES_WORD_MAX)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_output_cell_printf(0,"\"%S\":%u",property_name_wcbuf.buf,(DWORD)value);
+		}
+
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == ES_WORD_MAX)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
+
+		wchar_buf_init(&wcbuf);
+
+		wchar_buf_cat_printf(&wcbuf,"ISO-%u",(DWORD)value);
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&wcbuf);
+	}
+}
+
+static void _es_output_cell_exposure_bias_property(__int32 value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		wchar_buf_t fixed_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == INT_MIN)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_format_fixed_q1k(value,0,1,0,&fixed_wcbuf);
+			_es_output_cell_printf(0,"\"%S\":%S",property_name_wcbuf.buf,fixed_wcbuf.buf);
+		}
+
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == INT_MIN)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
+		wchar_buf_t fixed_wcbuf;
+
+		wchar_buf_init(&wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_format_fixed_q1k(value,0,1,1,&fixed_wcbuf);
+		
+		if (value > 0)
+		{
+			wchar_buf_cat_printf(&wcbuf,"+%S step",fixed_wcbuf.buf);
+		}
+		else
+		{
+			wchar_buf_printf(&wcbuf,"%S step",fixed_wcbuf.buf);
+		}
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&wcbuf);
+	}
+}
+
+static void _es_output_cell_focal_length_property(__int32 value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		wchar_buf_t fixed_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == INT_MIN)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_format_fixed_q1k(value,0,1,0,&fixed_wcbuf);
+			_es_output_cell_printf(0,"\"%S\":%S",property_name_wcbuf.buf,fixed_wcbuf.buf);
+		}
+
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == INT_MIN)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
+		wchar_buf_t fixed_wcbuf;
+
+		wchar_buf_init(&wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_format_fixed_q1k(value,1,1,1,&fixed_wcbuf);
+		
+		wchar_buf_printf(&wcbuf,"%S mm",fixed_wcbuf.buf);
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&wcbuf);
+	}
+}
+
+static void _es_output_cell_subject_distance_property(__int32 value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		wchar_buf_t fixed_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == INT_MIN)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_format_fixed_q1k(value,0,1,0,&fixed_wcbuf);
+			_es_output_cell_printf(0,"\"%S\":%S",property_name_wcbuf.buf,fixed_wcbuf.buf);
+		}
+
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == INT_MIN)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
+		wchar_buf_t fixed_wcbuf;
+
+		wchar_buf_init(&wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_format_fixed_q1k(value,1,1,1,&fixed_wcbuf);
+		
+		wchar_buf_printf(&wcbuf,"%S m",fixed_wcbuf.buf);
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&wcbuf);
+	}
+}
+
+static void _es_output_cell_bcps_property(__int32 value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		wchar_buf_t fixed_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == INT_MIN)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_format_fixed_q1k(value,0,1,0,&fixed_wcbuf);
+			_es_output_cell_printf(0,"\"%S\":%S",property_name_wcbuf.buf,fixed_wcbuf.buf);
+		}
+
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == INT_MIN)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
+		wchar_buf_t fixed_wcbuf;
+
+		wchar_buf_init(&wcbuf);
+		wchar_buf_init(&fixed_wcbuf);
+
+		_es_format_fixed_q1k(value,1,1,1,&fixed_wcbuf);
+		
+		wchar_buf_printf(&wcbuf,"%S bcps",fixed_wcbuf.buf);
+		
+		_es_output_cell_wchar_string(wcbuf.buf,0);
+		
+		wchar_buf_kill(&fixed_wcbuf);
+		wchar_buf_kill(&wcbuf);
+	}
+}
+
+static void _es_output_cell_35mm_focal_length_property(WORD value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		wchar_buf_t property_name_wcbuf;
+		
+		wchar_buf_init(&property_name_wcbuf);
+
+		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		
+		if (value == ES_WORD_MAX)
+		{
+			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		{
+			_es_output_cell_printf(0,"\"%S\":%u",value);
+		}
+
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+	else
+	if (value == ES_WORD_MAX)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_printf(0,"");
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
+
+		wchar_buf_init(&wcbuf);
+
+		wchar_buf_printf(&wcbuf,"%u mm",value);
 		
 		_es_output_cell_wchar_string(wcbuf.buf,0);
 		
@@ -2927,7 +3545,9 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 								
 								switch(property_get_format(_es_output_column->property_id))
 								{
+									case PROPERTY_FORMAT_TEXT16:
 									case PROPERTY_FORMAT_TEXT30:
+									case PROPERTY_FORMAT_TEXT32:
 									case PROPERTY_FORMAT_TEXT47:
 									case PROPERTY_FORMAT_EXTENSION:
 										_es_output_cell_text_property_utf8_string_n(property_text_cbuf.buf,property_text_cbuf.length_in_bytes);
@@ -2960,8 +3580,13 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										case PROPERTY_FORMAT_NUMBER5:
 										case PROPERTY_FORMAT_NUMBER6:
 										case PROPERTY_FORMAT_NUMBER7:
+										case PROPERTY_FORMAT_NUMBER9:
 										case PROPERTY_FORMAT_HEX_NUMBER:
 											_es_output_cell_number_property(byte_value,ES_BYTE_MAX);
+											break;
+											
+										case PROPERTY_FORMAT_RATING:
+											_es_output_cell_rating_property(byte_value);
 											break;
 											
 										default:
@@ -2992,8 +3617,17 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										case PROPERTY_FORMAT_NUMBER5:
 										case PROPERTY_FORMAT_NUMBER6:
 										case PROPERTY_FORMAT_NUMBER7:
+										case PROPERTY_FORMAT_NUMBER9:
 										case PROPERTY_FORMAT_HEX_NUMBER:
 											_es_output_cell_number_property(word_value,ES_WORD_MAX);
+											break;
+											
+										case PROPERTY_FORMAT_ISO_SPEED:
+											_es_output_cell_iso_speed_property(word_value);
+											break;
+											
+										case PROPERTY_FORMAT_35MM_FOCAL_LENGTH:
+											_es_output_cell_35mm_focal_length_property(word_value);
 											break;
 											
 										default:
@@ -3029,12 +3663,17 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										case PROPERTY_FORMAT_NUMBER5:
 										case PROPERTY_FORMAT_NUMBER6:
 										case PROPERTY_FORMAT_NUMBER7:
+										case PROPERTY_FORMAT_NUMBER9:
 										case PROPERTY_FORMAT_HEX_NUMBER:
 											_es_output_cell_number_property(dword_value,ES_DWORD_MAX);
 											break;
 											
+										case PROPERTY_FORMAT_KBPS:
+											_es_output_cell_kbps_property(dword_value,ES_DWORD_MAX);
+											break;
+											
 										case PROPERTY_FORMAT_FIXED_Q1K:
-											_es_output_cell_fixed_q1k_property(dword_value,ES_DWORD_MAX);
+											_es_output_cell_fixed_q1k_property(dword_value,ES_DWORD_MAX,0);
 											break;
 											
 										default:
@@ -3075,8 +3714,13 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										case PROPERTY_FORMAT_NUMBER5:
 										case PROPERTY_FORMAT_NUMBER6:
 										case PROPERTY_FORMAT_NUMBER7:
+										case PROPERTY_FORMAT_NUMBER9:
 										case PROPERTY_FORMAT_HEX_NUMBER:
 											_es_output_cell_number_property(uint64_value,ES_UINT64_MAX);
+											break;
+											
+										case PROPERTY_FORMAT_FIXED_Q1M:
+											_es_output_cell_fixed_q1m_property(uint64_value,ES_UINT64_MAX,0);
 											break;
 											
 										default:
@@ -3145,6 +3789,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										case PROPERTY_FORMAT_NUMBER5:
 										case PROPERTY_FORMAT_NUMBER6:
 										case PROPERTY_FORMAT_NUMBER7:
+										case PROPERTY_FORMAT_NUMBER9:
 										case PROPERTY_FORMAT_HEX_NUMBER:
 											_es_output_cell_number_property(size_t_value,SIZE_MAX);
 											break;
@@ -3167,6 +3812,38 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 									
 									switch(property_get_format(_es_output_column->property_id))
 									{	
+										case PROPERTY_FORMAT_FIXED_Q1K:
+											_es_output_cell_fixed_q1k_property(int32_value,INT_MIN,1);
+											break;
+											
+										case PROPERTY_FORMAT_FIXED_Q1M:
+											_es_output_cell_fixed_q1m_property(int32_value,INT_MIN,1);
+											break;
+											
+										case PROPERTY_FORMAT_F_STOP:
+											_es_output_cell_f_stop_property(int32_value);
+											break;
+											
+										case PROPERTY_FORMAT_EXPOSURE_TIME:
+											_es_output_cell_exposure_time_property(int32_value);
+											break;
+
+										case PROPERTY_FORMAT_EXPOSURE_BIAS:
+											_es_output_cell_exposure_bias_property(int32_value);
+											break;
+											
+										case PROPERTY_FORMAT_FOCAL_LENGTH:
+											_es_output_cell_focal_length_property(int32_value);
+											break;
+											
+										case PROPERTY_FORMAT_SUBJECT_DISTANCE:
+											_es_output_cell_subject_distance_property(int32_value);
+											break;
+											
+										case PROPERTY_FORMAT_BCPS:	
+											_es_output_cell_bcps_property(int32_value);
+											break;
+											
 										default:
 											debug_error_printf("unhandled format %d for %d\n",property_get_format(_es_output_column->property_id),property_request_p->value_type);
 											_es_output_cell_unknown_property();
@@ -3196,6 +3873,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										case PROPERTY_FORMAT_DATA4:
 										case PROPERTY_FORMAT_DATA8:
 										case PROPERTY_FORMAT_DATA16:
+										case PROPERTY_FORMAT_DATA20:
 										case PROPERTY_FORMAT_DATA32:
 										case PROPERTY_FORMAT_DATA64:
 										case PROPERTY_FORMAT_DATA128:
@@ -3233,6 +3911,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										case PROPERTY_FORMAT_DATA4:
 										case PROPERTY_FORMAT_DATA8:
 										case PROPERTY_FORMAT_DATA16:
+										case PROPERTY_FORMAT_DATA20:
 										case PROPERTY_FORMAT_DATA32:
 										case PROPERTY_FORMAT_DATA64:
 										case PROPERTY_FORMAT_DATA128:
@@ -3493,6 +4172,7 @@ static LRESULT __stdcall _es_window_proc(HWND hwnd,UINT msg,WPARAM wParam,LPARAM
 						utf8_buf_init(&sorted_list_cbuf);
 						
 						// sort by path.
+						// sort folders first to be consistant with other sorts.
 						if (_es_primary_sort_property_id == EVERYTHING3_PROPERTY_ID_PATH)
 						{
 							utf8_buf_t indexes_cbuf;
@@ -3956,7 +4636,7 @@ static int _es_main(void)
 			_es_output_is_char = 1;
 		}
 	}
-			
+	
 	// load default settings.	
 	_es_load_settings();
 	
@@ -4650,7 +5330,7 @@ static int _es_main(void)
 					}
 				}
 				else
-				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"add-columns")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"add-column")))
+				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"add-columns")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"add-column")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"add-col")))
 				{	
 					_es_expect_command_argv(&argv_wcbuf);
 					
@@ -4660,7 +5340,7 @@ static int _es_main(void)
 					}
 				}
 				else
-				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"remove-columns")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"remove-column")))
+				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"remove-columns")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"remove-column")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"remove-col")))
 				{	
 					_es_expect_command_argv(&argv_wcbuf);
 					
@@ -4745,6 +5425,21 @@ static int _es_main(void)
 					es_ipc_version = ES_IPC_VERSION_FLAG_IPC3; 
 				}
 				else
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-ipc1"))
+				{	
+					es_ipc_version &= (~ES_IPC_VERSION_FLAG_IPC1); 
+				}
+				else
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-ipc2"))
+				{	
+					es_ipc_version &= (~ES_IPC_VERSION_FLAG_IPC2); 
+				}
+				else
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-ipc3"))
+				{	
+					es_ipc_version &= (~ES_IPC_VERSION_FLAG_IPC3); 
+				}
+				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"header"))
 				{	
 					_es_header = 1; 
@@ -4776,7 +5471,12 @@ static int _es_main(void)
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"get-everything-version"))
 				{
-					_es_get_everything_version = 1;
+					_es_mode = _ES_MODE_GET_EVERYTHING_VERSION;
+				}
+				else
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"list-properties"))
+				{
+					_es_mode = _ES_MODE_LIST_PROPERTIES;
 				}
 				else
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"utf8-bom"))
@@ -5141,31 +5841,60 @@ static int _es_main(void)
 	}
 	
 	// get everything version
-	if (_es_get_everything_version)
+	switch(_es_mode)
 	{
-		_es_everything_hwnd = _es_find_ipc_window();
+		case _ES_MODE_GET_EVERYTHING_VERSION:
 		
-		if (_es_everything_hwnd)
-		{
-			int major;
-			int minor;
-			int revision;
-			int build;
-
-			// wait for DB_IS_LOADED so we don't get 0 results
-			major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
-			minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
-			revision = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_REVISION,0);
-			build = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_BUILD_NUMBER,0);
+			{
+				_es_everything_hwnd = _es_find_ipc_window();
 				
-			_es_output_noncell_printf("%u.%u.%u.%u\r\n",major,minor,revision,build);
-		}
-		else
-		{
-			es_fatal(ES_ERROR_NO_IPC);
-		}
+				if (_es_everything_hwnd)
+				{
+					int major;
+					int minor;
+					int revision;
+					int build;
+
+					// wait for DB_IS_LOADED so we don't get 0 results
+					major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
+					minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
+					revision = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_REVISION,0);
+					build = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_BUILD_NUMBER,0);
+						
+					_es_output_noncell_printf("%u.%u.%u.%u\r\n",major,minor,revision,build);
+				}
+				else
+				{
+					es_fatal(ES_ERROR_NO_IPC);
+				}
+				
+				perform_search = 0;
+			}
+			
+			break;	
+	
+		case _ES_MODE_LIST_PROPERTIES:
 		
-		perform_search = 0;
+			{
+				DWORD i;
+				wchar_buf_t property_name_wcbuf;
+
+				wchar_buf_init(&property_name_wcbuf);
+				
+//TODO:	sort by name.	
+				for(i=0;i<EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT;i++)
+				{
+					property_get_canonical_name(i,&property_name_wcbuf);
+
+					_es_output_noncell_printf("%S\r\n",property_name_wcbuf.buf);
+				}
+				
+				perform_search = 0;
+
+				wchar_buf_kill(&property_name_wcbuf);
+			}
+			
+			break;
 	}
 	
 	// reindex?
@@ -6113,6 +6842,8 @@ void *_es_ipc2_get_column_data(EVERYTHING_IPC_LIST2 *list,SIZE_T index,DWORD pro
 	return 0;
 }
 
+// format a size value.
+// eg: 123 KB
 static void _es_format_size(ES_UINT64 size,wchar_buf_t *wcbuf)
 {
 	wchar_buf_empty(wcbuf);
@@ -6250,6 +6981,8 @@ static void _es_format_size(ES_UINT64 size,wchar_buf_t *wcbuf)
 	}
 }
 
+// convert a filetime to a localtime as a SYSTEMTIME.
+// correctly applies daylight savings.
 static int _es_filetime_to_localtime(SYSTEMTIME *localst,ES_UINT64 ft)
 {
 	// try to convert with SystemTimeToTzSpecificLocalTime which will handle daylight savings correctly.
@@ -6283,9 +7016,13 @@ static int _es_filetime_to_localtime(SYSTEMTIME *localst,ES_UINT64 ft)
 	return 0;
 }
 
+// format some attributes.
+// eg: RASH
 static void _es_format_attributes(DWORD attributes,wchar_buf_t *wcbuf)
 {
 	wchar_t *d;
+	
+	wchar_buf_grow_size(wcbuf,256);
 	
 	d = wcbuf->buf;
 	
@@ -6312,6 +7049,7 @@ static void _es_format_attributes(DWORD attributes,wchar_buf_t *wcbuf)
 	*d = 0;
 }
 
+// format a filetime.
 static void _es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf)
 {
 	wchar_buf_empty(wcbuf);
@@ -6373,6 +7111,8 @@ static void _es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf)
 	}
 }
 
+// format a duration value.
+// duration is in 100 nanoseconds resolution.
 static void _es_format_duration(ES_UINT64 duration,wchar_buf_t *wcbuf)
 {
 	wchar_buf_empty(wcbuf);
@@ -6426,6 +7166,8 @@ static void _es_format_duration(ES_UINT64 duration,wchar_buf_t *wcbuf)
 	}
 }
 
+// format a number.
+// uses thousand separator.
 static void _es_format_number(ES_UINT64 number,int allow_digit_grouping,wchar_buf_t *out_wcbuf)
 {
 	ES_UTF8 *d;
@@ -6472,13 +7214,29 @@ static void _es_format_number(ES_UINT64 number,int allow_digit_grouping,wchar_bu
 	wchar_buf_copy_utf8_string(out_wcbuf,d);
 }
 
-static void _es_format_fixed_q1k(ES_UINT64 number,int allow_digit_grouping,wchar_buf_t *out_wcbuf)
+// format a fixed point number.
+// uses thousand separator.
+// trims trailing zeroes in the fraction part.
+// always has one digit after the '.'
+// always shows the '.'
+static void _es_format_fixed_q1k(ES_UINT64 number,int allow_digit_grouping,int is_signed,int allow_integer_representation,wchar_buf_t *out_wcbuf)
 {
 	ES_UTF8 *d;
 	int comma;
 	ES_UTF8 buf[256];
 	int fraction_part;
 	ES_UINT64 int_part;
+	int is_negative;
+	
+	is_negative = 0;
+	if (is_signed)
+	{
+		if ((__int64)number < 0)
+		{
+			number = (ES_UINT64)-(__int64)number;
+			is_negative = 1;
+		}
+	}
 	
 	int_part = number / 1000;
 	fraction_part = (int)(number % 1000);
@@ -6544,9 +7302,123 @@ static void _es_format_fixed_q1k(ES_UINT64 number,int allow_digit_grouping,wchar
 		*--d = '0';
 	}	
 	
+	if (is_negative)
+	{
+		*--d = '-';
+	}
+	
+	wchar_buf_copy_utf8_string(out_wcbuf,d);
+	
+	if (allow_integer_representation)
+	{
+		if ((out_wcbuf->length_in_wchars >= 2) && (out_wcbuf->buf[out_wcbuf->length_in_wchars - 1] == '0') && (out_wcbuf->buf[out_wcbuf->length_in_wchars - 2] == '.'))
+		{
+			out_wcbuf->length_in_wchars -= 2;
+			out_wcbuf->buf[out_wcbuf->length_in_wchars] = 0;
+		}
+	}
+}
+
+// format a fixed point number.
+// uses thousand separator.
+// trims trailing zeroes in the fraction part.
+// always has one digit after the '.'
+// always shows the '.'
+static void _es_format_fixed_q1m(ES_UINT64 number,int allow_digit_grouping,int is_signed,wchar_buf_t *out_wcbuf)
+{
+	ES_UTF8 *d;
+	int comma;
+	ES_UTF8 buf[256];
+	int fraction_part;
+	ES_UINT64 int_part;
+	int is_negative;
+	
+	is_negative = 0;
+	if (is_signed)
+	{
+		if ((__int64)number < 0)
+		{
+			number = (ES_UINT64)-(__int64)number;
+			is_negative = 1;
+		}
+	}
+	
+	int_part = number / 1000000;
+	fraction_part = (int)(number % 1000000);
+	
+	d = buf + 256;
+	*--d = 0;
+	comma = 0;
+	
+	*--d = '0' + (fraction_part % 10);
+	*--d = '0' + ((fraction_part / 10) % 10);
+	*--d = '0' + (fraction_part / 100) % 10;
+	*--d = '0' + (fraction_part / 1000) % 10;
+	*--d = '0' + (fraction_part / 10000) % 10;
+	*--d = '0' + (fraction_part / 100000);
+	
+	{
+		int i;
+		ES_UTF8 *trailing_zero_p;
+		
+		trailing_zero_p = buf + 256 - 1 - 1;
+		
+		for(i=0;i<5;i++)
+		{
+			if (*trailing_zero_p != '0')
+			{
+				break;
+			}
+
+			*trailing_zero_p = 0;
+			trailing_zero_p--;
+		}
+	}
+	
+	*--d = '.';
+
+	if (int_part)
+	{
+		ES_UINT64 i;
+		
+		i = int_part;
+		
+		while(i)
+		{
+			if (comma >= 3)
+			{
+				if (allow_digit_grouping)
+				{
+					if (_es_digit_grouping)
+					{
+						*--d = ',';
+					}
+				}
+					
+				comma = 0;
+			}
+		
+			*--d = '0' + (int)(i % 10);
+			
+			i /= 10;
+			
+			comma++;
+		}
+	}
+	else
+	{
+		*--d = '0';
+	}	
+	
+	if (is_negative)
+	{
+		*--d = '-';
+	}
+	
 	wchar_buf_copy_utf8_string(out_wcbuf,d);
 }
 
+// format a dimensions value.
 static void _es_format_dimensions(EVERYTHING3_DIMENSIONS *dimensions_value,wchar_buf_t *out_wcbuf)
 {
 	if ((dimensions_value->width == ES_DWORD_MAX) && (dimensions_value->height == ES_DWORD_MAX))
@@ -6559,6 +7431,8 @@ static void _es_format_dimensions(EVERYTHING3_DIMENSIONS *dimensions_value,wchar
 	}
 }
 
+// get a argument from the global _es_command_line.
+// moves the global _es_command_line pointer forward.
 static void _es_get_argv(wchar_buf_t *wcbuf)
 {
 	int pass;
@@ -6645,6 +7519,8 @@ static void _es_get_argv(wchar_buf_t *wcbuf)
 	_es_command_line = NULL;
 }
 
+// get an argument from the command line.
+// throws a fatal error if there was no command line argument.
 static void _es_expect_argv(wchar_buf_t *wcbuf)
 {
 	_es_get_argv(wcbuf);
@@ -6735,6 +7611,8 @@ static void _es_get_command_argv(wchar_buf_t *wcbuf)
 	_es_command_line = NULL;
 }
 
+// get an argument from the command line.
+// throws a fatal error if there was no command line argument.
 static void _es_expect_command_argv(wchar_buf_t *wcbuf)
 {
 	_es_get_command_argv(wcbuf);
@@ -6745,6 +7623,7 @@ static void _es_expect_command_argv(wchar_buf_t *wcbuf)
 	}
 }
 
+// don't scroll on these keys.
 BOOL _es_is_valid_key(INPUT_RECORD *ir)
 {
 	switch (ir->Event.KeyEvent.wVirtualKeyCode)
@@ -6763,6 +7642,9 @@ BOOL _es_is_valid_key(INPUT_RECORD *ir)
     return TRUE;
 }
 
+// save the current configuration to the specified ini filename.
+// returns TRUE if successful.
+// returns FALSE on failure.
 static BOOL _es_save_settings_with_filename(const wchar_t *filename)
 {
 	BOOL ret;
@@ -6937,6 +7819,11 @@ static BOOL _es_save_settings_with_filename(const wchar_t *filename)
 	return ret;
 }
 
+// save the current configuration to the specified location
+// if is_appdata is TRUE: %APPDATA%\voidtools\es 
+// if is_appdata is FALSE: same location as es.exe
+// returns TRUE if successful.
+// returns FALSE on failure.
 static BOOL _es_save_settings_with_appdata(int is_appdata)
 {
 	BOOL ret;
@@ -7011,6 +7898,7 @@ got_ret:
 	return ret;
 }
 
+// load configuration from the specified filename.
 static BOOL _es_load_settings_with_filename(const wchar_t *filename)
 {
 	BOOL ret;
@@ -7292,7 +8180,7 @@ static BOOL _es_check_sorts(const wchar_t *argv)
 				}
 			}
 			
-			property_id = property_find(sort_name_wcbuf.buf);
+			property_id = property_find(sort_name_wcbuf.buf,0);
 			
 			if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
 			{
@@ -7373,30 +8261,21 @@ static void _es_get_folder_size(const wchar_t *filename)
 	{
 		utf8_buf_t filename_cbuf;
 		ES_UINT64 folder_size;
-		SIZE_T numread;
 		
 		utf8_buf_init(&filename_cbuf);
 
 		utf8_buf_copy_wchar_string(&filename_cbuf,filename);
 		
-		if (ipc3_ioctl(pipe_handle,IPC3_COMMAND_GET_FOLDER_SIZE,filename_cbuf.buf,filename_cbuf.length_in_bytes,&folder_size,sizeof(ES_UINT64),&numread))
+		if (ipc3_ioctl_expect_output_size(pipe_handle,IPC3_COMMAND_GET_FOLDER_SIZE,filename_cbuf.buf,filename_cbuf.length_in_bytes,&folder_size,sizeof(ES_UINT64)))
 		{
-			if (numread == sizeof(ES_UINT64))
+			if (folder_size != ES_UINT64_MAX)
 			{
-				if (folder_size != ES_UINT64_MAX)
-				{
-					_es_output_noncell_printf("%I64u\r\n",folder_size);
-				}
-				else
-				{
-					// unknown
-					es_fatal(ES_ERROR_NO_RESULTS);
-				}
+				_es_output_noncell_printf("%I64u\r\n",folder_size);
 			}
 			else
 			{
-				// bad read
-				es_fatal(ES_ERROR_IPC_ERROR);
+				// unknown
+				es_fatal(ES_ERROR_NO_RESULTS);
 			}
 		}
 		else
@@ -7503,7 +8382,7 @@ static BOOL _es_check_color_param(const wchar_t *argv,DWORD *out_property_id)
 		{
 			DWORD property_id;
 			
-			property_id = property_find(property_name_wcbuf.buf);
+			property_id = property_find(property_name_wcbuf.buf,0);
 			if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
 			{
 				*out_property_id = property_id;
@@ -7529,7 +8408,7 @@ static BOOL _es_check_column_param(const wchar_t *argv)
 	argv_p = _es_parse_command_line_option_start(argv);
 	if (argv_p)
 	{
-		property_id = property_find(argv_p);
+		property_id = property_find(argv_p,0);
 		if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
 		{
 			ret = TRUE;
@@ -7547,7 +8426,7 @@ static BOOL _es_check_column_param(const wchar_t *argv)
 					argv_p++;
 				}
 				
-				property_id = property_find(argv_p);
+				property_id = property_find(argv_p,0);
 				if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
 				{
 					ret = TRUE;
@@ -7889,7 +8768,7 @@ static BOOL _es_set_sort_list(const wchar_t *sort_list,int allow_old_column_ids)
 			}
 		}
 		
-		property_id = property_find(item_wcbuf.buf);
+		property_id = property_find(item_wcbuf.buf,1);
 		
 got_property_id:
 		
@@ -7991,7 +8870,7 @@ static BOOL _es_set_columns(const wchar_t *column_list,int action,int allow_old_
 			}
 		}
 		
-		property_id = property_find(item_wcbuf.buf);
+		property_id = property_find(item_wcbuf.buf,1);
 		
 got_property_id:
 		
@@ -8110,7 +8989,7 @@ static BOOL _es_set_column_colors(const wchar_t *column_color_list,int action)
 		
 		if (color_value)
 		{
-			property_id = property_find(item_wcbuf.buf);
+			property_id = property_find(item_wcbuf.buf,1);
 
 			color = wchar_string_to_int(color_value);
 		}
@@ -8213,7 +9092,7 @@ static BOOL _es_set_column_widths(const wchar_t *column_width_list,int action)
 		
 		if (width_value)
 		{
-			property_id = property_find(item_wcbuf.buf);
+			property_id = property_find(item_wcbuf.buf,1);
 
 			width = wchar_string_to_int(width_value);
 		}
@@ -8758,3 +9637,4 @@ static BOOL _es_resolve_sort_ascending(DWORD property_id,int ascending)
 	// get default sort ascending.
 	return property_get_default_sort_ascending(property_id);
 }
+

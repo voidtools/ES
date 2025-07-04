@@ -32,7 +32,7 @@
 // size should be <= 65536.
 // use a try alloc for larger sizes.
 // returns a pointer to the newly allocated memory.
-// memory will be garbage and will need initializing.
+// returned memory will be garbage and will need initializing.
 // call mem_free to return the memory to the system.
 // SIZE_MAX is not a valid size and will throw an error.
 // use safe_size_* functions to perform safe size arithmetic.
