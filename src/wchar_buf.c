@@ -284,10 +284,16 @@ void wchar_buf_cat_print_UINT64(wchar_buf_t *wcbuf,ES_UINT64 value)
 void wchar_buf_path_cat_filename(const wchar_t *path,const wchar_t *name,wchar_buf_t *out_wcbuf)
 {
 	wchar_buf_copy_wchar_string(out_wcbuf,path);
-
-	wchar_buf_cat_path_separator(out_wcbuf);
 	
-	wchar_buf_cat_wchar_string(out_wcbuf,name);
+	if (*name)
+	{
+		if (out_wcbuf->length_in_wchars)
+		{
+			wchar_buf_cat_path_separator(out_wcbuf);
+		}
+
+		wchar_buf_cat_wchar_string(out_wcbuf,name);
+	}
 }
 
 // concatenate a path separator.
@@ -318,3 +324,85 @@ void wchar_buf_cat_list_wchar_string_n(wchar_buf_t *wcbuf,const wchar_t *s,SIZE_
 	
 	wchar_buf_cat_wchar_string_n(wcbuf,s,slength_in_wchars);
 }
+
+const wchar_t *wchar_buf_parse_list_item(const wchar_t *s,wchar_buf_t *out_wcbuf)
+{	
+	const wchar_t *p;
+	const wchar_t *start;
+	SIZE_T len;
+
+	p = s;
+	if (!*p)
+	{
+		return NULL;
+	}
+	
+	start = p;
+		
+	for(;;)
+	{
+		if (!*p)
+		{
+			len = p - start;
+			break;
+		}
+		
+		if (*p == ';')
+		{
+			len = p - start;
+			p++;
+			
+			break;
+		}
+		
+		p++;
+	}
+	
+	wchar_buf_copy_wchar_string_n(out_wcbuf,start,len);
+	
+	return p;
+}
+
+// copy a UTF-8 string.
+void wchar_buf_copy_lowercase_utf8_string(wchar_buf_t *wcbuf,const ES_UTF8 *s)
+{
+	wchar_buf_grow_length(wcbuf,wchar_string_get_length_in_wchars_from_utf8_string(s));
+
+	wchar_string_copy_lowercase_utf8_string(wcbuf->buf,s);
+}
+
+// remove command line double quotes
+void wchar_buf_fix_quotes(wchar_buf_t *in_out_wcbuf)
+{
+	wchar_t *p;
+	wchar_t *d;
+	
+	p = in_out_wcbuf->buf;
+	d = in_out_wcbuf->buf;
+
+	while(*p)
+	{
+		if (*p == '"')
+		{
+			// skip it.
+			p++;
+			continue;
+		}
+		
+		if ((*p == '&') && (p[1] == 'q') && (p[2] == 'u') && (p[3] == 'o') && (p[4] == 't') && (p[5] == ':'))
+		{
+			// unescape &quot:
+			p += 6;
+			*d++ = '"';
+			continue;
+		}
+		
+		*d++ = *p;
+		p++;
+	}
+	
+	*d = 0;
+	
+	in_out_wcbuf->length_in_wchars = d - in_out_wcbuf->buf;
+}
+

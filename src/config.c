@@ -111,6 +111,20 @@ void config_write_int(HANDLE file_handle,const ES_UTF8 *name,int value)
 	utf8_buf_kill(&cbuf);
 }
 
+// write out a key=int-value pair to the opened es.ini
+void config_write_empty(HANDLE file_handle,const ES_UTF8 *name)
+{
+	utf8_buf_t cbuf;
+	
+	utf8_buf_init(&cbuf);
+	
+	utf8_buf_printf(&cbuf,"%s=\r\n",name);
+	
+	os_write_file_utf8_string_n(file_handle,cbuf.buf,cbuf.length_in_bytes);
+
+	utf8_buf_kill(&cbuf);
+}
+
 // write out a key=dword-value pair to the opened es.ini
 void config_write_dword(HANDLE file_handle,const ES_UTF8 *name,DWORD value)
 {

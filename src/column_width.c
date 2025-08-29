@@ -28,12 +28,14 @@
 
 #include "es.h"
 
+static int _column_width_compare(const column_width_t *a,const void *property_id);
+
 // these must be set in main()
 pool_t *column_width_pool = NULL; // pool of column_width_t
 array_t *column_width_array = NULL; // array of column_width_t sorted by property ID.
 
 // compare two column widths by property ID.
-int column_width_compare(const column_width_t *a,const void *property_id)
+static int _column_width_compare(const column_width_t *a,const void *property_id)
 {
 	if (a->property_id < (DWORD)(uintptr_t)property_id)
 	{
@@ -69,7 +71,7 @@ void column_width_set(DWORD property_id,int width)
 		sane_width = 65535;
 	}
 	
-	column_width = array_find_or_get_insertion_index(column_width_array,column_width_compare,(const void *)(uintptr_t)property_id,&insert_index);
+	column_width = array_find_or_get_insertion_index(column_width_array,_column_width_compare,(const void *)(uintptr_t)property_id,&insert_index);
 	if (column_width)
 	{
 		column_width->width = sane_width;
@@ -90,14 +92,14 @@ void column_width_set(DWORD property_id,int width)
 // returns NULL if not found.
 column_width_t *column_width_find(DWORD property_id)
 {
-	return array_find(column_width_array,column_width_compare,(const void *)(uintptr_t)property_id);
+	return array_find(column_width_array,_column_width_compare,(const void *)(uintptr_t)property_id);
 }
 
 // returns a pointer to the found column width.
 // returns NULL if not found.
 column_width_t *column_width_remove(DWORD property_id)
 {
-	return array_remove(column_width_array,column_width_compare,(const void *)(uintptr_t)property_id);
+	return array_remove(column_width_array,_column_width_compare,(const void *)(uintptr_t)property_id);
 }
 
 // get the width of a column.
@@ -114,7 +116,7 @@ int column_width_get(DWORD property_id)
 		return column_width->width;
 	}
 	
-	return proerty_get_default_width(property_id);
+	return property_get_default_width(property_id);
 }
 
 // reset column widths.

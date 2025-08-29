@@ -221,3 +221,76 @@ int utf8_string_compare(const ES_UTF8 *a,const ES_UTF8 *b)
 	
 	return 0;
 }
+
+// matches '\\' or '/'
+BOOL utf8_string_is_trailing_path_separator_n(const ES_UTF8 *s,SIZE_T slength_in_bytes)
+{
+	if ((slength_in_bytes) && ((s[slength_in_bytes - 1] == '\\') || (s[slength_in_bytes - 1] == '/')))
+	{
+		return TRUE;
+	}
+	
+	return FALSE;
+}
+
+// get the path separator character from the specified root path.
+int utf8_string_get_path_separator_from_root(const ES_UTF8 *s)
+{
+	const ES_UTF8 *p;
+	int is_colon;
+	
+	p = s;
+	is_colon = 0;
+	
+	while(*p)
+	{
+		if (*p == '\\')
+		{
+			return '\\';
+		}
+		
+		if (*p == '/')
+		{
+			return '/';
+		}
+		
+		if (*p == ':')
+		{
+			is_colon = 1;
+		}
+	
+		p++;
+	}
+	
+	// no '\\' or '/'..
+	// default to '\\';
+	
+	// Recycle Bin => '\\' (Recycle Bin\junk.txt)
+	// Control Panel => '\\' (Control Panel\Display)
+	// www.google.com => '\\' (no way to know if this is a virtual folder, use a scheme name, eg: https://)
+	// http:www.google.com => '/'
+	// file:C: => '/'
+		
+	if (is_colon)
+	{
+		// drive letter C:
+		// or ::{guid}
+		// assume there's no one-character scheme names.
+		if ((*s) && (s[1] == ':'))
+		{
+			return '\\';
+		}
+		
+		// scheme name: mailto: file: https: ftp:
+		return '/';
+	}
+
+	// default to '\\'
+	return '\\';
+}
+
+void utf8_string_copy_utf8_string_n(ES_UTF8 *d,ES_UTF8 *s,SIZE_T slength_in_bytes)
+{
+	os_copy_memory(d,s,slength_in_bytes);
+	d[slength_in_bytes] = 0;
+}

@@ -24,6 +24,27 @@
 // SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-BOOL unicode_is_ascii_ws(int c);
-int unicode_ascii_to_lower(int c);
-int unicode_hex_char(int value);
+#define PROPERTY_UNKNOWN_CANONICAL_NAME(unknown)	((ES_UTF8 *)(((property_unknown_t *)(unknown)) + 1))
+
+// an unknown property.
+typedef struct property_unknown_s
+{
+	SIZE_T canonical_name_len;
+	DWORD property_id;
+	int is_right_aligned;
+	int is_sort_descending;
+	
+	// width in logical pixels.
+	int default_width;
+	
+	// NULL terminated canonical name follows.
+	// ES_UTF8 canonical_name[canonical_name_len + 1];
+	
+}property_unknown_t;
+
+const property_unknown_t *property_unknown_find(DWORD property_id);
+const property_unknown_t *property_unknown_get(DWORD property_id);
+void property_unknown_clear_all(void);
+
+extern pool_t *property_unknown_pool; // pool of property_unknown_t
+extern array_t *property_unknown_array; // array of property_unknown_t

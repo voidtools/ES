@@ -1,4 +1,29 @@
 
+//
+// Copyright (C) 2025 voidtools / David Carpenter
+// 
+// Permission is hereby granted, free of charge, 
+// to any person obtaining a copy of this software 
+// and associated documentation files (the "Software"), 
+// to deal in the Software without restriction, 
+// including without limitation the rights to use, 
+// copy, modify, merge, publish, distribute, sublicense, 
+// and/or sell copies of the Software, and to permit 
+// persons to whom the Software is furnished to do so, 
+// subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be 
+// included in all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+// OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
+// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, 
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
+// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
+// SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+
 #define WCHAR_BUF_STACK_SIZE				MAX_PATH
 #define WCHAR_BUF_CAT_MIN_ALLOC_SIZE		65536
 
@@ -47,3 +72,6 @@ void wchar_buf_cat_print_UINT64(wchar_buf_t *wcbuf,ES_UINT64 value);
 void wchar_buf_path_cat_filename(const wchar_t *path,const wchar_t *name,wchar_buf_t *wcbuf);
 void wchar_buf_cat_path_separator(wchar_buf_t *wcbuf);
 void wchar_buf_cat_list_wchar_string_n(wchar_buf_t *wcbuf,const wchar_t *s,SIZE_T slength_in_wchars);
+void wchar_buf_copy_lowercase_utf8_string(wchar_buf_t *wcbuf,const ES_UTF8 *s);
+const wchar_t *wchar_buf_parse_list_item(const wchar_t *s,wchar_buf_t *out_wcbuf);
+void wchar_buf_fix_quotes(wchar_buf_t *in_out_wcbuf);

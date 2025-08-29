@@ -27,9 +27,22 @@
 
 #include "es.h"
 
-#define _IPC3_STREAM_PIPE_MAX_BUF_SIZE			65536
+#define _IPC3_STREAM_PIPE_MAX_BUF_SIZE						65536
+#define _IPC3_STREAM_POOL_CHUNK_SIZE						65536
+#define _IPC3_IOCTL_ALLOC_OUT_CHUNK_DATA(chunk)				((BYTE *)(((ipc3_ioctl_alloc_out_chunk_t *)(chunk)) + 1))
 
-#define _IPC3_STREAM_POOL_CHUNK_SIZE			65536
+typedef struct ipc3_ioctl_alloc_out_chunk_s
+{
+	// next chunk in the list.
+	struct ipc3_ioctl_alloc_out_chunk_s *next;
+
+	// size in bytes of the following data.
+	DWORD size;
+
+	// data follows
+	// BYTE data[size];
+	
+}ipc3_ioctl_alloc_out_chunk_t;
 
 static void _ipc3_stream_pipe_seek_proc(ipc3_stream_t *stream,ES_UINT64 position_from_start);
 static ES_UINT64 _ipc3_stream_pipe_tell_proc(ipc3_stream_t *stream);
@@ -55,6 +68,34 @@ static ipc3_stream_vtbl_t _ipc3_stream_pool_vtbl =
 	_ipc3_stream_pool_read_proc,
 	_ipc3_stream_pool_close_proc,
 };
+
+#pragma pack (push,1)
+
+typedef struct _ipc3_read_journal_s
+{
+	ES_UINT64 journal_id;
+	ES_UINT64 change_id;
+	DWORD flags;
+	
+}_ipc3_read_journal_t;
+
+#pragma pack (pop)
+
+const char *_ipc3_journal_item_type_lowercase_name_array[] = 
+{
+	"folder-create",
+	"folder-delete",
+	"folder-rename",
+	"folder-move",
+	"folder-modify",
+	"file-create",
+	"file-delete",
+	"file-rename",
+	"file-move",
+	"file-modify",
+};
+
+#define _IPC3_JOURNAL_ITEM_TYPE_LOWERCASE_NAME_COUNT	(sizeof(_ipc3_journal_item_type_lowercase_name_array) / sizeof(const char *))
 
 // write some data to a pipe handle.
 // returns TRUE if all data is written to the pipe.
@@ -142,6 +183,19 @@ void ipc3_stream_read_data(ipc3_stream_t *stream,void *data,SIZE_T size)
 		// we expected the data so set is_error.
 		stream->is_error = 1;
 	}
+}
+
+// read len, allocate some buffer for len and read data.
+void ipc3_stream_read_utf8_string(ipc3_stream_t *stream,utf8_buf_t *out_cbuf)
+{
+	SIZE_T len;
+	
+	len = ipc3_stream_read_len_vlq(stream);
+	
+	utf8_buf_grow_length(out_cbuf,len);
+	
+	ipc3_stream_read_data(stream,out_cbuf->buf,len);
+	out_cbuf->buf[len] = 0;
 }
 
 // Like ipc3_stream_read_data, except we don't set is_error if we don't read all the data.
@@ -410,6 +464,7 @@ BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size)
 // connect to Everything pipe server.
 // returns a pipe handle 
 // returns INVALID_HANDLE_VALUE if not pipe servers are available.
+// Sets last error.
 HANDLE ipc3_connect_pipe(void)
 {
 	DWORD tickstart;
@@ -436,6 +491,8 @@ HANDLE ipc3_connect_pipe(void)
 		
 		if (!es_timeout)
 		{
+			SetLastError(ERROR_PIPE_NOT_CONNECTED);
+	
 			// no pipe server.
 			break;
 		}
@@ -448,6 +505,8 @@ HANDLE ipc3_connect_pipe(void)
 			// do not timeout again.
 			es_timeout = 0;
 			
+			SetLastError(ERROR_PIPE_NOT_CONNECTED);
+
 			break;
 		}
 
@@ -470,6 +529,7 @@ HANDLE ipc3_connect_pipe(void)
 // stores the reply in the output buffer.
 // returns TRUE if successful.
 // Otherwise, returns FALSE on failure.
+// Sets last error.
 BOOL ipc3_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread)
 {
 	if (ipc3_write_pipe_message(pipe_handle,command,in_buf,in_size))
@@ -541,13 +601,18 @@ BOOL ipc3_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size
 			}
 		}
 	}
-	
+	else
+	{
+		SetLastError(ERROR_WRITE_FAULT);
+	}
+		
 	return FALSE;
 }
 
 // same as ipc3_ioctl
 // except, the out_size is expected.
 // returns FALSE if out_size doesn't match numread.
+// Sets last error.
 BOOL ipc3_ioctl_expect_output_size(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size)
 {
 	SIZE_T numread;
@@ -558,13 +623,154 @@ BOOL ipc3_ioctl_expect_output_size(HANDLE pipe_handle,int command,const void *in
 		{
 			return TRUE;
 		}
+		else
+		{
+			SetLastError(ERROR_READ_FAULT);
+		}
 	}
 	
 	return FALSE;
 }
 
-// get the instance name and store it in wcbuf.
-// instance_name must be non-NULL.
+// same as ipc3_ioctl
+// except, the out buffer is allocated.
+// returns FALSE if there's not enought memory or a pipe read error.
+BOOL ipc3_ioctl_alloc_out(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,utf8_buf_t *out_cbuf)
+{
+	BOOL ret;
+	ipc3_ioctl_alloc_out_chunk_t *chunk_start;
+	ipc3_ioctl_alloc_out_chunk_t *chunk_last;
+	SIZE_T total_chunk_size;
+
+	ret = FALSE;
+	chunk_start = NULL;
+	chunk_last = NULL;
+	total_chunk_size = 0;
+
+	if (ipc3_write_pipe_message(pipe_handle,command,in_buf,in_size))
+	{
+		ipc3_message_t recv_header;
+		
+		for(;;)
+		{
+			int is_more;
+			BYTE *out_data;
+			
+			if (!ipc3_read_pipe(pipe_handle,&recv_header,sizeof(ipc3_message_t)))
+			{
+				break;
+			}
+			
+			is_more = 0;
+			
+			if (recv_header.code == IPC3_RESPONSE_OK_MORE_DATA)
+			{
+				ipc3_ioctl_alloc_out_chunk_t *chunk;
+				
+				chunk = mem_try_alloc(safe_size_add(sizeof(ipc3_ioctl_alloc_out_chunk_t),recv_header.size));
+				if (!chunk)
+				{
+					break;
+				}
+				
+				chunk->size = recv_header.size;
+				
+				out_data = _IPC3_IOCTL_ALLOC_OUT_CHUNK_DATA(chunk);
+				
+				if (chunk_start)
+				{
+					chunk_last->next = chunk;
+				}
+				else
+				{
+					chunk_start = chunk;
+				}
+				
+				chunk->next = NULL;
+				chunk_last = chunk;
+				total_chunk_size += recv_header.size;
+			
+				is_more = 1;
+			}
+			else
+			if (recv_header.code == IPC3_RESPONSE_OK)
+			{
+				SIZE_T total_size;
+				
+				total_size = safe_size_add(total_chunk_size,recv_header.size);
+				
+				// we know the total size.
+				if (!utf8_buf_try_grow_size(out_cbuf,total_size))
+				{
+					break;
+				}
+				
+				out_cbuf->length_in_bytes = total_size;
+				
+				// copy chunks...
+				{
+					ipc3_ioctl_alloc_out_chunk_t *chunk;
+					BYTE *out_d;
+					
+					chunk = chunk_start;
+					out_d = out_cbuf->buf;
+					
+					while(chunk)
+					{
+						os_copy_memory(out_d,_IPC3_IOCTL_ALLOC_OUT_CHUNK_DATA(chunk),chunk->size);
+						
+						out_d += chunk->size;
+						
+						chunk = chunk->next;
+					}
+
+					// write the last pipe data straight to the buffer..
+					out_data = out_d;
+				}
+			}
+			else
+			{
+				break;
+			}
+			
+			if (recv_header.size)
+			{
+				if (!ipc3_read_pipe(pipe_handle,out_data,recv_header.size))
+				{
+					break;
+				}
+			}
+			
+			if (!is_more)
+			{
+				ret = TRUE;
+				break;
+			}
+		}
+	}
+	
+	// free chunks.
+	{
+		ipc3_ioctl_alloc_out_chunk_t *chunk;
+		
+		chunk = chunk_start;
+		while(chunk)
+		{
+			ipc3_ioctl_alloc_out_chunk_t *next_chunk;
+			
+			next_chunk = chunk->next;
+		
+			mem_free(chunk);
+			
+			chunk = next_chunk;
+		}
+	}
+	
+	return ret;
+}
+
+// get the pipe name and store it in out_wcbuf.
+// appends the instance name to the pipe name if one is defined.
 void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf)
 {
 	wchar_buf_copy_utf8_string(out_wcbuf,"\\\\.\\PIPE\\Everything IPC");
@@ -584,6 +790,7 @@ void ipc3_stream_pipe_init(ipc3_stream_pipe_t *stream,HANDLE pipe_handle)
 	stream->base.vtbl = &_ipc3_stream_pipe_vtbl;
 	stream->base.is_error = 0;
 	stream->base.is_64bit = 0;
+	stream->base.response_code = 0;
 	
 	stream->pipe_handle = pipe_handle;
 	stream->buf = NULL;
@@ -737,6 +944,7 @@ static SIZE_T _ipc3_stream_pipe_read_proc(ipc3_stream_t *stream,void *buf,SIZE_T
 					else
 					{
 						stream->is_error = 1;
+						stream->response_code = recv_header.code;
 						
 						return d - (BYTE *)buf;
 					}
@@ -899,6 +1107,7 @@ void ipc3_stream_pool_init(ipc3_stream_pool_t *stream,ipc3_stream_t *source_stre
 	stream->base.vtbl = &_ipc3_stream_pool_vtbl;
 	stream->base.is_error = 0;
 	stream->base.is_64bit = source_stream->is_64bit;
+	stream->base.response_code = 0;
 	
 	stream->source_stream = source_stream;
 	
@@ -1429,6 +1638,7 @@ BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value)
 	return d;
 }
 
+// returns EVERYTHING3_INVALID_PROPERTY_ID if not found.
 DWORD ipc3_find_property(const wchar_t *search)
 {
 	DWORD ret;
@@ -1459,3 +1669,467 @@ DWORD ipc3_find_property(const wchar_t *search)
 
 	return ret;
 }
+
+// out_cbuf is NOT NULL terminated.
+BOOL ipc3_get_property_canonical_name(DWORD property_id,utf8_buf_t *out_cbuf)
+{
+	BOOL ret;
+	HANDLE pipe_handle;
+
+	ret = FALSE;
+	
+	pipe_handle = ipc3_connect_pipe();
+	if (pipe_handle != INVALID_HANDLE_VALUE)
+	{
+		if (ipc3_ioctl_alloc_out(pipe_handle,IPC3_COMMAND_GET_PROPERTY_CANONICAL_NAME,&property_id,sizeof(DWORD),out_cbuf))
+		{
+			// found the property id.
+			ret = TRUE;
+		}
+
+		CloseHandle(pipe_handle);
+	}
+
+	return ret;
+}
+
+BOOL ipc3_is_property_right_aligned(DWORD property_id)
+{
+	BOOL ret;
+	HANDLE pipe_handle;
+
+	ret = FALSE;
+	
+	pipe_handle = ipc3_connect_pipe();
+	if (pipe_handle != INVALID_HANDLE_VALUE)
+	{
+		DWORD is_right_aligned;
+		
+		if (ipc3_ioctl_expect_output_size(pipe_handle,IPC3_COMMAND_IS_PROPERTY_RIGHT_ALIGNED,&property_id,sizeof(DWORD),&is_right_aligned,sizeof(DWORD)))
+		{
+			// found the property id.
+			if (is_right_aligned)
+			{
+				ret = TRUE;
+			}
+			else
+			{
+				SetLastError(0);
+			}
+		}
+
+		CloseHandle(pipe_handle);
+	}
+
+	return ret;
+}
+
+BOOL ipc3_is_property_sort_descending(DWORD property_id)
+{
+	BOOL ret;
+	HANDLE pipe_handle;
+
+	ret = FALSE;
+	
+	pipe_handle = ipc3_connect_pipe();
+	if (pipe_handle != INVALID_HANDLE_VALUE)
+	{
+		DWORD is_sort_descending;
+		
+		if (ipc3_ioctl_expect_output_size(pipe_handle,IPC3_COMMAND_IS_PROPERTY_SORT_DESCENDING,&property_id,sizeof(DWORD),&is_sort_descending,sizeof(DWORD)))
+		{
+			// found the property id.
+			if (is_sort_descending)
+			{
+				ret = TRUE;
+			}
+			else
+			{
+				SetLastError(0);
+			}
+		}
+
+		CloseHandle(pipe_handle);
+	}
+
+	return ret;
+}
+
+int ipc3_get_property_default_width(DWORD property_id)
+{
+	int ret;
+	HANDLE pipe_handle;
+
+	ret = 0;
+	
+	pipe_handle = ipc3_connect_pipe();
+	if (pipe_handle != INVALID_HANDLE_VALUE)
+	{
+		DWORD default_width;
+		
+		if (ipc3_ioctl_expect_output_size(pipe_handle,IPC3_COMMAND_GET_PROPERTY_DEFAULT_WIDTH,&property_id,sizeof(DWORD),&default_width,sizeof(DWORD)))
+		{
+			// found the property id.
+			if (default_width)
+			{
+				ret = (int)default_width;
+			}
+			else
+			{
+				SetLastError(0);
+			}
+		}
+
+		CloseHandle(pipe_handle);
+	}
+
+	return ret;
+}
+
+// sets last error on failure.
+BOOL ipc3_get_journal_info(ipc3_journal_info_t *out_journal_info)
+{
+	BOOL ret;
+	HANDLE pipe_handle;
+
+	ret = FALSE;
+
+	pipe_handle = ipc3_connect_pipe();
+	if (pipe_handle != INVALID_HANDLE_VALUE)
+	{
+		if (ipc3_ioctl_expect_output_size(pipe_handle,IPC3_COMMAND_GET_JOURNAL_INFO,NULL,0,out_journal_info,sizeof(ipc3_journal_info_t)))
+		{
+			ret = TRUE;
+		}
+	
+		CloseHandle(pipe_handle);
+	}
+	
+	return ret;
+}
+
+// this doesn't normally return.
+// returns if callback_proc returns FALSE or if you exit Everything.
+// sets last error on failure.
+// ERROR_FILE_NOT_FOUND == journal id/change id not found.
+// ERROR_PIPE_NOT_CONNECTED == no ipc
+// ERROR_WRITE_FAULT == cannot write to ipc.
+// ERROR_INVALID_FUNCTION == bad response
+// ERROR_CANCELLED == callback_proc returned FALSE.
+BOOL ipc3_read_journal(ES_UINT64 journal_id,ES_UINT64 change_id,DWORD flags,void *user_data,BOOL (*callback_proc)(void *user_data,_ipc3_journal_change_t *change))
+{
+	HANDLE pipe_handle;
+
+	pipe_handle = ipc3_connect_pipe();
+	if (pipe_handle != INVALID_HANDLE_VALUE)
+	{
+		_ipc3_read_journal_t read_journal;
+		
+		read_journal.journal_id = journal_id;
+		read_journal.change_id = change_id;
+		read_journal.flags = flags;
+		
+		if (ipc3_write_pipe_message(pipe_handle,IPC3_COMMAND_READ_JOURNAL,&read_journal,sizeof(_ipc3_read_journal_t)))
+		{
+			ipc3_stream_pipe_t pipe_stream;
+			utf8_buf_t old_path_cbuf;
+			utf8_buf_t old_name_cbuf;
+			utf8_buf_t new_path_cbuf;
+			utf8_buf_t new_name_cbuf;
+			_ipc3_journal_change_t change;
+				
+			utf8_buf_init(&old_path_cbuf);
+			utf8_buf_init(&old_name_cbuf);
+			utf8_buf_init(&new_path_cbuf);
+			utf8_buf_init(&new_name_cbuf);
+
+			change.journal_id = journal_id;			
+
+			ipc3_stream_pipe_init(&pipe_stream,pipe_handle);
+			
+			for(;;)
+			{
+				change.type = ipc3_stream_read_byte((ipc3_stream_t *)&pipe_stream);
+
+				if (flags & IPC3_READ_JOURNAL_FLAG_CHANGE_ID)
+				{
+					change.change_id = ipc3_stream_read_uint64((ipc3_stream_t *)&pipe_stream);
+				}
+				else
+				{
+					change.change_id = ES_UINT64_MAX;
+				}
+				
+				if (flags & IPC3_READ_JOURNAL_FLAG_TIMESTAMP)
+				{
+					change.timestamp = ipc3_stream_read_uint64((ipc3_stream_t *)&pipe_stream);
+				}
+				else
+				{
+					change.timestamp = ES_UINT64_MAX;
+				}
+				
+				if (flags & IPC3_READ_JOURNAL_FLAG_SOURCE_TIMESTAMP)
+				{
+					change.source_timestamp = ipc3_stream_read_uint64((ipc3_stream_t *)&pipe_stream);
+				}
+				else
+				{
+					change.source_timestamp = ES_UINT64_MAX;
+				}
+				
+				if (flags & IPC3_READ_JOURNAL_FLAG_OLD_PARENT_DATE_MODIFIED)
+				{
+					change.old_parent_date_modified = ipc3_stream_read_uint64((ipc3_stream_t *)&pipe_stream);
+				}
+				else
+				{
+					change.old_parent_date_modified = ES_UINT64_MAX;
+				}
+				
+				if (flags & IPC3_READ_JOURNAL_FLAG_OLD_PATH)
+				{
+					ipc3_stream_read_utf8_string((ipc3_stream_t *)&pipe_stream,&old_path_cbuf);
+				}
+				else
+				{
+					utf8_buf_empty(&old_path_cbuf);
+				}
+				
+				if (flags & IPC3_READ_JOURNAL_FLAG_OLD_NAME)
+				{
+					ipc3_stream_read_utf8_string((ipc3_stream_t *)&pipe_stream,&old_name_cbuf);
+				}
+				else
+				{
+					utf8_buf_empty(&old_name_cbuf);
+				}
+				
+				change.old_path = old_path_cbuf.buf;
+				change.old_path_len = old_path_cbuf.length_in_bytes;
+				change.old_name = old_name_cbuf.buf;
+				change.old_name_len = old_name_cbuf.length_in_bytes;
+				
+				change.size = ES_UINT64_MAX;
+				change.date_created = ES_UINT64_MAX;
+				change.date_modified = ES_UINT64_MAX;
+				change.date_accessed = ES_UINT64_MAX;
+				change.attributes = INVALID_FILE_ATTRIBUTES;
+				change.new_parent_date_modified = ES_UINT64_MAX;
+				change.new_path = "";
+				change.new_path_len = 0;
+				change.new_name = "";
+				change.new_name_len = 0;
+						
+				switch(change.type)
+				{
+					case IPC3_JOURNAL_ITEM_TYPE_FILE_CREATE:
+					case IPC3_JOURNAL_ITEM_TYPE_FILE_MODIFY:
+					case IPC3_JOURNAL_ITEM_TYPE_FILE_RENAME:
+					case IPC3_JOURNAL_ITEM_TYPE_FILE_MOVE:
+					case IPC3_JOURNAL_ITEM_TYPE_FOLDER_CREATE:
+					case IPC3_JOURNAL_ITEM_TYPE_FOLDER_MODIFY:
+					case IPC3_JOURNAL_ITEM_TYPE_FOLDER_RENAME:
+					case IPC3_JOURNAL_ITEM_TYPE_FOLDER_MOVE:
+				
+						// size
+						switch(change.type)
+						{
+							case IPC3_JOURNAL_ITEM_TYPE_FILE_CREATE:
+							case IPC3_JOURNAL_ITEM_TYPE_FILE_MODIFY:
+							case IPC3_JOURNAL_ITEM_TYPE_FILE_RENAME:
+							case IPC3_JOURNAL_ITEM_TYPE_FILE_MOVE:
+						
+								if (flags & IPC3_READ_JOURNAL_FLAG_SIZE)
+								{
+									change.size = ipc3_stream_read_uint64((ipc3_stream_t *)&pipe_stream);
+								}
+
+								break;
+						}
+
+						// date created
+						if (flags & IPC3_READ_JOURNAL_FLAG_DATE_CREATED)
+						{
+							change.date_created = ipc3_stream_read_uint64((ipc3_stream_t *)&pipe_stream);
+						}
+						
+						// date modified
+						if (flags & IPC3_READ_JOURNAL_FLAG_DATE_CREATED)
+						{
+							change.date_modified = ipc3_stream_read_uint64((ipc3_stream_t *)&pipe_stream);
+						}
+
+						// date accessed.
+						if (flags & IPC3_READ_JOURNAL_FLAG_DATE_ACCESSED)
+						{
+							change.date_accessed = ipc3_stream_read_uint64((ipc3_stream_t *)&pipe_stream);
+						}
+
+						// attributes
+						if (flags & IPC3_READ_JOURNAL_FLAG_ATTRIBUTES)
+						{
+							change.attributes = ipc3_stream_read_dword((ipc3_stream_t *)&pipe_stream);
+						}
+					
+						break;
+				}
+							
+				switch(change.type)
+				{
+					case IPC3_JOURNAL_ITEM_TYPE_FILE_RENAME:
+					case IPC3_JOURNAL_ITEM_TYPE_FOLDER_RENAME:
+
+						// new name
+						if (flags & IPC3_READ_JOURNAL_FLAG_NEW_NAME)
+						{
+							ipc3_stream_read_utf8_string((ipc3_stream_t *)&pipe_stream,&new_name_cbuf);
+
+							change.new_name = new_name_cbuf.buf;
+							change.new_name_len = new_name_cbuf.length_in_bytes;
+						}
+							
+						break;
+
+					case IPC3_JOURNAL_ITEM_TYPE_FILE_MOVE:
+					case IPC3_JOURNAL_ITEM_TYPE_FOLDER_MOVE:
+
+						// new parent date modified					
+						if (flags & IPC3_READ_JOURNAL_FLAG_NEW_PARENT_DATE_MODIFIED)
+						{
+							change.new_parent_date_modified = ipc3_stream_read_uint64((ipc3_stream_t *)&pipe_stream);
+						}
+					
+						// new parent
+						if (flags & IPC3_READ_JOURNAL_FLAG_NEW_PATH)
+						{
+							ipc3_stream_read_utf8_string((ipc3_stream_t *)&pipe_stream,&new_path_cbuf);
+
+							change.new_path = new_path_cbuf.buf;
+							change.new_path_len = new_path_cbuf.length_in_bytes;
+						}
+						
+						// new name
+						if (flags & IPC3_READ_JOURNAL_FLAG_NEW_NAME)
+						{
+							ipc3_stream_read_utf8_string((ipc3_stream_t *)&pipe_stream,&new_name_cbuf);
+
+							change.new_name = new_name_cbuf.buf;
+							change.new_name_len = new_name_cbuf.length_in_bytes;
+						}
+							
+						break;
+				}
+				
+				if (pipe_stream.base.is_error)
+				{
+					if (pipe_stream.base.response_code == IPC3_RESPONSE_ERROR_NOT_FOUND)
+					{
+						SetLastError(ERROR_FILE_NOT_FOUND);
+					}
+					else
+					{
+						SetLastError(ERROR_INVALID_FUNCTION);
+					}
+					
+					break;
+				}
+				
+				if (!callback_proc(user_data,&change))
+				{
+					SetLastError(ERROR_CANCELLED);
+					
+					break;
+				}
+			}
+
+			utf8_buf_kill(&new_name_cbuf);
+			utf8_buf_kill(&new_path_cbuf);
+			utf8_buf_kill(&old_name_cbuf);
+			utf8_buf_kill(&old_path_cbuf);
+
+			ipc3_stream_close((ipc3_stream_t *)&pipe_stream);
+		}
+		else
+		{
+			SetLastError(ERROR_WRITE_FAULT);
+		}
+
+		CloseHandle(pipe_handle);
+	}
+
+	// should never be reached unless there's an error.	
+	return FALSE;
+}
+
+BOOL ipc3_journal_action_is_folder(int action)
+{
+	switch(action)
+	{
+		case IPC3_JOURNAL_ITEM_TYPE_FOLDER_CREATE:
+		case IPC3_JOURNAL_ITEM_TYPE_FOLDER_DELETE:
+		case IPC3_JOURNAL_ITEM_TYPE_FOLDER_RENAME:
+		case IPC3_JOURNAL_ITEM_TYPE_FOLDER_MOVE:
+		case IPC3_JOURNAL_ITEM_TYPE_FOLDER_MODIFY:
+			return TRUE;
+	}
+	
+	return FALSE;
+}
+
+int ipc3_journal_item_type_from_name(const wchar_t *name)
+{
+	int i;
+	
+	for(i=0;i<_IPC3_JOURNAL_ITEM_TYPE_LOWERCASE_NAME_COUNT;i++)
+	{
+		const wchar_t *p1;
+		const char *p2;
+		
+		p1 = name;
+		p2 = _ipc3_journal_item_type_lowercase_name_array[i];
+		
+		for(;;)
+		{
+			int c1;
+			int c2;
+			
+			if (!*p2)
+			{
+				if (!*p1)
+				{
+					return i + 1;
+				}
+				
+				// next item.
+				break;
+			}
+			
+			c2 = *p2;
+			p2++;
+			
+			if (c2 == '-')
+			{
+				if ((*p1 == '-') || (*p1 == ' ') || (*p1 == '_') || (*p1 == '.'))
+				{
+					p1++;
+				}
+
+				continue;
+			}
+			
+			c1 = unicode_ascii_to_lower(*p1);
+			
+			if (c1 != c2)
+			{	
+				// next item.
+				break;
+			}
+
+			p1++;
+		}
+	}
+	
+	return 0;
+}
+

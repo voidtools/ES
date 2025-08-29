@@ -27,6 +27,8 @@
 
 #include "es.h"
 
+#define UTF8_BUF_CAT_MIN_ALLOC_SIZE			65536
+
 static ES_UTF8 *_utf8_buf_get_format_number(int base,int abase,ES_UTF8 *buf,ES_UTF8 *d,int sign,int paddingchar,SIZE_T padding,ES_UINT64 number);
 static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list argptr);
 
@@ -70,6 +72,33 @@ void utf8_buf_grow_size(utf8_buf_t *cbuf,SIZE_T size_in_bytes)
 		cbuf->buf = mem_alloc(size_in_bytes);
 		cbuf->size_in_bytes = size_in_bytes;
 	}
+}
+// doesn't keep the existing text.
+// doesn't set the text, only sets the length.
+BOOL utf8_buf_try_grow_size(utf8_buf_t *cbuf,SIZE_T size_in_bytes)
+{
+	if (size_in_bytes <= cbuf->size_in_bytes)
+	{
+		// already enough room
+		return TRUE;
+	}
+	else
+	{
+		ES_UTF8 *new_buf;
+
+		utf8_buf_empty(cbuf);
+		
+		new_buf = mem_try_alloc(size_in_bytes);
+		if (new_buf)
+		{
+			cbuf->buf = new_buf;
+			cbuf->size_in_bytes = size_in_bytes;
+			
+			return TRUE;
+		}
+	}
+	
+	return FALSE;
 }
 
 // doesn't keep the existing text.
@@ -587,3 +616,87 @@ void utf8_buf_copy_utf8_string(utf8_buf_t *cbuf,const ES_UTF8 *s)
 	utf8_buf_copy_utf8_string_n(cbuf,s,utf8_string_get_length_in_bytes(s));
 }
 
+void utf8_buf_cat_utf8_string_n(utf8_buf_t *cbuf,const ES_UTF8 *s,SIZE_T slength_in_bytes)
+{
+	SIZE_T size_in_bytes;
+	SIZE_T length_in_bytes;
+	
+	size_in_bytes = cbuf->length_in_bytes;
+	size_in_bytes = safe_size_add(size_in_bytes,slength_in_bytes);
+	size_in_bytes = safe_size_add_one(size_in_bytes);
+	
+	if (size_in_bytes > cbuf->size_in_bytes)
+	{
+		SIZE_T new_size_in_bytes;
+		BYTE *new_buf;
+
+		new_size_in_bytes = cbuf->size_in_bytes;
+		if (new_size_in_bytes < UTF8_BUF_CAT_MIN_ALLOC_SIZE)
+		{
+			new_size_in_bytes = UTF8_BUF_CAT_MIN_ALLOC_SIZE;
+		}
+
+		new_buf = mem_alloc(new_size_in_bytes);
+		
+		// don't worry about the NULL terminator.
+		// we write a new one below.
+		os_copy_memory(new_buf,cbuf->buf,cbuf->length_in_bytes);
+		
+		if (cbuf->buf != cbuf->stack_buf)
+		{
+			mem_free(cbuf->buf);
+		}
+
+		cbuf->size_in_bytes = new_size_in_bytes;
+		cbuf->buf = new_buf;
+	}
+
+	length_in_bytes = cbuf->length_in_bytes;
+	
+	os_copy_memory(cbuf->buf + length_in_bytes,s,slength_in_bytes);
+	
+	length_in_bytes += slength_in_bytes;
+
+	cbuf->length_in_bytes = length_in_bytes;
+	cbuf->buf[length_in_bytes] = 0;
+}
+
+void utf8_buf_cat_utf8_string(utf8_buf_t *cbuf,const ES_UTF8 *s)
+{
+	utf8_buf_cat_utf8_string_n(cbuf,s,utf8_string_get_length_in_bytes(s));
+}
+
+void utf8_buf_cat_byte(utf8_buf_t *cbuf,BYTE ch)
+{
+	utf8_buf_cat_utf8_string_n(cbuf,&ch,1);
+}
+
+void utf8_buf_cat_path_separator(utf8_buf_t *cbuf)
+{
+	if (cbuf->length_in_bytes)
+	{
+		if (!utf8_string_is_trailing_path_separator_n(cbuf->buf,cbuf->length_in_bytes))
+		{
+			int path_separator;
+			
+			path_separator = utf8_string_get_path_separator_from_root(cbuf->buf);
+
+			utf8_buf_cat_byte(cbuf,path_separator);
+		}
+	}
+}
+
+void utf8_buf_path_cat_filename(const ES_UTF8 *path,const ES_UTF8 *name,utf8_buf_t *out_cbuf)
+{
+	utf8_buf_copy_utf8_string(out_cbuf,path);
+	
+	if (*name)
+	{
+		if (out_cbuf->length_in_bytes)
+		{
+			utf8_buf_cat_path_separator(out_cbuf);
+		}
+		
+		utf8_buf_cat_utf8_string(out_cbuf,name);
+	}
+}

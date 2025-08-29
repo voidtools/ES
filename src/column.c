@@ -192,3 +192,16 @@ void column_insert_after(column_t *column,column_t *insert_after_column)
 		column_insert_order_at_start(column);
 	}
 }
+
+// move the specified column by property id to the start of the order list (if the column exists)
+void column_move_order_to_start(DWORD property_id)
+{
+	column_t *column;
+	
+	column = column_find(property_id);
+	if (column)
+	{
+		column_remove_order(column);
+		column_insert_order_at_start(column);
+	}
+}

@@ -27,6 +27,8 @@
 
 #include "es.h"
 
+static BOOL _wchar_string_wildcard_exec_sub(const wchar_t *filename,const wchar_t *wildcard_search);
+
 // get the length in wchars from a wchar string.
 SIZE_T wchar_string_get_length_in_wchars(const wchar_t *s)
 {
@@ -368,6 +370,81 @@ wchar_t *wchar_string_copy_utf8_string(wchar_t *buf,const ES_UTF8 *s)
 		else
 		{
 			*d++ = *p;
+			
+			p++;
+		}
+	}
+	
+	*d = 0;
+
+	return d;
+}
+
+// copy a UTF-8 string into a wchar buffer
+// caller needs to ensure there is enough room in the buffer.
+// Use wchar_string_get_length_in_wchars_from_utf8_string to calculate the required length.
+wchar_t *wchar_string_copy_lowercase_utf8_string(wchar_t *buf,const ES_UTF8 *s)
+{
+	wchar_t *d;
+	const ES_UTF8 *p;
+	
+	p = s;
+	d = buf;
+	
+	while(*p)
+	{
+		if (*p & 0x80)
+		{
+			// p is UTF-8, decode it
+			if (((*p & 0xE0) == 0xC0) && (p[1]))
+			{
+				// 2 byte UTF-8 to UTF-16
+				*d++ = (int)(uintptr_t)CharLower((LPWSTR)(uintptr_t)(((*p & 0x1f) << 6) | (p[1] & 0x3f)));
+
+				p += 2;
+			}
+			else
+			if (((*p & 0xF0) == 0xE0) && (p[1]) && (p[2]))
+			{
+				// 3 byte UTF-8 to UTF-16
+				*d++ = (int)(uintptr_t)CharLower((LPWSTR)(uintptr_t)(((*p & 0x0f) << (12)) | ((p[1] & 0x3f) << 6) | (p[2] & 0x3f)));
+
+				p += 3;
+			}
+			else
+			if (((*p & 0xF8) == 0xF0) && (p[1]) && (p[2]) && (p[3]))
+			{
+				int c;
+				
+				c = ((*p & 0x07) << 18) | ((p[1] & 0x3f) << 12) | ((p[2] & 0x3f) << 6) | (p[3] & 0x3f);
+				
+				if (c >= 0x10000)
+				{
+					// surrogate.
+					c -= 0x10000;
+					
+					*d++ = 0xD800 + (c >> 10);
+					*d++ = 0xDC00 + (c & 0x03FF);
+				}
+				else
+				{
+					// 4 byte UTF-8
+					*d++ = (int)(uintptr_t)CharLower((LPWSTR)(uintptr_t)c);
+				}
+
+				p += 4;
+			}
+			else
+			{
+				// invalid UTF-8.
+				*d++ = 0xFFFD;
+				
+				p++;
+			}
+		}
+		else
+		{
+			*d++ = (int)(uintptr_t)CharLower((LPWSTR)(uintptr_t)*p);
 			
 			p++;
 		}
@@ -747,6 +824,34 @@ const wchar_t *wchar_string_parse_utf8_string(const wchar_t *s,const ES_UTF8 *se
 	return p1;
 }
 
+// match a utf8_string in s.
+// returns s AFTER the matched string.
+// Otherwise, returns NULL if no match was found.
+const wchar_t *wchar_string_parse_nocase_lowercase_ascii_string(const wchar_t *s,const char *lowercase_search)
+{
+	const wchar_t *p1;
+	const char *p2;
+	
+	p1 = s;
+	p2 = lowercase_search;
+	
+	while(*p2)
+	{
+		int c2;
+		
+		UTF8_STRING_GET_CHAR(p2,c2);
+		
+		if (unicode_ascii_to_lower(*p1) != c2)
+		{
+			return NULL;
+		}
+		
+		p1++;
+	}
+	
+	return p1;
+}
+
 // match an integer.
 // returns s AFTER the matched integer and stores the value in out_value.
 // Otherwise, returns NULL if no match was found.
@@ -799,5 +904,220 @@ const wchar_t *wchar_string_parse_int(const wchar_t *s,int *out_value)
 	return p;
 }
 
+// make the string lowercase.
+void wchar_string_make_lowercase(wchar_t *s)
+{
+	CharLower(s);
+}
 
+// wildcard search
+static BOOL _wchar_string_wildcard_exec_sub(const wchar_t *filename,const wchar_t *wildcard_search)
+{
+	const wchar_t *s1;
+	const wchar_t *s2;
 
+	s1 = filename;
+	s2 = wildcard_search;
+
+	for(;;)
+	{
+		/* if the s2 finishes at the same time as s1 its a match. */
+		if (!*s2) 
+		{
+			if (*s1)
+			{
+				return FALSE;
+			}
+			else
+			{
+				return TRUE;
+			}
+		}
+
+		if (*s2 == '?')
+		{
+			/* if the s1 ends before the s2start string it doesnt match. */
+			if (!*s1) 
+			{
+				return FALSE;
+			}
+
+			if ((*s1 == '\\') || (*s1 == '/'))
+			{
+				return FALSE;
+			}
+
+			s1++;
+			s2++;
+		}
+		else
+		if (*s2 == '*')
+		{
+			s2++;
+
+			/* check for end with optimization. */
+			if (!*s2)
+			{
+				/* is there a '\\' or '/' in s1? */
+				while(*s1)
+				{
+					if ((*s1 == '\\') || (*s1 == '/'))
+					{
+						return FALSE;
+					}
+
+					s1++;
+				}
+
+				return TRUE;
+			}
+
+			if (*s2 == '*')
+			{
+				s2++;
+
+				/* check for end with optimization. */
+				if (!*s2)
+				{
+					return TRUE;
+				}
+
+				/* skip any more stars. */
+				while (*s2 == '*')
+				{
+					s2++;
+
+					if (!*s2)
+					{
+						return TRUE;
+					}
+				}
+
+				if (*s2 == '?')
+				{
+					s2++;
+
+					while(*s1)
+					{
+						if (!((*s1 == '\\') || (*s1 == '/')))
+						{
+							if (_wchar_string_wildcard_exec_sub(s1,s2))
+							{
+								return TRUE;
+							}
+						}
+						
+						s1++;
+					}
+				}
+				else
+				{
+					while(*s1)
+					{
+						if (*s1 == *s2)
+						{
+							if (_wchar_string_wildcard_exec_sub(s1+1,s2+1))
+							{
+								return TRUE;
+							}
+						}
+						
+						s1++;
+					}
+				}
+			}
+			else
+			{
+				if (*s2 == '?')
+				{
+					s2++;
+
+					while(*s1)
+					{
+						if ((*s1 == '\\') || (*s1 == '/'))
+						{
+							return FALSE;
+						}
+
+						s1++;
+
+						if (_wchar_string_wildcard_exec_sub(s1,s2))
+						{
+							return TRUE;
+						}
+					}
+				}
+				else
+				{
+					while(*s1)
+					{
+						if (*s1 == *s2)
+						{
+							if (_wchar_string_wildcard_exec_sub(s1+1,s2+1))
+							{
+								return TRUE;
+							}
+						}
+						
+						if ((*s1 == '\\') || (*s1 == '/'))
+						{
+							return FALSE;
+						}
+
+						s1++;
+					}
+				}
+			}
+
+			return FALSE;
+		}
+		else
+		{
+			/* if the s1 ends before the s2start string it doesnt match. */
+			if (!*s1) 
+			{
+				return FALSE;
+			}
+
+			if (*s1 != *s2)
+			{
+				return FALSE;
+			}
+			
+			// continune..
+			s1++;
+			s2++;
+		}
+	}
+}
+
+BOOL wchar_string_wildcard_exec(const wchar_t *filename,const wchar_t *wildcard_search)
+{
+	const wchar_t *s1;
+
+	if (_wchar_string_wildcard_exec_sub(filename,wildcard_search))
+	{
+		return TRUE;
+	}
+
+	s1 = filename;
+
+	while(*s1)
+	{
+		if ((*s1 == '\\') || (*s1 == '/'))
+		{
+			s1++;
+
+			if (_wchar_string_wildcard_exec_sub(s1,wildcard_search))
+			{
+				return TRUE;
+			}
+		}
+		else
+		{
+			s1++;
+		}
+	}
+
+	return FALSE;
+}

@@ -1,4 +1,29 @@
 
+//
+// Copyright (C) 2025 voidtools / David Carpenter
+// 
+// Permission is hereby granted, free of charge, 
+// to any person obtaining a copy of this software 
+// and associated documentation files (the "Software"), 
+// to deal in the Software without restriction, 
+// including without limitation the rights to use, 
+// copy, modify, merge, publish, distribute, sublicense, 
+// and/or sell copies of the Software, and to permit 
+// persons to whom the Software is furnished to do so, 
+// subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be 
+// included in all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+// OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
+// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, 
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
+// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
+// SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+
 // IPC pipe commands.
 #define IPC3_COMMAND_GET_IPC_PIPE_VERSION			0
 #define IPC3_COMMAND_GET_MAJOR_VERSION				1
@@ -25,7 +50,12 @@
 #define IPC3_COMMAND_GET_RESULTS					22
 #define IPC3_COMMAND_SORT							23
 #define IPC3_COMMAND_WAIT_FOR_RESULT_CHANGE			24
-#define IPC3_COMMAND_CANCEL							25
+#define IPC3_COMMAND_IS_PROPERTY_RIGHT_ALIGNED		25
+#define IPC3_COMMAND_IS_PROPERTY_SORT_DESCENDING	26
+#define IPC3_COMMAND_GET_PROPERTY_DEFAULT_WIDTH		27
+#define IPC3_COMMAND_GET_JOURNAL_INFO				28
+#define IPC3_COMMAND_READ_JOURNAL					29
+//#define IPC3_COMMAND_GET_JOURNAL_CHANGE_FROM_DATE	30
 
 // IPC pipe responses
 #define IPC3_RESPONSE_OK_MORE_DATA					100 // expect another repsonse.
@@ -92,6 +122,33 @@
 #define IPC3_SEARCH_PROPERTY_REQUEST_FLAG_FORMAT		0x00000001
 #define IPC3_SEARCH_PROPERTY_REQUEST_FLAG_HIGHLIGHT		0x00000002
 
+#define IPC3_JOURNAL_ITEM_TYPE_NOP						0 // access denied.
+#define IPC3_JOURNAL_ITEM_TYPE_FOLDER_CREATE			1
+#define IPC3_JOURNAL_ITEM_TYPE_FOLDER_DELETE			2
+#define IPC3_JOURNAL_ITEM_TYPE_FOLDER_RENAME			3
+#define IPC3_JOURNAL_ITEM_TYPE_FOLDER_MOVE				4
+#define IPC3_JOURNAL_ITEM_TYPE_FOLDER_MODIFY			5
+#define IPC3_JOURNAL_ITEM_TYPE_FILE_CREATE				6
+#define IPC3_JOURNAL_ITEM_TYPE_FILE_DELETE				7
+#define IPC3_JOURNAL_ITEM_TYPE_FILE_RENAME				8
+#define IPC3_JOURNAL_ITEM_TYPE_FILE_MOVE				9
+#define IPC3_JOURNAL_ITEM_TYPE_FILE_MODIFY				10
+
+#define IPC3_READ_JOURNAL_FLAG_CHANGE_ID				0x00000001
+#define IPC3_READ_JOURNAL_FLAG_TIMESTAMP				0x00000002
+#define IPC3_READ_JOURNAL_FLAG_SOURCE_TIMESTAMP			0x00000004
+#define IPC3_READ_JOURNAL_FLAG_OLD_PARENT_DATE_MODIFIED	0x00000008
+#define IPC3_READ_JOURNAL_FLAG_OLD_PATH					0x00000010
+#define IPC3_READ_JOURNAL_FLAG_OLD_NAME					0x00000020
+#define IPC3_READ_JOURNAL_FLAG_SIZE						0x00000040
+#define IPC3_READ_JOURNAL_FLAG_DATE_CREATED				0x00000080
+#define IPC3_READ_JOURNAL_FLAG_DATE_MODIFIED			0x00000100
+#define IPC3_READ_JOURNAL_FLAG_DATE_ACCESSED			0x00000200
+#define IPC3_READ_JOURNAL_FLAG_ATTRIBUTES				0x00000400
+#define IPC3_READ_JOURNAL_FLAG_NEW_PARENT_DATE_MODIFIED	0x00000800
+#define IPC3_READ_JOURNAL_FLAG_NEW_PATH					0x00001000
+#define IPC3_READ_JOURNAL_FLAG_NEW_NAME					0x00002000
+
 // a sort item
 typedef struct ipc3_search_sort_s
 {
@@ -131,7 +188,6 @@ typedef struct ipc3_stream_vtbl_s
 	
 	// read from the stream.
 	// is_error MUST be set on read error
-	// buf MUST be set to zeroes on read error.
 	// returns the amount of data read.
 	// can return less than size.
 	// set stream->is_error on any errors.
@@ -148,6 +204,7 @@ typedef struct ipc3_stream_s
 	const ipc3_stream_vtbl_t *vtbl;
 	int is_error;
 	int is_64bit;
+	DWORD response_code;
 	
 }ipc3_stream_t;
 
@@ -235,9 +292,50 @@ typedef struct ipc3_result_list_s
 	
 }ipc3_result_list_t;
 
+typedef struct _ipc3_journal_change_s
+{
+	ES_UINT64 journal_id;
+	ES_UINT64 change_id;
+	ES_UINT64 timestamp;
+	ES_UINT64 source_timestamp;
+	ES_UINT64 old_parent_date_modified;
+	ES_UINT64 new_parent_date_modified;
+
+	ES_UINT64 size;
+	ES_UINT64 date_created;
+	ES_UINT64 date_modified;
+	ES_UINT64 date_accessed;
+	
+	const ES_UTF8 *old_path;
+	SIZE_T old_path_len;
+	const ES_UTF8 *old_name;
+	SIZE_T old_name_len;
+	
+	const ES_UTF8 *new_path;
+	SIZE_T new_path_len;
+	const ES_UTF8 *new_name;
+	SIZE_T new_name_len;
+	
+	DWORD attributes;
+
+	BYTE type;	
+	
+}_ipc3_journal_change_t;
+
+typedef struct ipc3_journal_info_s
+{
+	ES_UINT64 journal_id;
+	ES_UINT64 first_change_id;
+	ES_UINT64 next_change_id;
+	ES_UINT64 size;
+	ES_UINT64 max_size;
+	
+}ipc3_journal_info_t;
+
 BOOL ipc3_write_pipe_data(HANDLE pipe_handle,const void *in_data,SIZE_T in_size);
 BOOL ipc3_write_pipe_message(HANDLE pipe_handle,DWORD code,const void *in_data,SIZE_T in_size);
 void ipc3_stream_read_data(ipc3_stream_t *stream,void *data,SIZE_T size);
+void ipc3_stream_read_utf8_string(ipc3_stream_t *stream,utf8_buf_t *out_cbuf);
 SIZE_T ipc3_stream_try_read_data(ipc3_stream_t *stream,void *data,SIZE_T size);
 void ipc3_stream_skip(ipc3_stream_t *stream,SIZE_T size);
 BYTE ipc3_stream_read_byte(ipc3_stream_t *stream);
@@ -251,6 +349,7 @@ BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size);
 HANDLE ipc3_connect_pipe(void);
 BOOL ipc3_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread);
 BOOL ipc3_ioctl_expect_output_size(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size);
+BOOL ipc3_ioctl_alloc_out(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,utf8_buf_t *out_cbuf);
 void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf);
 void ipc3_stream_pipe_init(ipc3_stream_pipe_t *stream,HANDLE pipe_handle);
 void ipc3_stream_close(ipc3_stream_t *stream);				
@@ -264,3 +363,11 @@ void ipc3_result_list_seek_to_offset_from_index(ipc3_result_list_t *result_list,
 ES_UINT64 ipc3_stream_tell(ipc3_stream_t *stream);
 BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value);
 DWORD ipc3_find_property(const wchar_t *search);
+BOOL ipc3_get_property_canonical_name(DWORD property_id,utf8_buf_t *out_cbuf);
+BOOL ipc3_is_property_right_aligned(DWORD property_id);
+BOOL ipc3_is_property_sort_descending(DWORD property_id);
+int ipc3_get_property_default_width(DWORD property_id);
+BOOL ipc3_get_journal_info(ipc3_journal_info_t *out_journal_info);
+BOOL ipc3_read_journal(ES_UINT64 journal_id,ES_UINT64 change_id,DWORD flags,void *user_data,BOOL (*callback_proc)(void *user_data,_ipc3_journal_change_t *change));
+BOOL ipc3_journal_action_is_folder(int action);
+int ipc3_journal_item_type_from_name(const wchar_t *name);

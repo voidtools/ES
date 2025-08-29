@@ -28,6 +28,25 @@
 #include "es.h"
 #include <shlobj.h> // SHGetSpecialFolderLocation
 
+BOOL (WINAPI *_os_IsDebuggerPresent)(void) = NULL;
+static BOOL (WINAPI *_os_TzSpecificLocalTimeToSystemTime)(LPTIME_ZONE_INFORMATION lpTimeZoneInformation,LPSYSTEMTIME lpLocalTime,LPSYSTEMTIME lpUniversalTime) = NULL;
+
+void os_init(void)
+{
+	HMODULE kernel32_hmodule;
+	
+	kernel32_hmodule = GetModuleHandleA("kernel32.dll");
+	if (kernel32_hmodule)
+	{
+		_os_IsDebuggerPresent = (void *)GetProcAddress(kernel32_hmodule,"IsDebuggerPresent");
+		_os_TzSpecificLocalTimeToSystemTime = (void *)GetProcAddress(kernel32_hmodule,"TzSpecificLocalTimeToSystemTime");
+	}
+}
+
+void os_kill(void)
+{
+}
+
 // src or dst can be unaligned.
 // returns the dst + size.
 void *os_copy_memory(void *dst,const void *src,SIZE_T size)
@@ -611,5 +630,112 @@ void os_error_printf(const ES_UTF8 *format,...)
 	os_error_vprintf(format,argptr);
 
 	va_end(argptr);
+}
+
+// convert a local system time to a filetime with the correct daylight savings.
+ES_UINT64 os_localtime_to_filetime(const SYSTEMTIME *localst)
+{
+	SYSTEMTIME local_local_st;
+	
+	// TzSpecificLocalTimeToSystemTime modifies localst.
+	os_copy_memory(&local_local_st,localst,sizeof(SYSTEMTIME));
+	
+	// years greater than 30827 cause
+	// TzSpecificLocalTimeToSystemTime to throw an exception! 
+	if (local_local_st.wYear > 30827)
+	{
+		// QWORD_MAX-1 is the largest valid time
+		// QWORD_MAX is invalid.
+		return ES_UINT64_MAX;
+	}
+
+	// years greater than 30827 cause
+	// TzSpecificLocalTimeToSystemTime to throw an exception! 
+	if (local_local_st.wYear < 1601)
+	{
+		// QWORD_MAX-1 is the largest valid time
+		// QWORD_MAX is invalid.
+		return ES_UINT64_MAX;
+	}
+
+	// TzSpecificLocalTimeToSystemTime will correctly adjust for daylight savings.
+	if (_os_TzSpecificLocalTimeToSystemTime)
+	{
+		SYSTEMTIME utcst;
+
+		if (_os_TzSpecificLocalTimeToSystemTime(NULL,&local_local_st,&utcst))
+		{
+			ES_UINT64 ftstruct;
+		
+			if (SystemTimeToFileTime(&utcst,(FILETIME *)&ftstruct))
+			{
+				return ftstruct;
+			}
+		}
+	}
+	else
+	{
+		FILETIME localft;
+		
+		if (SystemTimeToFileTime(&local_local_st,&localft))
+		{
+			ES_UINT64 ftstruct;
+			
+			if (LocalFileTimeToFileTime(&localft,(FILETIME *)&ftstruct))
+			{
+				return ftstruct;
+			}
+		}
+	}
+	
+	return ES_UINT64_MAX;
+}
+
+// convert a filetime to a localtime as a SYSTEMTIME.
+// correctly applies daylight savings.
+BOOL os_filetime_to_localtime(ES_UINT64 ft,SYSTEMTIME *out_localst)
+{
+	// try to convert with SystemTimeToTzSpecificLocalTime which will handle daylight savings correctly.
+	{
+		SYSTEMTIME utcst;
+		
+		if (FileTimeToSystemTime((FILETIME *)&ft,&utcst))
+		{
+			if (SystemTimeToTzSpecificLocalTime(NULL,&utcst,out_localst))
+			{
+				return TRUE;
+			}
+		}
+	}
+	
+//	debug_color_printf(0xffff0000,"SystemTimeToTzSpecificLocalTime failed %d\n",GetLastError());
+	
+	// win9x: just convert normally.
+	{
+		FILETIME localft;
+		
+		if (FileTimeToLocalFileTime((FILETIME *)&ft,&localft))
+		{
+			if (FileTimeToSystemTime(&localft,out_localst))
+			{
+				return FALSE;
+			}
+		}
+	}
+	
+	return FALSE;
+}
+
+// The cool Win95 hack, so the compiler can launch on it, even compiled with VS2005
+// Basically, this function is needed by the libcmt.lib/gs_report.obj
+//
+BOOL __stdcall _imp__IsDebuggerPresent()
+{
+	if (_os_IsDebuggerPresent)
+	{
+		return _os_IsDebuggerPresent();
+	}
+	
+	return FALSE;
 }
 
