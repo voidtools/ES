@@ -510,6 +510,14 @@
 				>
 			</File>
 			<File
+				RelativePath="..\src\property_unknown.c"
+				>
+			</File>
+			<File
+				RelativePath="..\src\property_unknown.h"
+				>
+			</File>
+			<File
 				RelativePath="..\src\safe_int.c"
 				>
 			</File>
