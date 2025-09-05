@@ -339,7 +339,7 @@
       <LinkLibraryDependencies>true</LinkLibraryDependencies>
     </ProjectReference>
     <Link>
-      <AdditionalDependencies>unicows.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
       <ShowProgress>NotSet</ShowProgress>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <GenerateMapFile>true</GenerateMapFile>
@@ -395,6 +395,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <LinkTimeCodeGeneration />
       <TargetMachine>MachineX64</TargetMachine>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <AdditionalManifestFiles>../res/es.Manifest</AdditionalManifestFiles>
@@ -438,6 +439,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <LinkTimeCodeGeneration>
       </LinkTimeCodeGeneration>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <AdditionalManifestFiles>../res/es.Manifest</AdditionalManifestFiles>
@@ -456,6 +458,7 @@
     <ClCompile Include="..\src\os.c" />
     <ClCompile Include="..\src\pool.c" />
     <ClCompile Include="..\src\property.c" />
+    <ClCompile Include="..\src\property_unknown.c" />
     <ClCompile Include="..\src\safe_int.c" />
     <ClCompile Include="..\src\safe_size.c" />
     <ClCompile Include="..\src\secondary_sort.c" />
@@ -483,6 +486,7 @@
     <ClInclude Include="..\src\property.h" />
     <ClInclude Include="..\src\property_name_to_id_macro.h" />
     <ClInclude Include="..\src\property_old_column_macro.h" />
+    <ClInclude Include="..\src\property_unknown.h" />
     <ClInclude Include="..\src\safe_int.h" />
     <ClInclude Include="..\src\safe_size.h" />
     <ClInclude Include="..\src\secondary_sort.h" />
