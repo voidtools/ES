@@ -331,6 +331,8 @@ static BOOL _config_ini_get_line(config_ini_t *ini)
 				p++;
 				
 				ini->value = p;
+				
+				continue;
 			}
 		}
 		

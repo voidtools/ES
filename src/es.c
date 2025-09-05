@@ -344,7 +344,7 @@ static char _es_no_default_size_column = 0; // EFU only
 static char _es_no_default_date_modified_column = 0; // EFU only
 static char _es_no_default_date_created_column = 0; // EFU only
 static char _es_no_default_attribute_column = 0; // EFU only
-static char _es_folder_append_path_separator = 1; // append a trailing '\\' at the end of folder path and names.
+static char _es_folder_append_path_separator = 0; // append a trailing '\\' at the end of folder path and names. -resolve based on export type; >0 == show; <0 == hide. 
 static char _es_newline_type = 0; // 0==CRLF, 1==LF, 2==NUL
 static char _es_mode = _ES_MODE_SEARCH;
 static ES_UINT64 _es_from_journal_id = ES_UINT64_MAX; // resume journal from this journal-id
@@ -5677,8 +5677,6 @@ static void _es_help(void)
 		"\r\n"
 		"   -no-digit-grouping\r\n"
 		"        Don't group numbers with commas.\r\n"
-		"   -no-folder-append-path-separator\r\n"
-		"        Don't append a trailing path separator to folder paths.\r\n"
 		"   -double-quote\r\n"
 		"        Wrap paths and filenames with double quotes.\r\n"
 		"\r\n"
@@ -5694,6 +5692,8 @@ static void _es_help(void)
 		"        Export to a file using the specified layout.\r\n"
 		"   -no-header\r\n"
 		"        Do not output a column header for CSV, EFU and TSV files.\r\n"
+		"   -no-folder-append-path-separator\r\n"
+		"        Don't append a trailing path separator to folder paths.\r\n"
 		"   -utf8-bom\r\n"
 		"        Store a UTF-8 byte order mark at the start of the exported file.\r\n"
 		"\r\n"
@@ -7200,7 +7200,7 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-folder-append-path-separator"))
 				{
-					_es_folder_append_path_separator = 0;
+					_es_folder_append_path_separator = -1;
 
 					goto next_argv;
 				}
@@ -7980,7 +7980,26 @@ next_argv:
 			WriteFile(_es_export_file,bom,3,&numwritten,0);
 		}
 	}
-	
+
+	// resolve _es_folder_append_path_separator.
+	// do this AFTER saving.
+	if (!_es_folder_append_path_separator)
+	{
+		if (_es_export_type != _ES_EXPORT_TYPE_NONE)
+		{
+			if (_es_export_type != _ES_EXPORT_TYPE_NOFORMAT)
+			{
+				// export should use trailing '\\'.
+				_es_folder_append_path_separator = 1;
+			}
+		}
+	}
+	else
+	if (_es_folder_append_path_separator < 0)
+	{	
+		_es_folder_append_path_separator = 0;
+	}
+		
 	// apply export formatting.
 	if ((_es_export_type == _ES_EXPORT_TYPE_CSV) || (_es_export_type == _ES_EXPORT_TYPE_TSV))
 	{
@@ -11211,122 +11230,125 @@ static void _es_set_sort_list(const wchar_t *sort_list,int allow_old_column_ids,
 	
 	for(;;)
 	{
-		DWORD property_id;
-		int ascending;
-
 		sort_list_p = wchar_string_parse_list_item(sort_list_p,&item_wcbuf);
 		if (!sort_list_p)
 		{
 			break;
 		}
 		
-		ascending = 0;
-		
+		if (item_wcbuf.length_in_wchars)
 		{
-			wchar_t *ascending_p;
-			
-			ascending_p = item_wcbuf.buf;
-			
-			while(*ascending_p)
-			{
-				if (*ascending_p == '-')
-				{
-					const wchar_t *match_p;
-					
-					match_p = wchar_string_parse_utf8_string(ascending_p + 1,"ascending");
-					if (match_p)
-					{
-						if (!*match_p)
-						{
-							ascending = 1;
+			DWORD property_id;
+			int ascending;
 
-							// truncate name
-							*ascending_p = 0;
-							break;
+			ascending = 0;
+			
+			{
+				wchar_t *ascending_p;
+				
+				ascending_p = item_wcbuf.buf;
+				
+				while(*ascending_p)
+				{
+					if (*ascending_p == '-')
+					{
+						const wchar_t *match_p;
+						
+						match_p = wchar_string_parse_utf8_string(ascending_p + 1,"ascending");
+						if (match_p)
+						{
+							if (!*match_p)
+							{
+								ascending = 1;
+
+								// truncate name
+								*ascending_p = 0;
+								break;
+							}
+						}
+
+						match_p = wchar_string_parse_utf8_string(ascending_p + 1,"descending");
+						if (match_p)
+						{
+							if (!*match_p)
+							{
+								ascending = -1;
+
+								// truncate name
+								*ascending_p = 0;
+								break;
+							}
 						}
 					}
-
-					match_p = wchar_string_parse_utf8_string(ascending_p + 1,"descending");
-					if (match_p)
+				
+					ascending_p++;
+				}
+			}
+		
+			// backwards compatibility.
+			// sort=1
+			// we want to sort by name.
+			// check if item_wcbuf.buf is all digits.
+			// if it is, treat it as an old column id.
+			//
+			// if allow_old_column_ids is disabled, "1" will match regmatch1
+			if (allow_old_column_ids)
+			{
+				const wchar_t *old_column_ids_p;
+				int old_column_id;
+				
+				old_column_ids_p = wchar_string_parse_int(item_wcbuf.buf,&old_column_id);
+				if (old_column_ids_p)
+				{
+					// int only?
+					if (!*old_column_ids_p)
 					{
-						if (!*match_p)
+						// lookup old column id.
+						property_id = property_id_from_old_column_id(old_column_id);
+						if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
 						{
-							ascending = -1;
-
-							// truncate name
-							*ascending_p = 0;
-							break;
+							goto got_property_id;
 						}
 					}
 				}
-			
-				ascending_p++;
 			}
-		}
-	
-		// backwards compatibility.
-		// sort=1
-		// we want to sort by name.
-		// check if item_wcbuf.buf is all digits.
-		// if it is, treat it as an old column id.
-		//
-		// if allow_old_column_ids is disabled, "1" will match regmatch1
-		if (allow_old_column_ids)
-		{
-			const wchar_t *old_column_ids_p;
-			int old_column_id;
 			
-			old_column_ids_p = wchar_string_parse_int(item_wcbuf.buf,&old_column_id);
-			if (old_column_ids_p)
+			property_id = property_find(item_wcbuf.buf,1);
+			
+	got_property_id:
+			
+			if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
 			{
-				// int only?
-				if (!*old_column_ids_p)
+				if (sort_count)
 				{
-					// lookup old column id.
-					property_id = property_id_from_old_column_id(old_column_id);
-					if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
+					if (property_id == _es_primary_sort_property_id)
 					{
-						goto got_property_id;
+						// don't duplicate sorts
 					}
-				}
-			}
-		}
-		
-		property_id = property_find(item_wcbuf.buf,1);
-		
-got_property_id:
-		
-		if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
-		{
-			if (sort_count)
-			{
-				if (property_id == _es_primary_sort_property_id)
-				{
-					// don't duplicate sorts
+					else
+					{
+						secondary_sort_add(property_id,ascending);
+					}
 				}
 				else
 				{
-					secondary_sort_add(property_id,ascending);
+					_es_primary_sort_property_id = property_id;
+					if (ascending)
+					{
+						// don't change unless it's specified.
+						_es_primary_sort_ascending = ascending;
+					}
 				}
+				
+				sort_count++;
 			}
 			else
 			{
-				_es_primary_sort_property_id = property_id;
-				if (ascending)
-				{
-					// don't change unless it's specified.
-					_es_primary_sort_ascending = ascending;
-				}
+				// set the rest of the properties.
+				// this one will just be missing.
+				// caller can fatal error if they expected valid properties.
+				_es_bad_switch_param("Unknown sort: %S\n",item_wcbuf.buf);
 			}
-			
-			sort_count++;
-		}
-		else
-		{
-			// set the rest of the properties.
-			// this one will just be missing.
-			// caller can fatal error if they expected valid properties.
-			_es_bad_switch_param("Unknown sort: %S\n",item_wcbuf.buf);
 		}
 	}
 
@@ -11353,92 +11375,95 @@ static void _es_set_columns(const wchar_t *column_list,int action,int allow_old_
 	
 	for(;;)
 	{
-		DWORD property_id;
-
 		column_list_p = wchar_string_parse_list_item(column_list_p,&item_wcbuf);
 		if (!column_list_p)
 		{
 			break;
 		}
 	
-		// backwards compatibility.
-		// column=7
-		// we want to show the size.
-		// check if item_wcbuf.buf is all digits.
-		// if it is, treat it as an old column id.
-		//
-		// if allow_old_column_ids is disabled, "1" will match regmatch1
-		if (allow_old_column_ids)
+		if (item_wcbuf.length_in_wchars)
 		{
-			const wchar_t *old_column_ids_p;
-			int old_column_id;
-			
-			old_column_ids_p = wchar_string_parse_int(item_wcbuf.buf,&old_column_id);
-			if (old_column_ids_p)
+			DWORD property_id;
+
+			// backwards compatibility.
+			// column=7
+			// we want to show the size.
+			// check if item_wcbuf.buf is all digits.
+			// if it is, treat it as an old column id.
+			//
+			// if allow_old_column_ids is disabled, "1" will match regmatch1
+			if (allow_old_column_ids)
 			{
-				// int only?
-				if (!*old_column_ids_p)
+				const wchar_t *old_column_ids_p;
+				int old_column_id;
+				
+				old_column_ids_p = wchar_string_parse_int(item_wcbuf.buf,&old_column_id);
+				if (old_column_ids_p)
 				{
-					// lookup old column id.
-					property_id = property_id_from_old_column_id(old_column_id);
-					if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
+					// int only?
+					if (!*old_column_ids_p)
 					{
-						goto got_property_id;
+						// lookup old column id.
+						property_id = property_id_from_old_column_id(old_column_id);
+						if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
+						{
+							goto got_property_id;
+						}
 					}
 				}
 			}
-		}
-		
-		property_id = property_find(item_wcbuf.buf,1);
-		
-got_property_id:
-		
-		if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
-		{
-			switch(action)
+			
+			property_id = property_find(item_wcbuf.buf,1);
+			
+	got_property_id:
+			
+			if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
 			{
-				case 0:
-				case 1:
-					column_add(property_id);
-					break;
+				switch(action)
+				{
+					case 0:
+					case 1:
+						column_add(property_id);
+						break;
 
-				case 2:
-				
-					switch(property_id)
-					{
-						case EVERYTHING3_PROPERTY_ID_PATH_AND_NAME:
-							// don't default to adding the filename column if it is not already shown.
-							_es_no_default_filename_column = 1;
-							break;
-
-						case EVERYTHING3_PROPERTY_ID_SIZE:
-							_es_no_default_size_column = 1;
-							break;
-
-						case EVERYTHING3_PROPERTY_ID_DATE_MODIFIED:
-							_es_no_default_date_modified_column = 1;
-							break;
-
-						case EVERYTHING3_PROPERTY_ID_DATE_CREATED:
-							_es_no_default_date_created_column = 1;
-							break;
-
-						case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
-							_es_no_default_attribute_column = 1;
-							break;
-
-					}
+					case 2:
 					
-					column_remove(property_id);
-					break;
+						switch(property_id)
+						{
+							case EVERYTHING3_PROPERTY_ID_PATH_AND_NAME:
+								// don't default to adding the filename column if it is not already shown.
+								_es_no_default_filename_column = 1;
+								break;
+
+							case EVERYTHING3_PROPERTY_ID_SIZE:
+								_es_no_default_size_column = 1;
+								break;
+
+							case EVERYTHING3_PROPERTY_ID_DATE_MODIFIED:
+								_es_no_default_date_modified_column = 1;
+								break;
+
+							case EVERYTHING3_PROPERTY_ID_DATE_CREATED:
+								_es_no_default_date_created_column = 1;
+								break;
+
+							case EVERYTHING3_PROPERTY_ID_ATTRIBUTES:
+								_es_no_default_attribute_column = 1;
+								break;
+
+						}
+						
+						column_remove(property_id);
+						break;
+				}
 			}
-		}
-		else
-		{
-			// set the rest of the properties.
-			// this one will just be missing.
-			// caller can fatal error if they expected valid properties.
-			_es_bad_switch_param("Unknown column: %S\n",item_wcbuf.buf);
+			else
+			{
+				// set the rest of the properties.
+				// this one will just be missing.
+				// caller can fatal error if they expected valid properties.
+				_es_bad_switch_param("Unknown column: %S\n",item_wcbuf.buf);
+			}
 		}
 	}
 
@@ -11466,77 +11491,80 @@ static void _es_set_column_colors(const wchar_t *column_color_list,int action,BO
 	
 	for(;;)
 	{
-		DWORD property_id;
-		wchar_t *color_value;
-		WORD color;
-
 		column_color_list_p = wchar_string_parse_list_item(column_color_list_p,&item_wcbuf);
 		if (!column_color_list_p)
 		{
 			break;
 		}
 		
-		color_value = NULL;
-	
+		if (item_wcbuf.length_in_wchars)
 		{
-			wchar_t *keyvalue_p;
-			
-			keyvalue_p = item_wcbuf.buf;
-			
-			while(*keyvalue_p)
+			DWORD property_id;
+			wchar_t *color_value;
+			WORD color;
+
+			color_value = NULL;
+		
 			{
-				if (*keyvalue_p == '=')
+				wchar_t *keyvalue_p;
+				
+				keyvalue_p = item_wcbuf.buf;
+				
+				while(*keyvalue_p)
 				{
-					// truncate name
-					*keyvalue_p = 0;
-					
-					color_value = keyvalue_p + 1;
-					
-					break;
+					if (*keyvalue_p == '=')
+					{
+						// truncate name
+						*keyvalue_p = 0;
+						
+						color_value = keyvalue_p + 1;
+						
+						break;
+					}
+				
+					keyvalue_p++;
 				}
+			}
 			
-				keyvalue_p++;
-			}
-		}
-		
-		property_id = EVERYTHING3_INVALID_PROPERTY_ID;
-		
-		if (color_value)
-		{
-			property_id = property_find(item_wcbuf.buf,1);
-
-			color = wchar_string_to_int(color_value);
-		}
-		else
-		{
-			// no keyvalue pair, use old column id
-			property_id = property_id_from_old_column_id(old_column_id);
-
-			color = wchar_string_to_int(item_wcbuf.buf);
-		}
-		
-		if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
-		{
-			switch(action)
+			property_id = EVERYTHING3_INVALID_PROPERTY_ID;
+			
+			if (color_value)
 			{
-				case 0:
-				case 1:
-					column_color_set(property_id,color);
-					break;
+				property_id = property_find(item_wcbuf.buf,1);
 
-				case 2:
-					column_color_remove(property_id);
-					break;
+				color = wchar_string_to_int(color_value);
+			}
+			else
+			{
+				// no keyvalue pair, use old column id
+				property_id = property_id_from_old_column_id(old_column_id);
+
+				color = wchar_string_to_int(item_wcbuf.buf);
+			}
+			
+			if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
+			{
+				switch(action)
+				{
+					case 0:
+					case 1:
+						column_color_set(property_id,color);
+						break;
+
+					case 2:
+						column_color_remove(property_id);
+						break;
+				}
+			}
+			else
+			{
+				// set the rest of the properties.
+				// this one will just be missing.
+				// caller can fatal error if they expected valid properties.
+				_es_bad_switch_param("Unknown color: %S",item_wcbuf.buf);
 			}
 		}
-		else
-		{
-			// set the rest of the properties.
-			// this one will just be missing.
-			// caller can fatal error if they expected valid properties.
-			_es_bad_switch_param("Unknown color: %S",item_wcbuf.buf);
-		}
-		
+
 		old_column_id++;
 	}
 
@@ -11564,75 +11592,78 @@ static void _es_set_column_widths(const wchar_t *column_width_list,int action,BO
 	
 	for(;;)
 	{
-		DWORD property_id;
-		wchar_t *width_value;
-		int width;
-
 		column_width_list_p = wchar_string_parse_list_item(column_width_list_p,&item_wcbuf);
 		if (!column_width_list_p)
 		{
 			break;
 		}
 		
-		width_value = NULL;
-	
+		if (item_wcbuf.length_in_wchars)
 		{
-			wchar_t *keyvalue_p;
-			
-			keyvalue_p = item_wcbuf.buf;
-			
-			while(*keyvalue_p)
+			DWORD property_id;
+			wchar_t *width_value;
+			int width;
+
+			width_value = NULL;
+		
 			{
-				if (*keyvalue_p == '=')
+				wchar_t *keyvalue_p;
+				
+				keyvalue_p = item_wcbuf.buf;
+				
+				while(*keyvalue_p)
 				{
-					// truncate name
-					*keyvalue_p = 0;
-					
-					width_value = keyvalue_p + 1;
-					
-					break;
+					if (*keyvalue_p == '=')
+					{
+						// truncate name
+						*keyvalue_p = 0;
+						
+						width_value = keyvalue_p + 1;
+						
+						break;
+					}
+				
+					keyvalue_p++;
 				}
+			}
 			
-				keyvalue_p++;
-			}
-		}
-		
-		property_id = EVERYTHING3_INVALID_PROPERTY_ID;
-		
-		if (width_value)
-		{
-			property_id = property_find(item_wcbuf.buf,1);
-
-			width = wchar_string_to_int(width_value);
-		}
-		else
-		{
-			// no keyvalue pair, use old column id
-			property_id = property_id_from_old_column_id(old_column_id);
-
-			width = wchar_string_to_int(item_wcbuf.buf);
-		}
-		
-		if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
-		{
-			switch(action)
+			property_id = EVERYTHING3_INVALID_PROPERTY_ID;
+			
+			if (width_value)
 			{
-				case 0:
-				case 1:
-					column_width_set(property_id,width);
-					break;
+				property_id = property_find(item_wcbuf.buf,1);
 
-				case 2:
-					column_width_remove(property_id);
-					break;
+				width = wchar_string_to_int(width_value);
 			}
-		}
-		else
-		{
-			// set the rest of the properties.
-			// this one will just be missing.
-			// caller can fatal error if they expected valid properties.
-			_es_bad_switch_param("Unknown width: %S",item_wcbuf.buf);
+			else
+			{
+				// no keyvalue pair, use old column id
+				property_id = property_id_from_old_column_id(old_column_id);
+
+				width = wchar_string_to_int(item_wcbuf.buf);
+			}
+			
+			if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
+			{
+				switch(action)
+				{
+					case 0:
+					case 1:
+						column_width_set(property_id,width);
+						break;
+
+					case 2:
+						column_width_remove(property_id);
+						break;
+				}
+			}
+			else
+			{
+				// set the rest of the properties.
+				// this one will just be missing.
+				// caller can fatal error if they expected valid properties.
+				_es_bad_switch_param("Unknown width: %S",item_wcbuf.buf);
+			}
 		}
 		
 		old_column_id++;
@@ -12675,22 +12706,25 @@ static DWORD _es_parse_journal_action_filter(const wchar_t *filter_list)
 	
 	for(;;)
 	{
-		int action;
-		
 		filter_p = wchar_buf_parse_list_item(filter_p,&item_wcbuf);
 		if (!filter_p)
 		{
 			break;
 		}
 		
-		action = ipc3_journal_item_type_from_name(item_wcbuf.buf);
-		if (action)
+		if (item_wcbuf.length_in_wchars)
 		{
-			action_filter |= (1 << action);
-		}
-		else
-		{
-			_es_bad_switch_param("Unknown action: '%S'\n",item_wcbuf.buf);
+			int action;
+			
+			action = ipc3_journal_item_type_from_name(item_wcbuf.buf);
+			if (action)
+			{
+				action_filter |= (1 << action);
+			}
+			else
+			{
+				_es_bad_switch_param("Unknown action: '%S'\n",item_wcbuf.buf);
+			}
 		}
 	}
 
