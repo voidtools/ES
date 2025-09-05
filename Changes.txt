@@ -1,3 +1,8 @@
+Friday 5 September 2025: Version 1.1.0.31a
+	added Everything 1.5 support
+	added Journal support
+	added ARM/ARM64 support
+
 Monday 2 June 2025: Version 1.1.0.30
 	added new code signing certificate: voidtools PTY LTD
 	
