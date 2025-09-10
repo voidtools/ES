@@ -1,3 +1,10 @@
+Wednesday 10 September 2025: Version 1.1.0.32a
+	fixed an issue with a lowercase [es] section not working in es.ini
+	fixed an issue with background colors carrying over to the next line.
+	fixed an issue with -<property-name>-width not working.
+	improved -date-format and removed -export-date-format
+	added -no-new-line switch
+
 Friday 5 September 2025: Version 1.1.0.31a
 	added Everything 1.5 support
 	added Journal support
