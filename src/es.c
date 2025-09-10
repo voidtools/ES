@@ -25,11 +25,7 @@
 //
 
 // Everything command line interface via IPC.
-
-// TODO:
-// search journal
-// 
-// [HIGH] vs2019 project and sln files. -move to vs subfolder.
+// [HIGH] json should only print the trailing , at the start of a non-first line and the terminating ] should always be added when using read journal mode.
 // [HIGH] c# cmdlet for powershell.
 // Maybe a configurable prompt, so the "current" (bottom-most) line, total count of results. -footer?
 // Index Journal API
@@ -80,6 +76,16 @@
 // *-get-size <filename> - expand -get-run-count to get other information for a single file? -what happens when the file doesn't exist? -added "-get-folder-size" -returns error code ES_ERROR_NO_RESULTS if not found.
 // *number formatting -Use system number formatting (some localizations don't use , for the comma)
 // *shouldn't we use environment variables for storing switches? like MORE? -registry does make it easy. -using ini now
+// 1.1.0.31a
+// *Everything 1.5 support.
+// *search journal
+// *vs2019 project and sln files. -move to vs subfolder.
+// 1.1.0.32a
+// *added -no-new-line
+// *es.ini now supports [es] (instead of just [ES])
+// *simplify -date-format -remove -export-date-format
+// *if a line ends with a background color, and the next line is short, the next line will use the background color from above for the rest of the line.
+// *check column widths -width-width 5 -length-width 5
 
 // NOTES:
 // ScrollConsoleScreenBuffer is unuseable because it fills invalidated areas, which causes unnecessary flickering.
@@ -208,6 +214,7 @@ static void _es_output_cell_csv_wchar_string(const wchar_t *s,int is_highlighted
 static void _es_output_cell_csv_wchar_string_with_optional_quotes(int is_always_double_quote,int separator_ch,const wchar_t *s,int is_highlighted);
 static void _es_get_command_argv(wchar_buf_t *wcbuf);
 static void _es_expect_command_argv(wchar_buf_t *wcbuf);
+static void _es_expect_command_argv_int(wchar_buf_t *wcbuf);
 static void _es_get_argv(wchar_buf_t *wcbuf);
 static void _es_expect_argv(wchar_buf_t *wcbuf);
 static BOOL _es_is_valid_key(INPUT_RECORD *ir);
@@ -227,6 +234,7 @@ static BYTE *_es_copy_dword(BYTE *buf,DWORD value);
 static BYTE *_es_copy_uint64(BYTE *buf,ES_UINT64 value);
 static BYTE *_es_copy_size_t(BYTE *buf,SIZE_T value);
 static BOOL _es_check_color_param(const wchar_t *argv,DWORD *out_property_id);
+static BOOL _es_check_width_param(const wchar_t *argv,DWORD *out_property_id);
 static BOOL _es_check_column_param(const wchar_t *argv);
 static int _es_get_ipc_sort_type_from_property_id(DWORD property_id,int sort_ascending);
 static void _es_get_window_classname(wchar_buf_t *wcbuf);
@@ -298,9 +306,7 @@ static DWORD _es_ret = ES_ERROR_SUCCESS; // the return code from main()
 static const wchar_t *_es_command_line = 0;
 static BYTE _es_command_line_was_eq = 0; // -switch=value
 static BYTE _es_size_format = 1; // 0 = auto, 1=bytes, 2=kb
-static BYTE _es_date_format = 0; // display/export (set on query) date/time format 0 = system format, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
-static BYTE _es_display_date_format = 0; // display date/time format 0 = system format, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
-static BYTE _es_export_date_format = 0; // export date/time format 0 = default, 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc)
+static BYTE _es_date_format = 0; // display/export (set on query) date/time format 0 = (Use default), 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc), 4=system format
 static CHAR_INFO *_es_output_cibuf = 0;
 static int _es_output_cibuf_hscroll = 0;
 static WORD _es_output_color = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
@@ -345,7 +351,7 @@ static char _es_no_default_date_modified_column = 0; // EFU only
 static char _es_no_default_date_created_column = 0; // EFU only
 static char _es_no_default_attribute_column = 0; // EFU only
 static char _es_folder_append_path_separator = 0; // append a trailing '\\' at the end of folder path and names. -resolve based on export type; >0 == show; <0 == hide. 
-static char _es_newline_type = 0; // 0==CRLF, 1==LF, 2==NUL
+static char _es_newline_type = 0; // 0==CRLF, 1==LF, 2==NUL, 3=Nothing.
 static char _es_mode = _ES_MODE_SEARCH;
 static ES_UINT64 _es_from_journal_id = ES_UINT64_MAX; // resume journal from this journal-id
 static ES_UINT64 _es_from_change_id = ES_UINT64_MAX; // resume journal from this change-id
@@ -365,6 +371,7 @@ int es_pixels_to_characters_mul = 1; // default column widths in logical pixels 
 int es_pixels_to_characters_div = 5; // default column widths in logical pixels to characters
 
 // load unicode for windows 95/98
+// TODO: do this for x86 only
 HMODULE LoadUnicowsProc(void);
 
 extern FARPROC _PfnLoadUnicows = (FARPROC)&LoadUnicowsProc;
@@ -3621,6 +3628,25 @@ static void _es_output_line_end(int is_more)
 	}
 	else
 	{
+		// clear to end of line.
+
+		if (_es_output_is_char)
+		{
+		    CONSOLE_SCREEN_BUFFER_INFO csbi;
+		    COORD pos;
+		    DWORD count;
+			DWORD written;
+		    
+			GetConsoleScreenBufferInfo(_es_output_handle,&csbi);
+
+			pos = csbi.dwCursorPosition;
+
+			// how many cells remain on this line
+			count = csbi.dwSize.X - pos.X;
+
+			FillConsoleOutputAttribute(_es_output_handle,_es_default_attributes,count,pos,&written);
+		}
+
 		switch(_es_newline_type)
 		{
 			case 0:
@@ -3633,6 +3659,10 @@ static void _es_output_line_end(int is_more)
 				
 			case 2:
 				_es_output_noncell_wchar_string_n(L"\0",1);
+				break;
+				
+			case 3:
+				// nothing.
 				break;
 		}
 	}
@@ -5640,8 +5670,8 @@ static void _es_help(void)
 		"\r\n"
 		"   -size-format <format>\r\n"
 		"        0=auto, 1=Bytes, 2=KB, 3=MB.\r\n"
-		"   -date-format <format>, -export-date-format\r\n"
-		"        0=auto, 1=ISO-8601, 2=FILETIME, 3=ISO-8601(UTC)\r\n"
+		"   -date-format <format>\r\n"
+		"        0=auto, 1=ISO-8601, 2=FILETIME, 3=ISO-8601(UTC), 4=User Locale\r\n"
 		"\r\n"
 		"   -filename-color <color>\r\n"
 		"   -name-color <color>\r\n"
@@ -5989,7 +6019,7 @@ static int _es_main(void)
 
 					wchar_string_copy_wchar_string_n((wchar_t *)(((EVERYTHING_IPC_RUN_HISTORY *)_es_run_history_data)+1),argv_wcbuf.buf,argv_wcbuf.length_in_wchars);
 					
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					((EVERYTHING_IPC_RUN_HISTORY *)_es_run_history_data)->run_count = wchar_string_to_int(argv_wcbuf.buf);
 					_es_run_history_command = EVERYTHING_IPC_COPYDATA_SET_RUN_COUNTW;
@@ -6162,7 +6192,7 @@ static int _es_main(void)
 
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"highlight-color"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_highlight_color = wchar_string_to_int(argv_wcbuf.buf);
 
@@ -6360,7 +6390,7 @@ static int _es_main(void)
 
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"cp"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_cp = wchar_string_to_int(argv_wcbuf.buf);
 
@@ -6372,7 +6402,7 @@ static int _es_main(void)
 					int console_wide;
 					CONSOLE_SCREEN_BUFFER_INFO csbi;
 					
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					console_wide = wchar_string_to_int(argv_wcbuf.buf);
 					
@@ -6397,7 +6427,7 @@ static int _es_main(void)
 					int console_high;
 					CONSOLE_SCREEN_BUFFER_INFO csbi;
 					
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					console_high = wchar_string_to_int(argv_wcbuf.buf);
 					
@@ -6422,7 +6452,7 @@ static int _es_main(void)
 					int window_wide;
 					CONSOLE_SCREEN_BUFFER_INFO csbi;
 					
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					window_wide = wchar_string_to_int(argv_wcbuf.buf);
 					
@@ -6453,7 +6483,7 @@ static int _es_main(void)
 					int window_high;
 					CONSOLE_SCREEN_BUFFER_INFO csbi;
 					
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					window_high = wchar_string_to_int(argv_wcbuf.buf);
 					
@@ -6509,7 +6539,7 @@ static int _es_main(void)
 
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"file-name-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"file-name-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 
 					column_width_set(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6518,7 +6548,7 @@ static int _es_main(void)
 
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"name-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"name-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_NAME,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6527,7 +6557,7 @@ static int _es_main(void)
 
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"path-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"path-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_PATH,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6536,7 +6566,7 @@ static int _es_main(void)
 
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"extension-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"extension-wide")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"ext-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"ext-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_EXTENSION,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6545,7 +6575,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"size-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"size-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_SIZE,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6554,7 +6584,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"date-created-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"date-created-wide")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"dc-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"dc-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_DATE_CREATED,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6563,7 +6593,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"date-modified-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"date-modified-wide")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"dm-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"dm-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_DATE_MODIFIED,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6572,7 +6602,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"date-accessed-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"date-accessed-wide")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"da-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"da-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_DATE_ACCESSED,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6581,7 +6611,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"attributes-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"attributes-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_ATTRIBUTES,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6590,7 +6620,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"file-list-file-name-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"file-list-file-name-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_FILE_LIST_NAME,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6599,7 +6629,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"run-count-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"run-count-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_RUN_COUNT,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6608,7 +6638,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"date-run-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"date-run-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_DATE_RUN,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6617,7 +6647,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"date-recently-changed-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"date-recently-changed-wide")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"rc-width")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"rc-wide")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					column_width_set(EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED,wchar_string_to_int(argv_wcbuf.buf));
 
@@ -6668,7 +6698,7 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"locale-grouping"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_locale_grouping = wchar_string_to_int(argv_wcbuf.buf);
 
@@ -6695,7 +6725,7 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"locale-lzero"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_locale_lzero = wchar_string_to_int(argv_wcbuf.buf);
 
@@ -6704,7 +6734,7 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"locale-negnumber"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_locale_negnumber = wchar_string_to_int(argv_wcbuf.buf);
 
@@ -6713,7 +6743,7 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"size-format"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_size_format = wchar_string_to_int(argv_wcbuf.buf);
 
@@ -6722,18 +6752,9 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"date-format"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 
-					_es_display_date_format = wchar_string_to_int(argv_wcbuf.buf);
-
-					goto next_argv;
-				}
-							
-				if (_es_check_option_utf8_string(argv_wcbuf.buf,"export-date-format"))
-				{
-					_es_expect_command_argv(&argv_wcbuf);
-
-					_es_export_date_format = wchar_string_to_int(argv_wcbuf.buf);
+					_es_date_format = wchar_string_to_int(argv_wcbuf.buf);
 
 					goto next_argv;
 				}
@@ -7126,6 +7147,13 @@ static int _es_main(void)
 					goto next_argv;
 				}
 				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"default-header"))
+				{	
+					_es_header = 0; 
+
+					goto next_argv;
+				}
+				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"footer"))
 				{	
 					_es_footer = 1; 
@@ -7136,6 +7164,13 @@ static int _es_main(void)
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-footer"))
 				{	
 					_es_footer = -1; 
+
+					goto next_argv;
+				}
+				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"default-footer"))
+				{	
+					_es_footer = 0; 
 
 					goto next_argv;
 				}
@@ -7205,6 +7240,13 @@ static int _es_main(void)
 					goto next_argv;
 				}
 				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"default-folder-append-path-separator"))
+				{
+					_es_folder_append_path_separator = -1;
+
+					goto next_argv;
+				}
+				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"nul"))
 				{
 					_es_newline_type = 2;
@@ -7222,6 +7264,13 @@ static int _es_main(void)
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"crlf"))
 				{
 					_es_newline_type = 0;
+
+					goto next_argv;
+				}
+				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-new-line"))
+				{
+					_es_newline_type = 3;
 
 					goto next_argv;
 				}
@@ -7309,7 +7358,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"n")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"max-results")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_max_results = safe_size_from_uint64(wchar_string_to_uint64(argv_wcbuf.buf));
 
@@ -7318,7 +7367,7 @@ static int _es_main(void)
 				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"o")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"offset")))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_offset = safe_size_from_uint64(wchar_string_to_uint64(argv_wcbuf.buf));
 
@@ -7327,9 +7376,9 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"time-out"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
-					es_timeout = (DWORD)wchar_string_to_int(argv_wcbuf.buf);
+					es_timeout = wchar_string_to_dword(argv_wcbuf.buf);
 
 					goto next_argv;
 				}
@@ -7445,7 +7494,7 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"from-journal-id"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_from_journal_id = wchar_string_to_uint64(argv_wcbuf.buf);
 					
@@ -7459,7 +7508,7 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"from-change-id"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_from_change_id = wchar_string_to_uint64(argv_wcbuf.buf);
 					
@@ -7484,11 +7533,11 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"from-journal-pos"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_from_journal_id = wchar_string_to_uint64(argv_wcbuf.buf);
 					
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_from_change_id = wchar_string_to_uint64(argv_wcbuf.buf);
 					
@@ -7513,11 +7562,11 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"after-journal-pos"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_from_journal_id = wchar_string_to_uint64(argv_wcbuf.buf);
 					
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_from_change_id = wchar_string_to_uint64(argv_wcbuf.buf);
 					
@@ -7593,7 +7642,7 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"to-journal-id"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_to_journal_id = wchar_string_to_uint64(argv_wcbuf.buf);
 					
@@ -7607,7 +7656,7 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"to-change-id"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_to_change_id = wchar_string_to_uint64(argv_wcbuf.buf);
 					
@@ -7627,11 +7676,11 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"to-journal-pos"))
 				{
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_to_journal_id = wchar_string_to_uint64(argv_wcbuf.buf);
 					
-					_es_expect_command_argv(&argv_wcbuf);
+					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_to_change_id = wchar_string_to_uint64(argv_wcbuf.buf);
 					
@@ -7752,15 +7801,6 @@ static int _es_main(void)
 					goto exit;
 				}
 				
-				if (_es_check_color_param(argv_wcbuf.buf,&property_id))
-				{
-					_es_expect_command_argv(&argv_wcbuf);
-					
-					column_color_set(property_id,wchar_string_to_int(argv_wcbuf.buf));
-
-					goto next_argv;
-				}
-
 				if (_es_check_column_param(argv_wcbuf.buf))
 				{
 					goto next_argv;
@@ -7768,6 +7808,24 @@ static int _es_main(void)
 
 				if (_es_check_sorts(argv_wcbuf.buf))
 				{
+					goto next_argv;
+				}
+
+				if (_es_check_color_param(argv_wcbuf.buf,&property_id))
+				{
+					_es_expect_command_argv_int(&argv_wcbuf);
+					
+					column_color_set(property_id,wchar_string_to_int(argv_wcbuf.buf));
+
+					goto next_argv;
+				}
+
+				if (_es_check_width_param(argv_wcbuf.buf,&property_id))
+				{
+					_es_expect_command_argv_int(&argv_wcbuf);
+					
+					column_width_set(property_id,wchar_string_to_int(argv_wcbuf.buf));
+
 					goto next_argv;
 				}
 
@@ -7930,13 +7988,9 @@ next_argv:
 	}
 	
 	// setup export
+	// using a separate date format for display and export is too confusing for the end users.
 	if ((_es_export_type != _ES_EXPORT_TYPE_NONE) || (_es_export_type != _ES_EXPORT_TYPE_NOFORMAT))
 	{
-		// use export format, which might differ to the display format.
-		// for display we typically want YYYY-MM-DD
-		// for export we typically want raw filetimes.
-		_es_date_format = _es_export_date_format;
-		
 		// disable pause
 		if (_es_export_file != INVALID_HANDLE_VALUE)
 		{
@@ -7956,13 +8010,6 @@ next_argv:
 			_es_export_avail = _ES_EXPORT_BUF_SIZE;
 		}
 	}
-	else
-	{
-		// use display format, which might differ to the export format.
-		// for display we typically want YYYY-MM-DD
-		// for export we typically want raw filetimes.
-		_es_date_format = _es_display_date_format;
-	}		
 
 	// export BOM
 	if (_es_utf8_bom)
@@ -9478,7 +9525,8 @@ static void _es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf)
 		switch(_es_date_format)
 		{	
 			default:
-			case 0: // system format
+			case 0: // (Use default)
+			case 4: // system format
 			{
 				wchar_t dmybuf[256];
 				int dmyformat;
@@ -10145,6 +10193,42 @@ static void _es_expect_command_argv(wchar_buf_t *wcbuf)
 	}
 }
 
+// get an argument from the command line.
+// throws a fatal error if there was no command line argument.
+static void _es_expect_command_argv_int(wchar_buf_t *wcbuf)
+{
+	_es_expect_command_argv(wcbuf);
+	
+	if (!wcbuf->length_in_wchars)
+	{
+		es_fatal(ES_ERROR_EXPECTED_SWITCH_PARAMETER);
+	}
+	
+	{
+		const wchar_t *p;
+		
+		p = wcbuf->buf;
+	
+		// 0x
+		if ((*p == '0') && ((p[1] == 'x') || (p[1] == 'X')))
+		{
+			// hex.
+		}
+		else
+		{
+			if (*p == '-')
+			{
+				p++;
+			}
+	
+			if (!((*p >= '0') && (*p <= '9')))
+			{
+				_es_bad_switch_param("Invalid integer parameter: %S\n",wcbuf->buf);
+			}
+		}
+	}
+}
+
 // don't scroll on these keys.
 BOOL _es_is_valid_key(INPUT_RECORD *ir)
 {
@@ -10237,8 +10321,7 @@ static BOOL _es_save_settings_with_filename(const wchar_t *filename)
 		config_write_int(file_handle,"footer",_es_footer);
 		config_write_dword(file_handle,"timeout",es_timeout);
 		config_write_int(file_handle,"size_format",_es_size_format);
-		config_write_int(file_handle,"date_format",_es_display_date_format);
-		config_write_int(file_handle,"export_date_format",_es_export_date_format);
+		config_write_int(file_handle,"date_format",_es_date_format);
 		config_write_int(file_handle,"pause",_es_pause);
 		config_write_int(file_handle,"empty_search_help",_es_empty_search_help);
 		config_write_int(file_handle,"hide_empty_search_results",_es_hide_empty_search_results);
@@ -10437,7 +10520,7 @@ static BOOL _es_load_settings_with_filename(const wchar_t *filename)
 	
 	ret = FALSE;
 	
-	if (config_ini_open(&ini,filename,"ES"))
+	if (config_ini_open(&ini,filename,"es"))
 	{
 		{
 			wchar_buf_t sort_list_wcbuf;
@@ -10474,8 +10557,7 @@ static BOOL _es_load_settings_with_filename(const wchar_t *filename)
 		_es_footer = config_read_int(&ini,"footer",_es_footer);
 		es_timeout = config_read_dword(&ini,"timeout",es_timeout);
 		_es_size_format = config_read_int(&ini,"size_format",_es_size_format);
-		_es_display_date_format = config_read_int(&ini,"date_format",_es_display_date_format);
-		_es_export_date_format = config_read_int(&ini,"export_date_format",_es_export_date_format);
+		_es_date_format = config_read_int(&ini,"date_format",_es_date_format);
 		_es_pause = config_read_int(&ini,"pause",_es_pause);
 		_es_empty_search_help = config_read_int(&ini,"empty_search_help",_es_empty_search_help);
 		_es_hide_empty_search_results = config_read_int(&ini,"hide_empty_search_results",_es_hide_empty_search_results);
@@ -10625,7 +10707,7 @@ static BOOL _es_check_sorts(const wchar_t *argv)
 	argv_p = _es_parse_command_line_option_start(argv);
 	if (argv_p)
 	{
-		argv_p = wchar_string_parse_utf8_string(argv_p,"sort");
+		argv_p = wchar_string_parse_nocase_lowercase_ascii_string(argv_p,"sort");
 		if (argv_p)
 		{
 			wchar_buf_t sort_name_wcbuf;
@@ -10653,7 +10735,7 @@ static BOOL _es_check_sorts(const wchar_t *argv)
 					{
 						const wchar_t *match_p;
 						
-						match_p = wchar_string_parse_utf8_string(ascending_p + 1,"ascending");
+						match_p = wchar_string_parse_nocase_lowercase_ascii_string(ascending_p + 1,"ascending");
 						if (match_p)
 						{
 							if (!*match_p)
@@ -10666,7 +10748,7 @@ static BOOL _es_check_sorts(const wchar_t *argv)
 							}
 						}
 
-						match_p = wchar_string_parse_utf8_string(ascending_p + 1,"descending");
+						match_p = wchar_string_parse_nocase_lowercase_ascii_string(ascending_p + 1,"descending");
 						if (match_p)
 						{
 							if (!*match_p)
@@ -10684,7 +10766,7 @@ static BOOL _es_check_sorts(const wchar_t *argv)
 					{
 						const wchar_t *match_p;
 						
-						match_p = wchar_string_parse_utf8_string(ascending_p,"ascending");
+						match_p = wchar_string_parse_nocase_lowercase_ascii_string(ascending_p,"ascending");
 						if (match_p)
 						{
 							if (!*match_p)
@@ -10702,7 +10784,7 @@ static BOOL _es_check_sorts(const wchar_t *argv)
 					{
 						const wchar_t *match_p;
 						
-						match_p = wchar_string_parse_utf8_string(ascending_p,"descending");
+						match_p = wchar_string_parse_nocase_lowercase_ascii_string(ascending_p,"descending");
 						if (match_p)
 						{
 							if (!*match_p)
@@ -10885,7 +10967,7 @@ static BOOL _es_check_color_param(const wchar_t *argv,DWORD *out_property_id)
 			{
 				const wchar_t *match_p;
 				
-				match_p = wchar_string_parse_utf8_string(argv_p + 1,"color");
+				match_p = wchar_string_parse_nocase_lowercase_ascii_string(argv_p + 1,"color");
 				if (match_p)
 				{
 					if (!*match_p)
@@ -10902,7 +10984,84 @@ static BOOL _es_check_color_param(const wchar_t *argv,DWORD *out_property_id)
 			{
 				const wchar_t *match_p;
 				
-				match_p = wchar_string_parse_utf8_string(argv_p,"color");
+				match_p = wchar_string_parse_nocase_lowercase_ascii_string(argv_p,"color");
+				if (match_p)
+				{
+					if (!*match_p)
+					{
+						// found.
+						wchar_buf_copy_wchar_string_n(&property_name_wcbuf,property_name_start,argv_p - property_name_start);
+						
+						break;
+					}
+				}
+			}
+			
+			argv_p++;
+		}
+
+		if (property_name_wcbuf.length_in_wchars)
+		{
+			DWORD property_id;
+			
+			property_id = property_find(property_name_wcbuf.buf,_es_should_allow_property_system(property_name_wcbuf.buf));
+			if (property_id != EVERYTHING3_INVALID_PROPERTY_ID)
+			{
+				*out_property_id = property_id;
+				
+				ret = TRUE;
+			}
+		}
+
+		wchar_buf_kill(&property_name_wcbuf);
+	}
+
+	return ret;
+}
+
+static BOOL _es_check_width_param(const wchar_t *argv,DWORD *out_property_id)
+{
+	BOOL ret;
+	const wchar_t *argv_p;
+	
+	ret = FALSE;
+
+	argv_p = _es_parse_command_line_option_start(argv);
+	if (argv_p)
+	{
+		const wchar_t *property_name_start;
+		wchar_buf_t property_name_wcbuf;
+
+		property_name_start = argv_p;
+		wchar_buf_init(&property_name_wcbuf);
+	
+		// look for trailing -width or width.
+		// we don't have any property names ending with width.
+		// we have 'width' but this doesn't match below because the property name prefix would have a length of zero.
+		while(*argv_p)
+		{
+			if (*argv_p == '-')
+			{
+				const wchar_t *match_p;
+				
+				match_p = wchar_string_parse_nocase_lowercase_ascii_string(argv_p + 1,"width");
+				if (match_p)
+				{
+					if (!*match_p)
+					{
+						// found.
+						wchar_buf_copy_wchar_string_n(&property_name_wcbuf,property_name_start,argv_p - property_name_start);
+						
+						break;
+					}
+				}
+			}
+			else
+			if (*argv_p == 'c')
+			{
+				const wchar_t *match_p;
+				
+				match_p = wchar_string_parse_nocase_lowercase_ascii_string(argv_p,"width");
 				if (match_p)
 				{
 					if (!*match_p)
@@ -10958,7 +11117,7 @@ static BOOL _es_check_column_param(const wchar_t *argv)
 		else
 		{
 			// try no-<property-name>
-			argv_p = wchar_string_parse_utf8_string(argv_p,"no");
+			argv_p = wchar_string_parse_nocase_lowercase_ascii_string(argv_p,"no");
 			if (argv_p)
 			{
 				if (*argv_p == '-')
@@ -11254,7 +11413,7 @@ static void _es_set_sort_list(const wchar_t *sort_list,int allow_old_column_ids,
 					{
 						const wchar_t *match_p;
 						
-						match_p = wchar_string_parse_utf8_string(ascending_p + 1,"ascending");
+						match_p = wchar_string_parse_nocase_lowercase_ascii_string(ascending_p + 1,"ascending");
 						if (match_p)
 						{
 							if (!*match_p)
@@ -11267,7 +11426,7 @@ static void _es_set_sort_list(const wchar_t *sort_list,int allow_old_column_ids,
 							}
 						}
 
-						match_p = wchar_string_parse_utf8_string(ascending_p + 1,"descending");
+						match_p = wchar_string_parse_nocase_lowercase_ascii_string(ascending_p + 1,"descending");
 						if (match_p)
 						{
 							if (!*match_p)
@@ -11952,7 +12111,13 @@ static void _es_output_pause(DWORD ipc_version,const void *data)
 			
 				// reposition the pool stream to the current start index.
 				// if this isn't cached, we will read from the pipe stream, find the correct offset and cache the result.
-				ipc3_result_list_seek_to_offset_from_index((ipc3_result_list_t *)data,start_index);
+				//
+				// don't bother seeking if there's no results.
+				// _es_output_ipc3_results won't print any results if there's none.
+				if (((ipc3_result_list_t *)data)->viewport_count)
+				{
+					ipc3_result_list_seek_to_offset_from_index((ipc3_result_list_t *)data,start_index);
+				}
 				
 				_es_output_ipc3_results((ipc3_result_list_t *)data,start_index,_es_console_window_high-1);
 				break;

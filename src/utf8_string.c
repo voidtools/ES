@@ -184,6 +184,33 @@ const ES_UTF8 *utf8_string_parse_utf8_string(const ES_UTF8 *s,const ES_UTF8 *sea
 	return p1;
 }
 
+const ES_UTF8 *utf8_string_parse_ascii_string_nocase(const ES_UTF8 *s,const char *lowercase_case_ascii_search)
+{
+	const ES_UTF8 *p1;
+	const ES_UTF8 *p2;
+	
+	p1 = s;
+	p2 = lowercase_case_ascii_search;
+	
+	while(*p2)
+	{
+		if (*p1 & 0x80)
+		{
+			return NULL;
+		}
+		
+		if (unicode_ascii_to_lower(*p1) != *p2)
+		{
+			return NULL;
+		}
+		
+		p1++;
+		p2++;
+	}
+	
+	return p1;
+}
+
 // compare two UTF-8 strings
 // returns -1 if a < b
 // returns 1 if a > b

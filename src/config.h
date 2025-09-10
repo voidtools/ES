@@ -47,5 +47,5 @@ int config_read_int(config_ini_t *ini,const ES_UTF8 *name,int default_value);
 DWORD config_read_dword(config_ini_t *ini,const ES_UTF8 *name,DWORD default_value);
 ES_UINT64 config_read_uint64(config_ini_t *ini,const ES_UTF8 *name,ES_UINT64 default_value);
 
-BOOL config_ini_open(config_ini_t *ini,const wchar_t *filename,const ES_UTF8 *section);
+BOOL config_ini_open(config_ini_t *ini,const wchar_t *filename,const char *lowercase_ascii_section);
 void config_ini_close(config_ini_t *ini);

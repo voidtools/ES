@@ -346,7 +346,7 @@ static BOOL _config_ini_get_line(config_ini_t *ini)
 
 // open an ini file, find the specified section and read all the keyvalue pairs.
 // the keyvalue pairs are stored in ini.
-BOOL config_ini_open(config_ini_t *ini,const wchar_t *filename,const ES_UTF8 *section)
+BOOL config_ini_open(config_ini_t *ini,const wchar_t *filename,const char *lowercase_ascii_section)
 {
 	BOOL ret;
 	HANDLE file_handle;
@@ -391,7 +391,7 @@ BOOL config_ini_open(config_ini_t *ini,const wchar_t *filename,const ES_UTF8 *se
 						{
 							const ES_UTF8 *match_p;
 							
-							match_p = utf8_string_parse_utf8_string(ini->key + 1,section);
+							match_p = utf8_string_parse_ascii_string_nocase(ini->key + 1,lowercase_ascii_section);
 							if (match_p)
 							{
 								if (*match_p == ']')

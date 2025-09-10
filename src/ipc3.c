@@ -1504,6 +1504,7 @@ void ipc3_result_list_seek_to_offset_from_index(ipc3_result_list_t *result_list,
 }
 
 // fill in a buffer with a VLQ value and progress the buffer pointer.
+// buf can be NULL to calculate the length.
 BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value)
 {
 	BYTE *d;
