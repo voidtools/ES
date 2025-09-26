@@ -195,6 +195,7 @@ void array_insert(array_t *a,SIZE_T insertion_index,void *item)
 }
 
 // returns a pointer to the item if found and removes it from the array.
+// returns NULL if the item is not found.
 // caller should free the returned item.
 void *array_remove(array_t *a,int (*compare_proc)(const void *a,const void *b),const void *compare_data)
 {

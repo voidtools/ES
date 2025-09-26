@@ -364,6 +364,7 @@ ES_UINT64 ipc3_stream_tell(ipc3_stream_t *stream);
 BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value);
 DWORD ipc3_find_property(const wchar_t *search);
 BOOL ipc3_get_property_canonical_name(DWORD property_id,utf8_buf_t *out_cbuf);
+BOOL ipc3_get_property_localized_name(DWORD property_id,utf8_buf_t *out_cbuf);
 BOOL ipc3_is_property_right_aligned(DWORD property_id);
 BOOL ipc3_is_property_sort_descending(DWORD property_id);
 int ipc3_get_property_default_width(DWORD property_id);

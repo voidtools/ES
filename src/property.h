@@ -87,11 +87,11 @@ enum
 	PROPERTY_FORMAT_DATA128, // data
 	PROPERTY_FORMAT_DATA256, // data
 	PROPERTY_FORMAT_DATA512, // data
-	PROPERTY_FORMAT_FORMATED_TEXT8, // formatted 8 characters
-	PROPERTY_FORMAT_FORMATED_TEXT12, // formatted 12 characters
-	PROPERTY_FORMAT_FORMATED_TEXT16, // formatted 16 characters
-	PROPERTY_FORMAT_FORMATED_TEXT24, // formatted 30 characters
-	PROPERTY_FORMAT_FORMATED_TEXT32, // formatted 30 characters
+	PROPERTY_FORMAT_FORMATTED_TEXT8, // formatted 8 characters
+	PROPERTY_FORMAT_FORMATTED_TEXT12, // formatted 12 characters
+	PROPERTY_FORMAT_FORMATTED_TEXT16, // formatted 16 characters
+	PROPERTY_FORMAT_FORMATTED_TEXT24, // formatted 30 characters
+	PROPERTY_FORMAT_FORMATTED_TEXT32, // formatted 30 characters
 	PROPERTY_FORMAT_YESNO, // Yes/No
 	PROPERTY_FORMAT_PERCENT, // 100%
 	PROPERTY_FORMAT_COUNT,
@@ -109,6 +109,7 @@ typedef struct property_name_to_id_s
 BYTE property_get_format(DWORD property_id);
 BOOL property_is_right_aligned(DWORD property_id);
 void property_get_canonical_name(DWORD property_id,wchar_buf_t *out_wcbuf);
+void property_get_localized_name(DWORD property_id,wchar_buf_t *out_wcbuf);
 DWORD property_id_from_old_column_id(int i);
 DWORD property_find(const wchar_t *s,int allow_property_system);
 BOOL property_get_default_sort_ascending(DWORD property_id);

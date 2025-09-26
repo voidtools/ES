@@ -131,11 +131,14 @@ BOOL ipc3_write_pipe_data(HANDLE pipe_handle,const void *in_data,SIZE_T in_size)
 			}
 			else
 			{
+				// pipe EOF
 				return FALSE;
 			}
 		}
 		else
 		{
+			debug_error_printf("pipe WriteFile failed %u\n",GetLastError());
+		
 			return FALSE;
 		}
 	}
@@ -420,11 +423,14 @@ BOOL ipc3_read_pipe(HANDLE pipe_handle,void *buf,SIZE_T buf_size)
 			}
 			else
 			{
+				// pipe EOF
 				return FALSE;
 			}
 		}
 		else
 		{
+			debug_error_printf("pipe ReadFile failed %u\n",GetLastError());
+			
 			return FALSE;
 		}
 	}
@@ -465,9 +471,11 @@ BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size)
 // returns a pipe handle 
 // returns INVALID_HANDLE_VALUE if not pipe servers are available.
 // Sets last error.
-HANDLE ipc3_connect_pipe(void)
+// doesn't wait for the pipe server.
+// use the ipc window to handle timeouts.
+// Everything 1.5.0.1400 and later will create the ipc pipe server BEFORE the ipc window.
+HANDLE ipc3_connect_pipe()
 {
-	DWORD tickstart;
 	wchar_buf_t pipe_name_wcbuf;
 	wchar_buf_t window_class_wcbuf;
 	HANDLE pipe_handle;
@@ -475,45 +483,21 @@ HANDLE ipc3_connect_pipe(void)
 	wchar_buf_init(&pipe_name_wcbuf);
 	wchar_buf_init(&window_class_wcbuf);
 
-	tickstart = GetTickCount();
-
 	ipc3_get_pipe_name(&pipe_name_wcbuf);
 		
-	for(;;)
+	pipe_handle = CreateFile(pipe_name_wcbuf.buf,GENERIC_READ|GENERIC_WRITE,0,0,OPEN_EXISTING,0,0);
+
+	if (pipe_handle != INVALID_HANDLE_VALUE)
 	{
-		DWORD tick;
-		
-		pipe_handle = CreateFile(pipe_name_wcbuf.buf,GENERIC_READ|GENERIC_WRITE,0,0,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,0);
-		if (pipe_handle != INVALID_HANDLE_VALUE)
-		{
-			break;
-		}
-		
-		if (!es_timeout)
-		{
-			SetLastError(ERROR_PIPE_NOT_CONNECTED);
-	
-			// no pipe server.
-			break;
-		}
-		
-		tick = GetTickCount();
-		
-		if (tick - tickstart > es_timeout)
-		{
-			// no pipe server and timed out.
-			// do not timeout again.
-			es_timeout = 0;
-			
-			SetLastError(ERROR_PIPE_NOT_CONNECTED);
-
-			break;
-		}
-
-		// try again..
-		Sleep(10);
+		// connected
 	}
-	
+	else
+	{
+		debug_error_printf("Connect pipe CreateFile failed %u\n",GetLastError());
+		
+		SetLastError(ERROR_PIPE_NOT_CONNECTED);
+	}
+
 	wchar_buf_kill(&window_class_wcbuf);
 	wchar_buf_kill(&pipe_name_wcbuf);
 	
@@ -1683,6 +1667,29 @@ BOOL ipc3_get_property_canonical_name(DWORD property_id,utf8_buf_t *out_cbuf)
 	if (pipe_handle != INVALID_HANDLE_VALUE)
 	{
 		if (ipc3_ioctl_alloc_out(pipe_handle,IPC3_COMMAND_GET_PROPERTY_CANONICAL_NAME,&property_id,sizeof(DWORD),out_cbuf))
+		{
+			// found the property id.
+			ret = TRUE;
+		}
+
+		CloseHandle(pipe_handle);
+	}
+
+	return ret;
+}
+
+// out_cbuf is NOT NULL terminated.
+BOOL ipc3_get_property_localized_name(DWORD property_id,utf8_buf_t *out_cbuf)
+{
+	BOOL ret;
+	HANDLE pipe_handle;
+
+	ret = FALSE;
+	
+	pipe_handle = ipc3_connect_pipe();
+	if (pipe_handle != INVALID_HANDLE_VALUE)
+	{
+		if (ipc3_ioctl_alloc_out(pipe_handle,IPC3_COMMAND_GET_PROPERTY_NAME,&property_id,sizeof(DWORD),out_cbuf))
 		{
 			// found the property id.
 			ret = TRUE;

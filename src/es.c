@@ -25,10 +25,12 @@
 //
 
 // Everything command line interface via IPC.
+//
+// TODO:
 // [HIGH] json should only print the trailing , at the start of a non-first line and the terminating ] should always be added when using read journal mode.
 // [HIGH] c# cmdlet for powershell.
-// Maybe a configurable prompt, so the "current" (bottom-most) line, total count of results. -footer?
-// Index Journal API
+// [HIGH] separate old-name and new-name filters when reading the journal.
+// request the correct display name for custom_property_0..custom_property_9.
 // export to clipboard (aka copy to clipboard)
 // add a -max-path option. (limit paths to 259 chars -use shortpaths if we exceed.)
 // add a -short-full-path option.
@@ -55,6 +57,11 @@
 // [23/72]:
 // emulate LESS
 // custom date/time format. eg: dd/MM/yy
+//
+// NOTES:
+// ScrollConsoleScreenBuffer is unuseable because it fills invalidated areas, which causes unnecessary flickering.
+//
+// CHANGES:
 // 1.1.0.30
 // *-length=12m syntax.
 // *-error-on-no-results alias
@@ -86,9 +93,14 @@
 // *simplify -date-format -remove -export-date-format
 // *if a line ends with a background color, and the next line is short, the next line will use the background color from above for the rest of the line.
 // *check column widths -width-width 5 -length-width 5
-
-// NOTES:
-// ScrollConsoleScreenBuffer is unuseable because it fills invalidated areas, which causes unnecessary flickering.
+// *fixed an issue with -pause when there is no results.
+// 1.1.0.33
+// *cleaned up /a dir style commands, had P for sparse, which no longer exists.
+// *show help when there's no arguments, no export type and output to console. -added help_on_no_args option.
+// *run count 0xffffffff is a valid value and should be displayed.
+// *fixed an issue with -ah (was adding to exclude list and doubling up include only list)
+// *fixed a long timeout delay when using Everything 1.4.
+// *fixed an issue with timeout not waiting for the db to load.
 
 #include "es.h"
 
@@ -242,7 +254,7 @@ static void _es_get_folder_size(const wchar_t *filename);
 static void _es_get_reply_window(void);
 static BOOL _es_load_settings_with_filename(const wchar_t *filename);
 static BOOL _es_load_settings_with_appdata(int is_appdata);
-static void _es_get_nice_property_name(DWORD property_id,wchar_buf_t *out_wcbuf);
+static void _es_get_localized_property_name(DWORD property_id,wchar_buf_t *out_wcbuf);
 static void _es_get_nice_json_property_name(DWORD property_id,wchar_buf_t *out_wcbuf);
 static void _es_escape_json_wchar_string(const wchar_t *s,wchar_buf_t *out_wcbuf);
 static void _es_set_sort_list(const wchar_t *sort_list,int allow_old_column_ids,int die_on_bad_value);
@@ -319,7 +331,8 @@ static int _es_console_size_high = 25;
 static int _es_console_window_x = 0;
 static int _es_console_window_y = 0;
 static char _es_pause = 0; 
-static char _es_empty_search_help = 0;
+static char _es_help_on_no_args = 1; // show help if there's no arguments (and output is to the console with no formatting)
+static char _es_empty_search_help = 0; // we always show help if there's no arguments, this setting, when enabled, will show help when theres arguments, but no search.
 static char _es_hide_empty_search_results = 0;
 static char _es_save = 0;
 static HWND _es_everything_hwnd = 0;
@@ -371,7 +384,8 @@ int es_pixels_to_characters_mul = 1; // default column widths in logical pixels 
 int es_pixels_to_characters_div = 5; // default column widths in logical pixels to characters
 
 // load unicode for windows 95/98
-// TODO: do this for x86 only
+#ifdef ES_X86
+
 HMODULE LoadUnicowsProc(void);
 
 extern FARPROC _PfnLoadUnicows = (FARPROC)&LoadUnicowsProc;
@@ -393,6 +407,8 @@ HMODULE LoadUnicowsProc(void)
 	
 	return NULL;
 }
+
+#endif
 
 // query everything with search string
 static BOOL _es_ipc1_query(void)
@@ -754,6 +770,7 @@ static BOOL _es_ipc3_query(void)
 
 		if (_es_get_total_size)
 		{
+			// request total size for output.
 			search_flags |= IPC3_SEARCH_FLAG_TOTAL_SIZE;
 
 			// we don't need any results.
@@ -765,6 +782,7 @@ static BOOL _es_ipc3_query(void)
 		
 		if (_es_footer > 0)
 		{
+			// request total size for footer.
 			search_flags |= IPC3_SEARCH_FLAG_TOTAL_SIZE;
 		}
 		
@@ -786,11 +804,11 @@ static BOOL _es_ipc3_query(void)
 
 		// sort
 		packet_size = safe_size_add(packet_size,(SIZE_T)ipc3_copy_len_vlq(NULL,search_sort_count));
-		packet_size = safe_size_add(packet_size,search_sort_count * sizeof(ipc3_search_sort_t));
+		packet_size = safe_size_add(packet_size,safe_size_mul(search_sort_count,sizeof(ipc3_search_sort_t)));
 
 		// property request 
 		packet_size = safe_size_add(packet_size,(SIZE_T)ipc3_copy_len_vlq(NULL,search_property_request_count));
-		packet_size = safe_size_add(packet_size,search_property_request_count * sizeof(ipc3_search_property_request_t));
+		packet_size = safe_size_add(packet_size,safe_size_mul(search_property_request_count,sizeof(ipc3_search_property_request_t)));
 		
 		// allocate packet.
 		utf8_buf_grow_size(&packet_cbuf,packet_size);
@@ -864,11 +882,11 @@ static BOOL _es_ipc3_query(void)
 							case PROPERTY_FORMAT_TEXT48:
 							case PROPERTY_FORMAT_TEXT64:
 							case PROPERTY_FORMAT_EXTENSION:
-							case PROPERTY_FORMAT_FORMATED_TEXT8:
-							case PROPERTY_FORMAT_FORMATED_TEXT12:
-							case PROPERTY_FORMAT_FORMATED_TEXT16:
-							case PROPERTY_FORMAT_FORMATED_TEXT24:
-							case PROPERTY_FORMAT_FORMATED_TEXT32:
+							case PROPERTY_FORMAT_FORMATTED_TEXT8:
+							case PROPERTY_FORMAT_FORMATTED_TEXT12:
+							case PROPERTY_FORMAT_FORMATTED_TEXT16:
+							case PROPERTY_FORMAT_FORMATTED_TEXT24:
+							case PROPERTY_FORMAT_FORMATTED_TEXT32:
 								property_request_flags |= IPC3_SEARCH_PROPERTY_REQUEST_FLAG_HIGHLIGHT;
 								break;
 						}
@@ -880,11 +898,11 @@ static BOOL _es_ipc3_query(void)
 					// eg: file-signature: a integer value of 10 = image/png
 					switch(property_get_format(column->property_id))
 					{
-						case PROPERTY_FORMAT_FORMATED_TEXT8:
-						case PROPERTY_FORMAT_FORMATED_TEXT12:
-						case PROPERTY_FORMAT_FORMATED_TEXT16:
-						case PROPERTY_FORMAT_FORMATED_TEXT24:
-						case PROPERTY_FORMAT_FORMATED_TEXT32:
+						case PROPERTY_FORMAT_FORMATTED_TEXT8:
+						case PROPERTY_FORMAT_FORMATTED_TEXT12:
+						case PROPERTY_FORMAT_FORMATTED_TEXT16:
+						case PROPERTY_FORMAT_FORMATTED_TEXT24:
+						case PROPERTY_FORMAT_FORMATTED_TEXT32:
 							// maybe an option to export raw values?
 							property_request_flags |= IPC3_SEARCH_PROPERTY_REQUEST_FLAG_FORMAT;
 							break;
@@ -3508,7 +3526,7 @@ static void _es_output_header(void)
 	{
 		_es_output_cell_separator();
 
-		_es_get_nice_property_name(_es_output_column->property_id,&property_name_wcbuf);
+		_es_get_localized_property_name(_es_output_column->property_id,&property_name_wcbuf);
 
 		// no quotes
 		// never highlight.
@@ -3970,7 +3988,9 @@ static void _es_output_ipc2_results(EVERYTHING_IPC_LIST2 *list,SIZE_T index_star
 							// align data.
 							os_copy_memory(&value,data,sizeof(DWORD));
 
-							_es_output_cell_number_property(value,ES_DWORD_MAX,TRUE);
+							// run count doesn't have an unknown value.
+							// use ES_UINT64_MAX which will never match a DWORD.
+							_es_output_cell_number_property(value,ES_UINT64_MAX,TRUE);
 						}
 						
 						break;		
@@ -4287,8 +4307,20 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 
 								{
 									DWORD dword_value;
+									ES_UINT64 unknown_value;
 
 									ipc3_stream_read_data(stream,&dword_value,sizeof(DWORD));
+									
+									if (_es_output_column->property_id == EVERYTHING3_PROPERTY_ID_RUN_COUNT)
+									{
+										// run count doesn't have an unknown value.
+										// use ES_UINT64_MAX which will never match a DWORD.
+										unknown_value = ES_UINT64_MAX;
+									}
+									else
+									{
+										unknown_value = ES_DWORD_MAX;
+									}
 									
 									switch(property_get_format(_es_output_column->property_id))
 									{
@@ -4301,7 +4333,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										case PROPERTY_FORMAT_NOGROUPING_NUMBER3:
 										case PROPERTY_FORMAT_NOGROUPING_NUMBER4:
 										case PROPERTY_FORMAT_NOGROUPING_NUMBER5:
-											_es_output_cell_number_property(dword_value,ES_DWORD_MAX,FALSE);
+											_es_output_cell_number_property(dword_value,unknown_value,FALSE);
 											break;
 
 										case PROPERTY_FORMAT_GROUPING_NUMBER2:
@@ -4310,7 +4342,8 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										case PROPERTY_FORMAT_GROUPING_NUMBER5:
 										case PROPERTY_FORMAT_GROUPING_NUMBER6:
 										case PROPERTY_FORMAT_GROUPING_NUMBER7:
-											_es_output_cell_number_property(dword_value,ES_DWORD_MAX,TRUE);
+											
+											_es_output_cell_number_property(dword_value,unknown_value,TRUE);
 											break;
 										
 										case PROPERTY_FORMAT_HEX_NUMBER8:
@@ -4318,15 +4351,15 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 											break;
 											
 										case PROPERTY_FORMAT_KBPS:
-											_es_output_cell_kbps_property(dword_value,ES_DWORD_MAX);
+											_es_output_cell_kbps_property(dword_value,unknown_value);
 											break;
 											
 										case PROPERTY_FORMAT_KHZ:
-											_es_output_cell_khz_property(dword_value,ES_DWORD_MAX);
+											_es_output_cell_khz_property(dword_value,unknown_value);
 											break;
 											
 										case PROPERTY_FORMAT_FIXED_Q1K:
-											_es_output_cell_fixed_q1k_property(dword_value,ES_DWORD_MAX,0);
+											_es_output_cell_fixed_q1k_property(dword_value,unknown_value,0);
 											break;
 											
 										case PROPERTY_FORMAT_TIME:
@@ -5542,7 +5575,7 @@ static void _es_help(void)
 		"        Folders only.\r\n"
 		"   /a-d\r\n"
 		"        Files only.\r\n"
-		"   /a[RHSDAVNTPLCOIE]\r\n"
+		"   /a[RHSDAVNTPLCOIEUPM]\r\n"
 		"        DIR style attributes search.\r\n"
 		"        R = Read only.\r\n"
 		"        H = Hidden.\r\n"
@@ -5553,7 +5586,6 @@ static void _es_help(void)
 		"        X = No scrub data.\r\n"
 		"        N = Normal.\r\n"
 		"        T = Temporary.\r\n"
-		"        P = Sparse file.\r\n"
 		"        L = Reparse point.\r\n"
 		"        C = Compressed.\r\n"
 		"        O = Offline.\r\n"
@@ -5567,7 +5599,7 @@ static void _es_help(void)
 		"\r\n"
 		"Sort options\r\n"
 		"   -s\r\n"
-		"        sort by full path.\r\n"
+		"        Sort by full path.\r\n"
 		"   -sort <name[-ascending|-descending]>\r\n"
 		"        Set sort\r\n"
 		"        name=name|path|size|extension|date-created|date-modified|date-accessed|\r\n"
@@ -5647,13 +5679,13 @@ static void _es_help(void)
 		"   -date-modified, -dm\r\n"
 		"   -date-accessed, -da\r\n"
 		"   -attributes, -attribs, -attrib\r\n"
-		"   -file-list-file-name\r\n"
+		"   -filelist-filename\r\n"
 		"   -run-count\r\n"
 		"   -date-run\r\n"
 		"   -date-recently-changed, -rc\r\n"
 		"   -add-columns <property-name;property-name2;...>\r\n"
 		"        Show the specified column.\r\n"
-		"        \r\n"
+		"\r\n"
 		"   -highlight\r\n"
 		"        Highlight results.\r\n"
 		"   -highlight-color <color>\r\n"
@@ -5661,11 +5693,11 @@ static void _es_help(void)
 		"\r\n"
 		"   -csv\r\n"
 		"   -efu\r\n"
-		"   -txt\r\n"
+		"   -json\r\n"
 		"   -m3u\r\n"
 		"   -m3u8\r\n"
 		"   -tsv\r\n"
-		"   -json\r\n"
+		"   -txt\r\n"
 		"        Change display format.\r\n"
 		"\r\n"
 		"   -size-format <format>\r\n"
@@ -5686,7 +5718,7 @@ static void _es_help(void)
 		"   -run-count-color <color>\r\n"
 		"   -date-run-color <color>\r\n"
 		"   -date-recently-changed-color <color>, -rc-color <color>\r\n"
-		"   -set-column-colors <property-name=color;property-name2=color;...>\r\n"
+		"   -add-column-colors <property-name=color;property-name2=color;...>\r\n"
 		"        Set the column color 0x00-0xff.\r\n"
 		"\r\n"
 		"   -filename-width <width>\r\n"
@@ -5702,7 +5734,7 @@ static void _es_help(void)
 		"   -run-count-width <width>\r\n"
 		"   -date-run-width <width>\r\n"
 		"   -date-recently-changed-width <width>, -rc-width <width>\r\n"
-		"   -set-column-widths <property-name=width;property-name2=width;...>\r\n"
+		"   -add-column-widths <property-name=width;property-name2=width;...>\r\n"
 		"        Set the column width 0-65535.\r\n"
 		"\r\n"
 		"   -no-digit-grouping\r\n"
@@ -5714,11 +5746,11 @@ static void _es_help(void)
 		"Export options\r\n"
 		"   -export-csv <out.csv>\r\n"
 		"   -export-efu <out.efu>\r\n"
-		"   -export-txt <out.txt>\r\n"
+		"   -export-json <out.json>\r\n"
 		"   -export-m3u <out.m3u>\r\n"
 		"   -export-m3u8 <out.m3u8>\r\n"
 		"   -export-tsv <out.txt>\r\n"
-		"   -export-json <out.json>\r\n"
+		"   -export-txt <out.txt>\r\n"
 		"        Export to a file using the specified layout.\r\n"
 		"   -no-header\r\n"
 		"        Do not output a column header for CSV, EFU and TSV files.\r\n"
@@ -5738,28 +5770,29 @@ static void _es_help(void)
 		"        Use IPC version 1, 2 or 3.\r\n"
 		"   -pause, -more\r\n"
 		"        Pause after each page of output.\r\n"
-		"   -hide-empty-search-results\r\n"
-		"        Don't show any results when there is no search.\r\n"
-		"   -empty-search-help\r\n"
-		"        Show help when no search is specified.\r\n"
 		"   -timeout <milliseconds>\r\n"
 		"        Timeout after the specified number of milliseconds to wait for\r\n"
 		"        the Everything database to load before sending a query.\r\n"
-		"        \r\n"
+		"\r\n"
 		"   -set-run-count <filename> <count>\r\n"
 		"        Set the run count for the specified filename.\r\n"
 		"   -inc-run-count <filename>\r\n"
 		"        Increment the run count for the specified filename by one.\r\n"
 		"   -get-run-count <filename>\r\n"
 		"        Display the run count for the specified filename.\r\n"
+		"\r\n"
 		"   -get-result-count\r\n"
 		"        Display the result count for the specified search.\r\n"
 		"   -get-total-size\r\n"
 		"        Display the total result size for the specified search.\r\n"
 		"   -get-folder-size <filename>\r\n"
 		"        Display the total folder size for the specified filename.\r\n"
-		"   -save-settings, -clear-settings\r\n"
-		"        Save or clear settings.\r\n"
+		"\r\n"
+		"   -save-settings\r\n"
+		"        Save settings to %APPDATA%\\voidtools\\es\\es.ini\r\n"
+		"   -clear-settings\r\n"
+		"        Delete %APPDATA%\\voidtools\\es\\es.ini\r\n"
+		"\r\n"
 		"   -version\r\n"
 		"        Display ES major.minor.revision.build version and exit.\r\n"
 		"   -get-everything-version\r\n"
@@ -5779,9 +5812,10 @@ static void _es_help(void)
 		"\r\n"
 		"Notes \r\n"
 		"    Internal -'s in options can be omitted, eg: -nodigitgrouping\r\n"
-		"    Switches can also start with a /\r\n"
+		"    Switches can start with a / instead of -\r\n"
 		"    Use double quotes to escape spaces and switches.\r\n"
 		"    Switches can be disabled by prefixing them with no-, eg: -no-size.\r\n"
+		"    -instance=1.5a is the same as -instance 1.5a\r\n"
 		"    Use a ^ prefix or wrap with double quotes (\") to escape \\ & | > < ^\r\n");
 }
 
@@ -6388,7 +6422,7 @@ static int _es_main(void)
 					goto next_argv;
 				}
 
-				if (_es_check_option_utf8_string(argv_wcbuf.buf,"cp"))
+				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"cp")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"code-page")))
 				{
 					_es_expect_command_argv_int(&argv_wcbuf);
 					
@@ -6456,23 +6490,30 @@ static int _es_main(void)
 					
 					window_wide = wchar_string_to_int(argv_wcbuf.buf);
 					
-					if (GetConsoleScreenBufferInfo(_es_output_handle,&csbi))
+					if (window_wide > 0)
 					{
-						SMALL_RECT small_rect;
-						
-						small_rect.Left = 0;
-						small_rect.Top = 0;
-						small_rect.Right = window_wide - 1;
-						small_rect.Bottom = csbi.srWindow.Bottom - csbi.srWindow.Top;
-						
-						if (SetConsoleWindowInfo(_es_output_handle,TRUE,&small_rect))
+						if (GetConsoleScreenBufferInfo(_es_output_handle,&csbi))
 						{
-							_es_console_window_wide = window_wide;
+							SMALL_RECT small_rect;
+							
+							small_rect.Left = 0;
+							small_rect.Top = 0;
+							small_rect.Right = window_wide - 1;
+							small_rect.Bottom = csbi.srWindow.Bottom - csbi.srWindow.Top;
+							
+							if (SetConsoleWindowInfo(_es_output_handle,TRUE,&small_rect))
+							{
+								_es_console_window_wide = window_wide;
+							}
+							else
+							{
+								debug_error_printf("SetConsoleWindowInfo failed %u\n",GetLastError());
+							}
 						}
-						else
-						{
-							debug_error_printf("SetConsoleWindowInfo failed %u\n",GetLastError());
-						}
+					}
+					else
+					{
+						_es_bad_switch_param("Invalid width: %d\n",window_wide);
 					}
 
 					goto next_argv;
@@ -6487,23 +6528,30 @@ static int _es_main(void)
 					
 					window_high = wchar_string_to_int(argv_wcbuf.buf);
 					
-					if (GetConsoleScreenBufferInfo(_es_output_handle,&csbi))
+					if (window_high > 0)
 					{
-						SMALL_RECT small_rect;
-						
-						small_rect.Left = 0;
-						small_rect.Top = 0;
-						small_rect.Right = csbi.srWindow.Right - csbi.srWindow.Left;
-						small_rect.Bottom = window_high - 1;
-						
-						if (SetConsoleWindowInfo(_es_output_handle,TRUE,&small_rect))
+						if (GetConsoleScreenBufferInfo(_es_output_handle,&csbi))
 						{
-							_es_console_window_high = window_high;
+							SMALL_RECT small_rect;
+							
+							small_rect.Left = 0;
+							small_rect.Top = 0;
+							small_rect.Right = csbi.srWindow.Right - csbi.srWindow.Left;
+							small_rect.Bottom = window_high - 1;
+							
+							if (SetConsoleWindowInfo(_es_output_handle,TRUE,&small_rect))
+							{
+								_es_console_window_high = window_high;
+							}
+							else
+							{
+								debug_error_printf("SetConsoleWindowInfo failed %u\n",GetLastError());
+							}
 						}
-						else
-						{
-							debug_error_printf("SetConsoleWindowInfo failed %u\n",GetLastError());
-						}
+					}
+					else
+					{
+						_es_bad_switch_param("Invalid height: %d\n",window_high);
 					}
 
 					goto next_argv;
@@ -6773,10 +6821,16 @@ static int _es_main(void)
 					goto next_argv;
 				}
 				
-				if (_es_check_option_utf8_string(argv_wcbuf.buf,"empty-search-help"))
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"help-on-no-args"))
 				{
-					_es_empty_search_help = 1;
-					_es_hide_empty_search_results = 0;
+					_es_help_on_no_args = 1;
+
+					goto next_argv;
+				}
+				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-help-on-no-args"))
+				{
+					_es_help_on_no_args = 0;
 
 					goto next_argv;
 				}
@@ -6816,12 +6870,19 @@ static int _es_main(void)
 
 					wchar_buf_init(&ini_filename_wcbuf);
 					
+					// will probably fail with access denied.
+					// try anyway.
 					if (config_get_filename(0,0,&ini_filename_wcbuf))
 					{
 						DeleteFile(ini_filename_wcbuf.buf);
-
-						_es_output_noncell_utf8_string("Settings saved.\r\n");
 					}
+					
+					if (config_get_filename(1,0,&ini_filename_wcbuf))
+					{
+						DeleteFile(ini_filename_wcbuf.buf);
+					}
+
+					_es_output_noncell_utf8_string("Settings cleared.\r\n");
 					
 					wchar_buf_kill(&ini_filename_wcbuf);
 					
@@ -7829,14 +7890,19 @@ static int _es_main(void)
 					goto next_argv;
 				}
 
-				if (((argv_wcbuf.buf[0] == '-') || (argv_wcbuf.buf[0] == '/')) && (argv_wcbuf.buf[1] == 'a') && (argv_wcbuf.buf[2]))
+				if (((argv_wcbuf.buf[0] == '/') || (argv_wcbuf.buf[0] == '-')) && (argv_wcbuf.buf[1] == 'a') && (argv_wcbuf.buf[2]))
 				{
 					const wchar_t *p;
 					wchar_buf_t attrib_wcbuf;
 					wchar_buf_t notattrib_wcbuf;
 
+					// this conflicts with a lot of -axxx switches
+					// allow only /a style switch (DIR)
+					// don't allow -a
 					// don't match -attrib
 					// do this after adding columns.
+					//
+					// we allow -ad and a-d above.
 					wchar_buf_init(&attrib_wcbuf);
 					wchar_buf_init(&notattrib_wcbuf);
 					p = argv_wcbuf.buf + 2;
@@ -7870,14 +7936,12 @@ static int _es_main(void)
 							
 							if ((attrib_ch >= 'a') && (attrib_ch <= 'z'))
 							{
-								wchar_buf_cat_wchar(&notattrib_wcbuf,attrib_ch);
+								wchar_buf_cat_wchar(&attrib_wcbuf,attrib_ch);
 							}
 							else
 							{
 								_es_bad_switch_param("Unknown attribute: %C\n",attrib_ch);
 							}
-							
-							wchar_buf_cat_wchar(&attrib_wcbuf,attrib_ch);
 							
 							p++;
 						}
@@ -7968,6 +8032,38 @@ next_argv:
 				{
 					break;
 				}
+			}
+		}
+		else
+		{
+			// no arguments.
+			// no export type
+			// output to console.
+			// show help.
+			if ((_es_export_type == _ES_EXPORT_TYPE_NONE) && (_es_help_on_no_args))
+			{
+				if (_es_output_is_char)
+				{
+					_es_help();
+					
+					goto exit;
+				}
+			}
+		}
+	}
+	else
+	{
+		// no arguments.
+		// no export type
+		// output to console.
+		// show help.
+		if ((_es_export_type == _ES_EXPORT_TYPE_NONE) && (_es_help_on_no_args))
+		{
+			if (_es_output_is_char)
+			{
+				_es_help();
+				
+				goto exit;
 			}
 		}
 	}
@@ -8115,36 +8211,38 @@ next_argv:
 	{
 		case _ES_MODE_GET_EVERYTHING_VERSION:
 		
-			{
-				_es_everything_hwnd = _es_find_ipc_window();
-				
-				if (_es_everything_hwnd)
-				{
-					int major;
-					int minor;
-					int revision;
-					int build;
+			// handle timeout
+			_es_everything_hwnd = _es_find_ipc_window();
 
-					// wait for DB_IS_LOADED so we don't get 0 results
-					major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
-					minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
-					revision = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_REVISION,0);
-					build = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_BUILD_NUMBER,0);
-						
-					_es_output_noncell_printf("%u.%u.%u.%u\r\n",major,minor,revision,build);
-				}
-				else
-				{
-					es_fatal(ES_ERROR_NO_IPC);
-				}
-				
-				perform_search = 0;
+			if (_es_everything_hwnd)
+			{
+				int major;
+				int minor;
+				int revision;
+				int build;
+
+				// wait for DB_IS_LOADED so we don't get 0 results
+				major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
+				minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
+				revision = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_REVISION,0);
+				build = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_BUILD_NUMBER,0);
+					
+				_es_output_noncell_printf("%u.%u.%u.%u\r\n",major,minor,revision,build);
+			}
+			else
+			{
+				es_fatal(ES_ERROR_NO_IPC);
 			}
 			
+			perform_search = 0;
+				
 			break;	
 	
 		case _ES_MODE_LIST_PROPERTIES:
-		
+			
+			// handle timeout
+			_es_everything_hwnd = _es_find_ipc_window();
+
 			{
 				DWORD i;
 				wchar_buf_t property_name_wcbuf;
@@ -8177,8 +8275,6 @@ next_argv:
 					_es_output_noncell_printf("%S\r\n",indexes[i]);
 				}
 				
-				perform_search = 0;
-
 				// free
 				for(i=0;i<count;i++)
 				{
@@ -8190,9 +8286,15 @@ next_argv:
 				wchar_buf_kill(&property_name_wcbuf);
 			}
 			
+			perform_search = 0;
+
 			break;
 			
 		case _ES_MODE_GET_JOURNAL_ID:
+
+			// handle timeout
+			// we don't need the ipc window.
+			_es_everything_hwnd = _es_find_ipc_window();
 
 			{
 				ipc3_journal_info_t journal_info;
@@ -8222,6 +8324,10 @@ next_argv:
 			
 		case _ES_MODE_GET_JOURNAL_POS:
 
+			// handle timeout
+			// we don't need the ipc window.
+			_es_everything_hwnd = _es_find_ipc_window();
+			
 			{
 				ipc3_journal_info_t journal_info;
 				
@@ -8250,6 +8356,10 @@ next_argv:
 			
 		case _ES_MODE_READ_JOURNAL:
 		
+			// handle timeout
+			// we don't need the ipc window.
+			_es_everything_hwnd = _es_find_ipc_window();
+
 			{
 				ipc3_journal_info_t journal_info;
 				
@@ -8693,8 +8803,18 @@ retry_read_journal:
 			_es_primary_sort_ascending = 1;
 		}
 
+		// get the everything window.
+		// this will handle timeouts.
+		_es_everything_hwnd = _es_find_ipc_window();
+		
+		// try IPC3, ipc3 query will not block and
+		// will fail immediately.
+		// we don't need the ipc window for ipc3.
 		if (es_ipc_version & ES_IPC_VERSION_FLAG_IPC3)
 		{
+			// we know if the everything ipc window is created, then the pipe server is also created.
+			// ipc3_query will fail immediately.
+			// so this no longer blocks on Everything 1.4
 			if (_es_ipc3_query()) 
 			{
 				// success
@@ -8703,8 +8823,7 @@ retry_read_journal:
 				goto exit;
 			}
 		}
-
-		_es_everything_hwnd = _es_find_ipc_window();
+		
 		if (_es_everything_hwnd)
 		{
 			if (es_ipc_version & ES_IPC_VERSION_FLAG_IPC2)
@@ -8860,12 +8979,12 @@ static HWND _es_find_ipc_window(void)
 				int minor;
 				int is_db_loaded;
 				
-				major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
-				minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
+				major = (int)SendMessage(hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
+				minor = (int)SendMessage(hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
 				
 				if (((major == 1) && (minor >= 4)) || (major > 1))
 				{
-					is_db_loaded = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_LOADED,0);
+					is_db_loaded = (int)SendMessage(hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_LOADED,0);
 					
 					if (!is_db_loaded)
 					{
@@ -8933,12 +9052,12 @@ static void _es_wait_for_db_loaded(void)
 			int is_db_loaded;
 			
 			// wait for DB_IS_LOADED so we don't get 0 results
-			major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
-			minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
+			major = (int)SendMessage(hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
+			minor = (int)SendMessage(hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
 			
 			if (((major == 1) && (minor >= 4)) || (major > 1))
 			{
-				is_db_loaded = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_LOADED,0);
+				is_db_loaded = (int)SendMessage(hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_LOADED,0);
 				
 				if (is_db_loaded)
 				{
@@ -9002,14 +9121,14 @@ static void _es_wait_for_db_not_busy(void)
 			int minor;
 			
 			// wait for DB_IS_LOADED so we don't get 0 results
-			major = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
-			minor = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
+			major = (int)SendMessage(hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MAJOR_VERSION,0);
+			minor = (int)SendMessage(hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_GET_MINOR_VERSION,0);
 			
 			if (((major == 1) && (minor >= 4)) || (major > 1))
 			{
 				int is_busy;
 				
-				is_busy = (int)SendMessage(_es_everything_hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_BUSY,0);
+				is_busy = (int)SendMessage(hwnd,EVERYTHING_WM_IPC,EVERYTHING_IPC_IS_DB_BUSY,0);
 				
 				if (!is_busy)
 				{
@@ -10072,6 +10191,15 @@ static void _es_get_argv(wchar_buf_t *wcbuf)
 			d = wcbuf->buf;
 		}		
 	}
+	
+	// no arg, and last command line ?
+	if ((!wcbuf->length_in_wchars) && (!*p) && (!was_eq) && (!was_quote))
+	{
+		_es_command_line = NULL;
+		_es_command_line_was_eq = was_eq;
+		
+		return;
+	}
 
 	*d = 0;
 	_es_command_line = p;
@@ -10323,6 +10451,7 @@ static BOOL _es_save_settings_with_filename(const wchar_t *filename)
 		config_write_int(file_handle,"size_format",_es_size_format);
 		config_write_int(file_handle,"date_format",_es_date_format);
 		config_write_int(file_handle,"pause",_es_pause);
+		config_write_int(file_handle,"help_on_no_args",_es_help_on_no_args);
 		config_write_int(file_handle,"empty_search_help",_es_empty_search_help);
 		config_write_int(file_handle,"hide_empty_search_results",_es_hide_empty_search_results);
 		config_write_int(file_handle,"utf8_bom",_es_utf8_bom);
@@ -10559,6 +10688,7 @@ static BOOL _es_load_settings_with_filename(const wchar_t *filename)
 		_es_size_format = config_read_int(&ini,"size_format",_es_size_format);
 		_es_date_format = config_read_int(&ini,"date_format",_es_date_format);
 		_es_pause = config_read_int(&ini,"pause",_es_pause);
+		_es_help_on_no_args = config_read_int(&ini,"help_on_no_args",_es_help_on_no_args);
 		_es_empty_search_help = config_read_int(&ini,"empty_search_help",_es_empty_search_help);
 		_es_hide_empty_search_results = config_read_int(&ini,"hide_empty_search_results",_es_hide_empty_search_results);
 		_es_utf8_bom = config_read_int(&ini,"utf8_bom",_es_utf8_bom);
@@ -11131,6 +11261,12 @@ static BOOL _es_check_column_param(const wchar_t *argv)
 					ret = TRUE;
 					
 					column_remove(property_id);
+					
+					// don't auto-add the default filename column if user doesn't want it.
+					if (property_id == EVERYTHING3_PROPERTY_ID_PATH_AND_NAME)
+					{
+						_es_no_default_filename_column = 1;
+					}
 				}
 			}
 		}
@@ -11243,9 +11379,10 @@ static void _es_get_reply_window(void)
 	}
 }
 
-static void _es_get_nice_property_name(DWORD property_id,wchar_buf_t *out_wcbuf)
+// get the localized property name
+static void _es_get_localized_property_name(DWORD property_id,wchar_buf_t *out_wcbuf)
 {
-	property_get_canonical_name(property_id,out_wcbuf);
+	property_get_localized_name(property_id,out_wcbuf);
 }
 
 // property name without upper case and symbols converted to '_'
@@ -11257,7 +11394,8 @@ static void _es_get_nice_json_property_name(DWORD property_id,wchar_buf_t *out_w
 	
 	wchar_buf_empty(out_wcbuf);
 
-	_es_get_nice_property_name(property_id,&property_name_wcbuf);
+	// never localize for export.
+	property_get_canonical_name(property_id,&property_name_wcbuf);
 	
 	{
 		const wchar_t *p;
@@ -12070,6 +12208,17 @@ static void _es_output_pause(DWORD ipc_version,const void *data)
 	
 	std_input_handle = GetStdHandle(STD_INPUT_HANDLE);
 
+	// console size sanity
+	if (_es_console_window_wide < 1)
+	{
+		_es_console_window_wide = 80;
+	}
+
+	if (_es_console_window_high < 1)
+	{
+		_es_console_window_high = 1;
+	}
+
 	_es_output_cibuf = mem_alloc(_es_console_window_wide * sizeof(CHAR_INFO));
 	
 	// set cursor pos to the bottom of the screen
@@ -12852,6 +13001,16 @@ bad_date:
 static BOOL _es_should_allow_property_system(const wchar_t *name)
 {
 	if (wchar_string_parse_nocase_lowercase_ascii_string(name,"system."))
+	{
+		return TRUE;
+	}
+	
+	if (wchar_string_parse_nocase_lowercase_ascii_string(name,"property-system:"))
+	{
+		return TRUE;
+	}
+	
+	if (wchar_string_parse_nocase_lowercase_ascii_string(name,"propertysystem:"))
 	{
 		return TRUE;
 	}
