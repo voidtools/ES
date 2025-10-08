@@ -30,6 +30,9 @@
 // [HIGH] json should only print the trailing , at the start of a non-first line and the terminating ] should always be added when using read journal mode.
 // [HIGH] c# cmdlet for powershell.
 // [HIGH] separate old-name and new-name filters when reading the journal.
+// [HIGH] es -createfilelist
+// add a -filter switch.
+// ES -path should do a path lookup and throw an error if it doesn't exist.
 // request the correct display name for custom_property_0..custom_property_9.
 // export to clipboard (aka copy to clipboard)
 // add a -max-path option. (limit paths to 259 chars -use shortpaths if we exceed.)
