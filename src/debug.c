@@ -27,42 +27,44 @@
 
 #include "es.h"
 
-#ifdef _DEBUG
-
 // write some debug information to the console.
 void debug_printf(ES_UTF8 *format,...)
 {
-	va_list argptr;
-	wchar_buf_t wcbuf;
-	DWORD num_written;
-
-	va_start(argptr,format);
-	wchar_buf_init(&wcbuf);
-
-	wchar_buf_vprintf(&wcbuf,format,argptr);
-	
-	if (wcbuf.length_in_wchars <= ES_DWORD_MAX)
+	if (es_debug)
 	{
-		WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE),wcbuf.buf,(DWORD)wcbuf.length_in_wchars,&num_written,NULL);
-	}
+		va_list argptr;
+		wchar_buf_t wcbuf;
+		DWORD num_written;
 
-	wchar_buf_kill(&wcbuf);
-	va_end(argptr);
+		va_start(argptr,format);
+		wchar_buf_init(&wcbuf);
+
+		wchar_buf_vprintf(&wcbuf,format,argptr);
+		
+		if (wcbuf.length_in_wchars <= ES_DWORD_MAX)
+		{
+			WriteConsole(GetStdHandle(STD_ERROR_HANDLE),wcbuf.buf,(DWORD)wcbuf.length_in_wchars,&num_written,NULL);
+		}
+
+		wchar_buf_kill(&wcbuf);
+		va_end(argptr);
+	}
 }
 
 // write a debug error message to the console in Red text.
 void debug_error_printf(const ES_UTF8 *format,...)
 {
-	va_list argptr;
+	if (es_debug)
+	{
+		va_list argptr;
 
-	va_start(argptr,format);
+		va_start(argptr,format);
 
-	os_error_vprintf(format,argptr);
+		os_error_vprintf(format,argptr);
 
-	va_end(argptr);
+		va_end(argptr);
+	}
 }
-
-#endif
 
 // show a message and terminate the program.
 void DECLSPEC_NORETURN debug_fatal2(const ES_UTF8 *filename,int line,const ES_UTF8 *format,...)

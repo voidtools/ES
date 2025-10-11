@@ -470,7 +470,7 @@ BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size)
 // connect to Everything pipe server.
 // returns a pipe handle 
 // returns INVALID_HANDLE_VALUE if not pipe servers are available.
-// Sets last error.
+// Sets last error to ERROR_PIPE_NOT_CONNECTED on failure.
 // doesn't wait for the pipe server.
 // use the ipc window to handle timeouts.
 // Everything 1.5.0.1400 and later will create the ipc pipe server BEFORE the ipc window.
@@ -485,6 +485,8 @@ HANDLE ipc3_connect_pipe()
 
 	ipc3_get_pipe_name(&pipe_name_wcbuf);
 		
+retry:
+		
 	pipe_handle = CreateFile(pipe_name_wcbuf.buf,GENERIC_READ|GENERIC_WRITE,0,0,OPEN_EXISTING,0,0);
 
 	if (pipe_handle != INVALID_HANDLE_VALUE)
@@ -493,7 +495,19 @@ HANDLE ipc3_connect_pipe()
 	}
 	else
 	{
-		debug_error_printf("Connect pipe CreateFile failed %u\n",GetLastError());
+		DWORD last_error;
+		
+		last_error = GetLastError();
+		
+		debug_error_printf("Connect pipe %S CreateFile failed %u\n",pipe_name_wcbuf.buf,last_error);
+		
+		if (last_error == ERROR_PIPE_BUSY)
+		{
+			// try again..
+			Sleep(10);
+			
+			goto retry;
+		}
 		
 		SetLastError(ERROR_PIPE_NOT_CONNECTED);
 	}

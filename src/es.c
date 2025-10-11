@@ -30,7 +30,8 @@
 // [HIGH] json should only print the trailing , at the start of a non-first line and the terminating ] should always be added when using read journal mode.
 // [HIGH] c# cmdlet for powershell.
 // [HIGH] separate old-name and new-name filters when reading the journal.
-// [HIGH] es -createfilelist
+// [HIGH] es -createfilelist -need filename filters -need semicolon delimited list parser.
+// review showing help when theres no arguments, i want ES to behave like DIR, DIR doesn't show help on no args (but DIR generally only prints a few files, -maybe we could cheat and only print the last page of results when outputing to the console?)
 // add a -filter switch.
 // ES -path should do a path lookup and throw an error if it doesn't exist.
 // request the correct display name for custom_property_0..custom_property_9.
@@ -104,6 +105,12 @@
 // *fixed an issue with -ah (was adding to exclude list and doubling up include only list)
 // *fixed a long timeout delay when using Everything 1.4.
 // *fixed an issue with timeout not waiting for the db to load.
+// 1.1.0.34
+// *output is truncated when highlighting and redirecting output to a file.
+// *aspect ratio formatting like Everything.
+// *es will now automatically retry when the ipc3 pipe server is busy.
+// *added a debug mode. -debug
+// *reverted show help when there's no arguments. I want DIR behavior. DIR + no args == show the whole folder, ES + no args = show the whole index.
 
 #include "es.h"
 
@@ -194,6 +201,7 @@ static void _es_output_cell_exposure_bias_property(__int32 value);
 static void _es_output_cell_bcps_property(__int32 value);
 static void _es_output_cell_small_number_property_with_suffix(ES_UINT64 value,ES_UINT64 empty_value,const ES_UTF8 *suffix);
 static void _es_output_cell_dimensions_property(EVERYTHING3_DIMENSIONS *dimensions_value);
+static void _es_output_cell_aspect_ratio_property(DWORD value);
 static void _es_output_cell_data_property(const BYTE *data,SIZE_T size);
 static void _es_output_cell_separator(void);
 static void _es_output_noncell_wchar_string(const wchar_t *text);
@@ -322,6 +330,7 @@ static const wchar_t *_es_command_line = 0;
 static BYTE _es_command_line_was_eq = 0; // -switch=value
 static BYTE _es_size_format = 1; // 0 = auto, 1=bytes, 2=kb
 static BYTE _es_date_format = 0; // display/export (set on query) date/time format 0 = (Use default), 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc), 4=system format
+static BYTE _es_aspect_ratio_format = 0; // 0=16:9, 1=1.777
 static CHAR_INFO *_es_output_cibuf = 0;
 static int _es_output_cibuf_hscroll = 0;
 static WORD _es_output_color = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
@@ -334,7 +343,7 @@ static int _es_console_size_high = 25;
 static int _es_console_window_x = 0;
 static int _es_console_window_y = 0;
 static char _es_pause = 0; 
-static char _es_help_on_no_args = 1; // show help if there's no arguments (and output is to the console with no formatting)
+static char _es_help_on_no_args = 0; // show help if there's no arguments (and output is to the console with no formatting)
 static char _es_empty_search_help = 0; // we always show help if there's no arguments, this setting, when enabled, will show help when theres arguments, but no search.
 static char _es_hide_empty_search_results = 0;
 static char _es_save = 0;
@@ -383,6 +392,11 @@ static char _es_watch = FALSE; // watch for a change and trigger (exit) when fil
 wchar_buf_t *es_instance_name_wcbuf = NULL;
 DWORD es_timeout = 0;
 DWORD es_ipc_version = 0xffffffff; // allow all ipc versions
+#ifdef _DEBUG
+BYTE es_debug = 1;
+#else
+BYTE es_debug = 0;
+#endif
 int es_pixels_to_characters_mul = 1; // default column widths in logical pixels to characters
 int es_pixels_to_characters_div = 5; // default column widths in logical pixels to characters
 
@@ -1289,7 +1303,7 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 	column_color_t *column_color;
 	int did_set_color;
 
-	if (is_highlighted)
+	if ((is_highlighted) && (_es_output_is_char))
 	{
 		length_in_wchars = _es_highlighted_wchar_string_get_length_in_wchars(text);
 	}
@@ -3273,7 +3287,6 @@ static void _es_output_cell_fixed_q1k_property_with_suffix(__int32 value,const E
 	}
 }
 
-
 static void _es_output_cell_dimensions_property(EVERYTHING3_DIMENSIONS *dimensions_value)
 {
 	wchar_buf_t wcbuf;
@@ -3301,6 +3314,104 @@ static void _es_output_cell_dimensions_property(EVERYTHING3_DIMENSIONS *dimensio
 	}
 	
 	wchar_buf_kill(&wcbuf);
+}
+
+static void _es_output_cell_aspect_ratio_property(DWORD value)
+{
+	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+	{
+		_es_output_cell_fixed_q1k_property(value,ES_DWORD_MAX,0);
+	}
+	else
+	if (value == ES_DWORD_MAX)
+	{
+		// empty.
+		// this will fill in the column with spaces to the correct column width.
+		_es_output_cell_fixed_q1k_property(value,ES_DWORD_MAX,0);
+	}
+	else
+	{
+		const ES_UTF8 *nice_aspect_ratio;
+		
+		nice_aspect_ratio = NULL;
+		
+		if ((_es_export_type == _ES_EXPORT_TYPE_NONE) && (_es_aspect_ratio_format != 1))
+		{
+			switch(value)
+			{
+				case 1333:
+					nice_aspect_ratio = "4:3";
+					break;
+					
+				case 1250:
+					nice_aspect_ratio = "5:4";
+					break;
+					
+				case 1777:
+					nice_aspect_ratio = "16:9";
+					break;
+					
+				case 1600:
+					nice_aspect_ratio = "16:10";
+					break;
+						
+				case 2333:
+					nice_aspect_ratio = "21:9";
+					break;
+					
+				case 3555:
+					nice_aspect_ratio = "32:9";
+					break;
+					
+				case 5333:
+					nice_aspect_ratio = "48:9";
+					break;
+				
+				case 562:
+				case 563:
+					nice_aspect_ratio = "9:16";
+					break;
+
+				case 625:
+					nice_aspect_ratio = "10:16";
+					break;
+					
+				case 1187:
+				case 1188:
+					nice_aspect_ratio = "19:16";
+					break;
+					
+				case 1375:
+					nice_aspect_ratio = "11:8";
+					break;
+				
+				case 1500:
+					nice_aspect_ratio = "3:2";
+					break;
+						
+				case 1555:
+					nice_aspect_ratio = "14:9";
+					break;
+							
+				case 1666:
+					nice_aspect_ratio = "5:3";
+					break;
+									
+				case 1750:
+					nice_aspect_ratio = "7:4";
+					break;
+			}
+		}
+
+		if (nice_aspect_ratio)
+		{
+			_es_output_cell_utf8_string(nice_aspect_ratio,0);
+		}
+		else
+		{
+			_es_output_cell_fixed_q1k_property(value,ES_DWORD_MAX,0);
+		}
+	}
 }
 
 static void _es_output_cell_data_property(const BYTE *data,SIZE_T size)
@@ -4371,6 +4482,10 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 										
 										case PROPERTY_FORMAT_DATE:
 											_es_output_cell_date_property(dword_value);
+											break;
+											
+										case PROPERTY_FORMAT_ASPECT_RATIO:
+											_es_output_cell_aspect_ratio_property(dword_value);
 											break;
 											
 										default:
@@ -6810,6 +6925,15 @@ static int _es_main(void)
 					goto next_argv;
 				}
 							
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"aspect-ratio-format"))
+				{
+					_es_expect_command_argv_int(&argv_wcbuf);
+					
+					_es_aspect_ratio_format = wchar_string_to_int(argv_wcbuf.buf);
+
+					goto next_argv;
+				}
+				
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"pause")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"more")))
 				{
 					_es_pause = 1;
@@ -7454,6 +7578,20 @@ static int _es_main(void)
 					goto next_argv;
 				}
 			
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"debug"))
+				{
+					es_debug = 1;
+
+					goto next_argv;
+				}
+				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-debug"))
+				{
+					es_debug = 0;
+
+					goto next_argv;
+				}
+			
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"ad"))
 				{	
 					// add folder:
@@ -8086,30 +8224,25 @@ next_argv:
 		perform_search = 0;
 	}
 	
-	// setup export
-	// using a separate date format for display and export is too confusing for the end users.
-	if ((_es_export_type != _ES_EXPORT_TYPE_NONE) || (_es_export_type != _ES_EXPORT_TYPE_NOFORMAT))
+	// setup export 
+	// we have an export file, or output is not the console.
+	// disable pause.
+	// remove highlighting.
+	if ((_es_export_file != INVALID_HANDLE_VALUE) || (!_es_output_is_char))
 	{
-		// disable pause
-		if (_es_export_file != INVALID_HANDLE_VALUE)
-		{
-			_es_pause = 0;
-		}
-	
-		// remove highlighting.
-		if (_es_export_file != INVALID_HANDLE_VALUE)
-		{
-			_es_highlight = 0;
-		}
-		
-		if (_es_export_file != INVALID_HANDLE_VALUE)
-		{
-			_es_export_buf = mem_alloc(_ES_EXPORT_BUF_SIZE);
-			_es_export_p = _es_export_buf;
-			_es_export_avail = _ES_EXPORT_BUF_SIZE;
-		}
+		_es_pause = 0;
+		_es_highlight = 0;
 	}
 
+	// using a separate date format for display and export is too confusing for the end users.
+	// if we redirect output to a file, disable pause.
+	if (_es_export_file != INVALID_HANDLE_VALUE)
+	{
+		_es_export_buf = mem_alloc(_ES_EXPORT_BUF_SIZE);
+		_es_export_p = _es_export_buf;
+		_es_export_avail = _ES_EXPORT_BUF_SIZE;
+	}
+	
 	// export BOM
 	if (_es_utf8_bom)
 	{
@@ -8244,6 +8377,7 @@ next_argv:
 		case _ES_MODE_LIST_PROPERTIES:
 			
 			// handle timeout
+			// we don't need the ipc window.
 			_es_everything_hwnd = _es_find_ipc_window();
 
 			{
@@ -8851,6 +8985,10 @@ retry_read_journal:
 
 			es_fatal(ES_ERROR_IPC_ERROR);
 		}
+		else
+		{
+			es_fatal(ES_ERROR_NO_IPC);
+		}
 
 query_sent:
 
@@ -9004,16 +9142,20 @@ wait:
 		
 		if (!es_timeout)
 		{
+			debug_error_printf("FindWindow failed %u\n",GetLastError());
+			
 			// the everything window was not found.
 			// we can optionally RegisterWindowMessage("EVERYTHING_IPC_CREATED") and 
 			// wait for Everything to post this message to all top level windows when its up and running.
-			es_fatal(ES_ERROR_NO_IPC);
+			break;
 		}
 		
 		tick = GetTickCount();
 		
 		if (tick - tickstart > es_timeout)
 		{
+			debug_error_printf("FindWindow failed %u\n",GetLastError());
+
 			// the everything window was not found.
 			// we can optionally RegisterWindowMessage("EVERYTHING_IPC_CREATED") and 
 			// wait for Everything to post this message to all top level windows when its up and running.
@@ -10453,6 +10595,7 @@ static BOOL _es_save_settings_with_filename(const wchar_t *filename)
 		config_write_dword(file_handle,"timeout",es_timeout);
 		config_write_int(file_handle,"size_format",_es_size_format);
 		config_write_int(file_handle,"date_format",_es_date_format);
+		config_write_int(file_handle,"aspect_ratio_format",_es_aspect_ratio_format);
 		config_write_int(file_handle,"pause",_es_pause);
 		config_write_int(file_handle,"help_on_no_args",_es_help_on_no_args);
 		config_write_int(file_handle,"empty_search_help",_es_empty_search_help);
@@ -10690,6 +10833,7 @@ static BOOL _es_load_settings_with_filename(const wchar_t *filename)
 		es_timeout = config_read_dword(&ini,"timeout",es_timeout);
 		_es_size_format = config_read_int(&ini,"size_format",_es_size_format);
 		_es_date_format = config_read_int(&ini,"date_format",_es_date_format);
+		_es_aspect_ratio_format = config_read_int(&ini,"aspect_ratio_format",_es_aspect_ratio_format);
 		_es_pause = config_read_int(&ini,"pause",_es_pause);
 		_es_help_on_no_args = config_read_int(&ini,"help_on_no_args",_es_help_on_no_args);
 		_es_empty_search_help = config_read_int(&ini,"empty_search_help",_es_empty_search_help);

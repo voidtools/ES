@@ -86,5 +86,6 @@ void DECLSPEC_NORETURN es_fatal(int error_code);
 extern wchar_buf_t *es_instance_name_wcbuf;
 extern DWORD es_timeout;
 extern DWORD es_ipc_version; // allow all ipc versions
+extern BYTE es_debug;
 extern int es_pixels_to_characters_mul;
 extern int es_pixels_to_characters_div;
