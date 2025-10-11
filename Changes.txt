@@ -1,3 +1,10 @@
+Saturday 11 October 2025: Version 1.1.0.34
+	fixed an issue with output being truncated when highlighting and redirecting output to a file.
+	improved connecting to the ipc3 pipe server when it is busy.
+	added aspect ratio formatting like Everything. -added -aspect-ratio-format
+	added a debug mode. -debug
+	reverted show help when there's no arguments.
+
 Friday 26 September 2025: Version 1.1.0.33
 	cleaned up /a dir style commands, had P for sparse, which no longer exists.
 	show help when there's no arguments, no export type and output to console. -added -no-help-on-no-args option.
