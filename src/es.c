@@ -27,14 +27,17 @@
 // Everything command line interface via IPC.
 //
 // TODO:
+// [HIGH] -export-stdout out.txt -same as es.exe > out.txt -same with -export-stderr
 // [HIGH] json should only print the trailing , at the start of a non-first line and the terminating ] should always be added when using read journal mode.
 // [HIGH] c# cmdlet for powershell.
 // [HIGH] separate old-name and new-name filters when reading the journal.
 // [HIGH] es -createfilelist -need filename filters -need semicolon delimited list parser.
+// [HIGH] disable writing to stderr when loading es.ini
+// delay loading of columns from es.ini so -get-everything-version doesn't try to load columns and so we dont see ugly 'Error 4: Unknown column: system.size' message when requesting -get-everything-version  -or better yet, disable stderr while loading es.ini
+// custom labels, eg: extension => ext, could also do something for localization.
 // review showing help when theres no arguments, i want ES to behave like DIR, DIR doesn't show help on no args (but DIR generally only prints a few files, -maybe we could cheat and only print the last page of results when outputing to the console?)
 // add a -filter switch.
 // ES -path should do a path lookup and throw an error if it doesn't exist.
-// request the correct display name for custom_property_0..custom_property_9.
 // export to clipboard (aka copy to clipboard)
 // add a -max-path option. (limit paths to 259 chars -use shortpaths if we exceed.)
 // add a -short-full-path option.
@@ -111,6 +114,8 @@
 // *es will now automatically retry when the ipc3 pipe server is busy.
 // *added a debug mode. -debug
 // *reverted show help when there's no arguments. I want DIR behavior. DIR + no args == show the whole folder, ES + no args = show the whole index.
+// 1.1.0.35
+// *aspect-ratio will now show 1.777:1 (forgot the :1 suffix in last build)
 
 #include "es.h"
 
@@ -3327,16 +3332,16 @@ static void _es_output_cell_aspect_ratio_property(DWORD value)
 	{
 		// empty.
 		// this will fill in the column with spaces to the correct column width.
-		_es_output_cell_fixed_q1k_property(value,ES_DWORD_MAX,0);
+		_es_output_cell_printf(0,"");
 	}
 	else
 	{
-		const ES_UTF8 *nice_aspect_ratio;
-		
-		nice_aspect_ratio = NULL;
-		
 		if ((_es_export_type == _ES_EXPORT_TYPE_NONE) && (_es_aspect_ratio_format != 1))
 		{
+			const ES_UTF8 *nice_aspect_ratio;
+			
+			nice_aspect_ratio = NULL;
+			
 			switch(value)
 			{
 				case 1333:
@@ -3401,11 +3406,26 @@ static void _es_output_cell_aspect_ratio_property(DWORD value)
 					nice_aspect_ratio = "7:4";
 					break;
 			}
-		}
 
-		if (nice_aspect_ratio)
-		{
-			_es_output_cell_utf8_string(nice_aspect_ratio,0);
+			if (nice_aspect_ratio)
+			{
+				_es_output_cell_utf8_string(nice_aspect_ratio,0);
+			}
+			else
+			{
+				wchar_buf_t fixed_wcbuf;
+
+				wchar_buf_init(&fixed_wcbuf);
+
+				// 1.777:1
+				_es_format_fixed_q1k(value,1,0,0,1,&fixed_wcbuf);
+
+				wchar_buf_cat_utf8_string(&fixed_wcbuf,":1");
+				
+				_es_output_cell_wchar_string(fixed_wcbuf.buf,0);
+
+				wchar_buf_kill(&fixed_wcbuf);
+			}
 		}
 		else
 		{
