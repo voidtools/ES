@@ -1,3 +1,17 @@
+Thursday 11 December 2025: Version 1.1.0.35
+	fixed an issue with -offset not working with ipc3.
+	fixed an issue with exporting hex values as JSON.
+	fixed an issue with large ipc3 requests.
+	fixed a crash when exporting to JSON.
+	fixed an issue with -watch returning the wrong change id.
+	improved aspect-ratio formatting.
+	improved waiting for a pipe connection.
+	improved loading of columns from es.ini
+	improved handling of errors when loading es.ini
+	improved -n by applying a count: filter.
+	added -redirect-stdout out.txt and redirect-stderr error.txt
+	added date/time formatting to date-modified-date and date-modified-time properties.
+
 Saturday 11 October 2025: Version 1.1.0.34
 	fixed an issue with output being truncated when highlighting and redirecting output to a file.
 	improved connecting to the ipc3 pipe server when it is busy.
