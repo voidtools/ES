@@ -25,15 +25,15 @@
 //
 
 // Everything command line interface via IPC.
+// https://www.voidtools.com/forum/viewtopic.php?t=5762
 //
 // TODO:
-// [HIGH] -export-stdout out.txt -same as es.exe > out.txt -same with -export-stderr
 // [HIGH] json should only print the trailing , at the start of a non-first line and the terminating ] should always be added when using read journal mode.
 // [HIGH] c# cmdlet for powershell.
 // [HIGH] separate old-name and new-name filters when reading the journal.
 // [HIGH] es -createfilelist -need filename filters -need semicolon delimited list parser.
-// [HIGH] disable writing to stderr when loading es.ini
-// delay loading of columns from es.ini so -get-everything-version doesn't try to load columns and so we dont see ugly 'Error 4: Unknown column: system.size' message when requesting -get-everything-version  -or better yet, disable stderr while loading es.ini
+// es server that is active while the console window is opened and handles all requests, so multiple calls from the same console window share the same connection and cache.
+// ansi escapes -option to escape colors so they are piped to other commands like find.
 // custom labels, eg: extension => ext, could also do something for localization.
 // review showing help when theres no arguments, i want ES to behave like DIR, DIR doesn't show help on no args (but DIR generally only prints a few files, -maybe we could cheat and only print the last page of results when outputing to the console?)
 // add a -filter switch.
@@ -116,6 +116,17 @@
 // *reverted show help when there's no arguments. I want DIR behavior. DIR + no args == show the whole folder, ES + no args = show the whole index.
 // 1.1.0.35
 // *aspect-ratio will now show 1.777:1 (forgot the :1 suffix in last build)
+// *WaitNamedPipe
+// *added -redirect-stdout out.txt and redirect-stderr error.txt
+// *delay loading of columns from es.ini so -get-everything-version doesn't try to load columns and so we dont see ugly 'Error 4: Unknown column: system.size' message when requesting -get-everything-version  -or better yet, disable stderr while loading es.ini -just implemented "don't die" when loading columns
+// *disable writing to stderr when loading es.ini -just implemented "don't die" when loading columns -bad values in the es.ini will no longer trigger fatal errors. they are silently ignored, we can't use -debug because we process command lines after es.ini, es.ini should save instance name to load system properties with columns= , the instance from -instance is ignored when loading es.ini and setting the default columns.
+// *fixed an issue with -offset not working with ipc3.
+// *-n <num> will now apply a count: filter.
+// *JSON doesn't support 0x prefix.
+// *date-modified-date and date-modified-time to use -date-format.
+// *vlq is using the wrong byte order.
+// *fixed a crash when exporting to json
+// *watch will now return the correct change id. (+1)
 
 #include "es.h"
 
@@ -183,7 +194,9 @@ static void _es_output_cell_highlighted_text_property_utf8_string(const ES_UTF8 
 static void _es_output_cell_unknown_property(void);
 static void _es_output_cell_size_property(ES_UINT64 value);
 static void _es_output_cell_filetime_property(ES_UINT64 value);
+static void _es_format_time(DWORD value,wchar_buf_t *wcbuf);
 static void _es_output_cell_time_property(DWORD value);
+static void _es_format_date(DWORD value,wchar_buf_t *wcbuf);
 static void _es_output_cell_date_property(DWORD value);
 static void _es_output_cell_duration_property(ES_UINT64 value);
 static void _es_output_cell_attribute_property(DWORD file_attributes);
@@ -328,13 +341,14 @@ static char _es_locale_lzero = 1; // leading zero
 static char _es_locale_negnumber = 1; // negative number format, 1 == -1.1
 static wchar_buf_t *_es_locale_thousand_wcbuf = NULL; // thousand separator ","
 static wchar_buf_t *_es_locale_decimal_wcbuf = NULL; // decimal separator "."
-static SIZE_T _es_offset = 0;
-static SIZE_T _es_max_results = SIZE_MAX;
+static ES_UINT64 _es_offset = 0;
+static ES_UINT64 _es_max_results = ES_UINT64_MAX;
+static ES_UINT64 _es_count = ES_UINT64_MAX;
 static DWORD _es_ret = ES_ERROR_SUCCESS; // the return code from main()
 static const wchar_t *_es_command_line = 0;
 static BYTE _es_command_line_was_eq = 0; // -switch=value
 static BYTE _es_size_format = 1; // 0 = auto, 1=bytes, 2=kb
-static BYTE _es_date_format = 0; // display/export (set on query) date/time format 0 = (Use default), 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc), 4=system format
+static BYTE _es_date_format = 0; // display/export (set on query) date/time format 0 = (Use default), 1=iso-8601 (as local time), 2=filetime in decimal, 3=iso-8601 (in utc), 4=system format, 5=iso-8601 (full-resolution) 6=iso-8601 (in utc) (full-resolution)
 static BYTE _es_aspect_ratio_format = 0; // 0=16:9, 1=1.777
 static CHAR_INFO *_es_output_cibuf = 0;
 static int _es_output_cibuf_hscroll = 0;
@@ -552,7 +566,7 @@ static BOOL _es_ipc2_query(void)
 		{
 			switch(column->property_id)
 			{
-				case EVERYTHING3_PROPERTY_ID_PATH_AND_NAME:
+				case EVERYTHING3_PROPERTY_ID_FULL_PATH:
 					if (_es_highlight)
 					{
 						request_flags |= EVERYTHING_IPC_QUERY2_REQUEST_HIGHLIGHTED_FULL_PATH_AND_NAME;
@@ -720,11 +734,11 @@ static BOOL _es_ipc3_query(void)
 	
 		utf8_buf_copy_wchar_string(&search_cbuf,_es_search_wcbuf->buf);
 
-#if SIZE_MAX == 0xFFFFFFFFFFFFFFFFUI64
+#if SIZE_MAX == ES_UINT64_MAX
 
 		search_flags = IPC3_SEARCH_FLAG_64BIT;
 
-#elif SIZE_MAX == 0xFFFFFFFF
+#elif SIZE_MAX == ES_DWORD_MAX
 
 		search_flags = 0;
 	
@@ -849,8 +863,8 @@ static BOOL _es_ipc3_query(void)
 			packet_d = os_copy_memory(packet_d,search_cbuf.buf,search_cbuf.length_in_bytes);
 
 			// viewport
-			packet_d = _es_copy_size_t(packet_d,0);
-			packet_d = _es_copy_size_t(packet_d,_es_max_results);
+			packet_d = _es_copy_size_t(packet_d,safe_size_from_uint64(_es_offset));
+			packet_d = _es_copy_size_t(packet_d,safe_size_from_uint64(_es_max_results));
 
 			// primary sort
 			
@@ -1550,6 +1564,7 @@ static void _es_output_cell_write_console_wchar_string(const wchar_t *text,int i
 					}
 
 					SetConsoleTextAttribute(_es_output_handle,is_in_highlight ? _es_highlight_color : _es_output_color);
+
 					did_set_color = 1;
 		
 					if (wlen <= ES_DWORD_MAX)
@@ -2090,7 +2105,7 @@ static void _es_output_cell_filetime_property(ES_UINT64 value)
 			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
 		}
 		else
-		if (_es_date_format)
+		if ((_es_date_format) && (_es_date_format != 2))
 		{
 			_es_format_filetime(value,&filetime_wcbuf);
 		
@@ -2132,15 +2147,59 @@ static void _es_output_cell_filetime_property(ES_UINT64 value)
 	}
 }
 
+// format a filetime.
+static void _es_format_time(DWORD value,wchar_buf_t *wcbuf)
+{
+	wchar_buf_empty(wcbuf);
+	
+	if (value != ES_DWORD_MAX)
+	{
+		switch(_es_date_format)
+		{	
+			default:
+			case 0: // (Use default)
+			case 1: // ISO-8601
+			case 4: // system format
+			case 3: // ISO-8601 (UTC/Z)
+			case 6: // ISO-8601 (UTC/Z) (full resolution)
+			case 5: // ISO-8601 (full resolution)
+				{
+					DWORD hours;
+					DWORD minutes;
+					DWORD seconds;
+					
+					hours = value / 3600000;
+					minutes = (value % 3600000) / 60000;
+					seconds = (value % 60000) / 1000;
+
+					if (_es_date_format == 5)
+					{
+						// full resolution
+						wchar_buf_printf(wcbuf,"%02u:%02u:%02u.%03u",hours,minutes,seconds,value % 1000);
+					}
+					else
+					{
+						wchar_buf_printf(wcbuf,"%02u:%02u:%02u",hours,minutes,seconds);
+					}
+				}
+				break;
+
+			case 2: // raw filetime
+				wchar_buf_printf(wcbuf,"%u",value);
+				break;
+		}
+	}
+}
+
 static void _es_output_cell_time_property(DWORD value)
 {
 	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		wchar_buf_t property_name_wcbuf;
-		wchar_buf_t filetime_wcbuf;
-		
+		wchar_buf_t date_wcbuf;
+
 		wchar_buf_init(&property_name_wcbuf);
-		wchar_buf_init(&filetime_wcbuf);
+		wchar_buf_init(&date_wcbuf);
 
 		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
@@ -2149,29 +2208,39 @@ static void _es_output_cell_time_property(DWORD value)
 			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
 		}
 		else
+		if ((_es_date_format) && (_es_date_format != 2) && (_es_date_format != 3) && (_es_date_format != 6))
+		{
+			_es_format_time(value,&date_wcbuf);
+	
+			_es_output_cell_printf(0,"\"%S\":\"%S\"",property_name_wcbuf.buf,date_wcbuf.buf);
+		}
+		else
 		{
 			_es_output_cell_printf(0,"\"%S\":%u",property_name_wcbuf.buf,value);
 		}
 
-		wchar_buf_kill(&filetime_wcbuf);
+		wchar_buf_kill(&date_wcbuf);
 		wchar_buf_kill(&property_name_wcbuf);
 	}
 	else
 	if (value == ES_DWORD_MAX)
 	{
-		// unknown filetime.
+		// unknown
 		// this will fill in the column with spaces to the correct column width.
 		_es_output_cell_printf(0,"");
 	}
 	else
-	if (_es_export_type == _ES_EXPORT_TYPE_NONE)
+	if ((_es_export_type == _ES_EXPORT_TYPE_NONE) || (_es_date_format))
 	{
-		DWORD seconds;
+		wchar_buf_t date_wcbuf;
 		
-		seconds = value / 1000;
+		wchar_buf_init(&date_wcbuf);
+	
+		_es_format_time(value,&date_wcbuf);
+	
+		_es_output_cell_wchar_string(date_wcbuf.buf,0);
 		
-		// HH:MM:SS
-		_es_output_cell_printf(0,"%02u:%02u:%02u",seconds / 3600,(seconds / 60) % 60,seconds % 60);
+		wchar_buf_kill(&date_wcbuf);
 	}
 	else
 	{
@@ -2180,28 +2249,103 @@ static void _es_output_cell_time_property(DWORD value)
 	}
 }
 
+// format a filetime.
+static void _es_format_date(DWORD value,wchar_buf_t *wcbuf)
+{
+	wchar_buf_empty(wcbuf);
+	
+	if (value != ES_DWORD_MAX)
+	{
+		switch(_es_date_format)
+		{	
+			default:
+			case 0: // (Use default)
+			case 4: // system format
+			case 3: // ISO-8601 (UTC/Z)
+			case 6: // ISO-8601 (UTC/Z) (full resolution)
+				{
+					wchar_t dmybuf[256];
+					int dmyformat;
+					DWORD val1;
+					DWORD val2;
+					DWORD val3;
+					DWORD year;
+					DWORD month;
+					DWORD day;
+					
+					dmyformat = 1;
+
+					if (GetLocaleInfoW(LOCALE_USER_DEFAULT,LOCALE_IDATE,dmybuf,256))
+					{
+						dmyformat = dmybuf[0] - '0';
+					}
+						
+					year = value / (32*13);
+					month = (value / 32) % 13;
+					day = value % 32;
+					
+					switch(dmyformat)
+					{
+						case 0: val1 = month; val2 = day; val3 = year; break; // Month-Day-Year
+						default: val1 = day; val2 = month; val3 = year; break; // Day-Month-Year
+						case 2: val1 = year; val2 = month; val3 = day; break; // Year-Month-Day
+					}
+					
+					wchar_buf_printf(wcbuf,"%02u/%02u/%02u",val1,val2,val3);
+				}
+				break;
+				
+			case 1: // ISO-8601
+			case 5: // ISO-8601 (full resolution)
+				{
+					DWORD year;
+					DWORD month;
+					DWORD day;	
+						
+					year = value / (32*13);
+					month = (value / 32) % 13;
+					day = value % 32;
+					
+					wchar_buf_printf(wcbuf,"%04u-%02u-%02u",year,month,day);
+				}
+				break;
+
+			case 2: // raw filetime
+				wchar_buf_printf(wcbuf,"%u",value);
+				break;
+		}
+	}
+}
+
 static void _es_output_cell_date_property(DWORD value)
 {
 	if (_es_export_type == _ES_EXPORT_TYPE_JSON)
 	{
 		wchar_buf_t property_name_wcbuf;
-		wchar_buf_t filetime_wcbuf;
+		wchar_buf_t date_wcbuf;
 		
 		wchar_buf_init(&property_name_wcbuf);
-		wchar_buf_init(&filetime_wcbuf);
+		wchar_buf_init(&date_wcbuf);
 
 		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
-		if (value == ES_DWORD_MAX)
+		if (value == ES_UINT64_MAX)
 		{
 			_es_output_cell_printf(0,"\"%S\":null",property_name_wcbuf.buf);
+		}
+		else
+		if ((_es_date_format) && (_es_date_format != 2) && (_es_date_format != 3) && (_es_date_format != 6))
+		{
+			_es_format_date(value,&date_wcbuf);
+	
+			_es_output_cell_printf(0,"\"%S\":\"%S\"",property_name_wcbuf.buf,date_wcbuf.buf);
 		}
 		else
 		{
 			_es_output_cell_printf(0,"\"%S\":%u",property_name_wcbuf.buf,value);
 		}
 
-		wchar_buf_kill(&filetime_wcbuf);
+		wchar_buf_kill(&date_wcbuf);
 		wchar_buf_kill(&property_name_wcbuf);
 	}
 	else
@@ -2212,22 +2356,17 @@ static void _es_output_cell_date_property(DWORD value)
 		_es_output_cell_printf(0,"");
 	}
 	else
-	if (_es_export_type == _ES_EXPORT_TYPE_NONE)
+	if ((_es_export_type == _ES_EXPORT_TYPE_NONE) || (_es_date_format))
 	{
-		DWORD day;
-		SYSTEMTIME st;
+		wchar_buf_t date_wcbuf;
 		
-		os_zero_memory(&st,sizeof(SYSTEMTIME));
+		wchar_buf_init(&date_wcbuf);
 		
-		day = value;
-		st.wYear = (WORD)(day / (32*13));
-		day -= (DWORD)st.wYear * (32*13);
-		st.wMonth = (WORD)(day / (32));
-		day -= (DWORD)st.wMonth * (32);
-		st.wDay = (WORD)day;
+		_es_format_date(value,&date_wcbuf);
+	
+		_es_output_cell_wchar_string(date_wcbuf.buf,0);
 		
-		// HH:MM:SS
-		_es_output_cell_printf(0,"%04d-%02d-%02d",st.wYear,st.wMonth,st.wDay);
+		wchar_buf_kill(&date_wcbuf);
 	}
 	else
 	{
@@ -2300,7 +2439,8 @@ static void _es_output_cell_attribute_property(DWORD file_attributes)
 		}
 		else
 		{
-			_es_output_cell_printf(0,"\"%S\":0x%08X",property_name_wcbuf.buf,file_attributes);
+			// JSON doesn't support hex.
+			_es_output_cell_printf(0,"\"%S\":%u",property_name_wcbuf.buf,file_attributes);
 		}
 
 		wchar_buf_kill(&property_name_wcbuf);
@@ -2395,7 +2535,7 @@ static void _es_output_cell_formatted_number_property(const ES_UTF8 *text)
 
 		_es_get_nice_json_property_name(_es_output_column->property_id,&property_name_wcbuf);
 		
-		_es_output_cell_printf(0,"\"%S\":%s",text);
+		_es_output_cell_printf(0,"\"%S\":%s",property_name_wcbuf.buf,text);
 
 		wchar_buf_kill(&property_name_wcbuf);
 	}
@@ -2421,7 +2561,8 @@ static void _es_output_cell_hex_number8_property(DWORD value)
 		}
 		else
 		{
-			_es_output_cell_printf(0,"\"%S\":0x%08X",property_name_wcbuf.buf,value);
+			// JSON doesn't support hex.
+			_es_output_cell_printf(0,"\"%S\":%u",property_name_wcbuf.buf,value);
 		}
 
 		wchar_buf_kill(&property_name_wcbuf);
@@ -2468,7 +2609,8 @@ static void _es_output_cell_hex_number16_property(ES_UINT64 value,ES_UINT64 empt
 		}
 		else
 		{
-			_es_output_cell_printf(0,"\"%S\":0x%016I64X",property_name_wcbuf.buf,value);
+			// JSON doesn't support hex.
+			_es_output_cell_printf(0,"\"%S\":%I64u",property_name_wcbuf.buf,value);
 		}
 
 		wchar_buf_kill(&property_name_wcbuf);
@@ -2517,11 +2659,13 @@ static void _es_output_cell_hex_number32_property(EVERYTHING3_UINT128 *uint128_v
 		{
 			if (uint128_value->hi_uint64)
 			{
-				_es_output_cell_printf(0,"\"%S\":0x%016I64X%016I64X",property_name_wcbuf.buf,uint128_value->hi_uint64,uint128_value->lo_uint64);
+				// JSON doesn't support hex.
+				_es_output_cell_printf(0,"\"%S\":\"0x%016I64X%016I64X\"",property_name_wcbuf.buf,uint128_value->hi_uint64,uint128_value->lo_uint64);
 			}
 			else
 			{
-				_es_output_cell_printf(0,"\"%S\":0x%016I64X",property_name_wcbuf.buf,uint128_value->lo_uint64);
+				// JSON doesn't support hex.
+				_es_output_cell_printf(0,"\"%S\":\"0x%016I64X\"",property_name_wcbuf.buf,uint128_value->lo_uint64);
 			}
 		}
 
@@ -2660,7 +2804,7 @@ static void _es_output_cell_percent_property(BYTE value)
 		}
 		else
 		{
-			_es_output_cell_printf(0,"\"%S\":%u",value);
+			_es_output_cell_printf(0,"\"%S\":%u",property_name_wcbuf.buf,value);
 		}
 
 		wchar_buf_kill(&property_name_wcbuf);
@@ -3203,7 +3347,7 @@ static void _es_output_cell_small_number_property_with_suffix(ES_UINT64 value,ES
 		}
 		else
 		{
-			_es_output_cell_printf(0,"\"%S\":%u",value);
+			_es_output_cell_printf(0,"\"%S\":%u",property_name_wcbuf.buf,value);
 		}
 
 		wchar_buf_kill(&property_name_wcbuf);
@@ -3899,7 +4043,7 @@ static void _es_output_ipc1_results(EVERYTHING_IPC_LIST *list,SIZE_T index_start
 					_es_output_cell_attribute_property((everything_ipc_item->flags & EVERYTHING_IPC_FOLDER) ? FILE_ATTRIBUTE_DIRECTORY : 0);
 					break;
 					
-				case EVERYTHING3_PROPERTY_ID_PATH_AND_NAME:
+				case EVERYTHING3_PROPERTY_ID_FULL_PATH:
 					wchar_buf_path_cat_filename(EVERYTHING_IPC_ITEMPATH(list,everything_ipc_item),EVERYTHING_IPC_ITEMFILENAME(list,everything_ipc_item),&filename_wcbuf);
 
 					if ((_es_folder_append_path_separator) && (everything_ipc_item->flags & EVERYTHING_IPC_FOLDER))
@@ -4009,7 +4153,7 @@ static void _es_output_ipc2_results(EVERYTHING_IPC_LIST2 *list,SIZE_T index_star
 				{
 					case EVERYTHING3_PROPERTY_ID_NAME:
 					case EVERYTHING3_PROPERTY_ID_PATH:
-					case EVERYTHING3_PROPERTY_ID_PATH_AND_NAME:
+					case EVERYTHING3_PROPERTY_ID_FULL_PATH:
 					case EVERYTHING3_PROPERTY_ID_FILE_LIST_NAME:
 					
 						{
@@ -4025,7 +4169,7 @@ static void _es_output_ipc2_results(EVERYTHING_IPC_LIST2 *list,SIZE_T index_star
 
 							if (_es_folder_append_path_separator)
 							{
-								if (_es_output_column->property_id == EVERYTHING3_PROPERTY_ID_PATH_AND_NAME)
+								if (_es_output_column->property_id == EVERYTHING3_PROPERTY_ID_FULL_PATH)
 								{
 									if (items[i].flags & EVERYTHING_IPC_FOLDER)
 									{
@@ -4271,7 +4415,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 
 						if (_es_folder_append_path_separator)
 						{
-							if (property_request_p->property_id == EVERYTHING3_PROPERTY_ID_PATH_AND_NAME)
+							if (property_request_p->property_id == EVERYTHING3_PROPERTY_ID_FULL_PATH)
 							{
 								if (item_flags & IPC3_RESULT_LIST_ITEM_FLAG_FOLDER)
 								{
@@ -4306,7 +4450,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 									
 									if (_es_folder_append_path_separator)
 									{
-										if (property_request_p->property_id == EVERYTHING3_PROPERTY_ID_PATH_AND_NAME)
+										if (property_request_p->property_id == EVERYTHING3_PROPERTY_ID_FULL_PATH)
 										{
 											if (item_flags & IPC3_RESULT_LIST_ITEM_FLAG_FOLDER)
 											{
@@ -5685,7 +5829,7 @@ static void _es_help(void)
 		"   -w, -ww, -whole-word, -whole-words\r\n"
 		"        Match whole words.\r\n"
 		"   -p, -match-path\r\n"
-		"        Match full path and file name.\r\n"
+		"        Match full path.\r\n"
 		"   -a, -diacritics\r\n"
 		"        Match diacritical marks.\r\n"
 		"   -prefix\r\n"
@@ -5697,10 +5841,8 @@ static void _es_help(void)
 		"   -ignore-whitespace\r\n"
 		"        Ignore whitespace in filenames.\r\n"
 		"\r\n"
-		"   -o <offset>, -offset <offset>\r\n"
-		"        Show results starting from offset.\r\n"
-		"   -n <num>, -max-results <num>\r\n"
-		"        Limit the number of results shown to <num>.\r\n"
+		"   -n <num>, -count <num>\r\n"
+		"        Specify the maximum number of results to find.\r\n"
 		"\r\n"
 		"   -path <path>\r\n"
 		"        Search for subfolders and files in path.\r\n"
@@ -5821,6 +5963,7 @@ static void _es_help(void)
 		"   -run-count\r\n"
 		"   -date-run\r\n"
 		"   -date-recently-changed, -rc\r\n"
+		"   -<property-name>\r\n"
 		"   -add-columns <property-name;property-name2;...>\r\n"
 		"        Show the specified column.\r\n"
 		"\r\n"
@@ -5828,6 +5971,11 @@ static void _es_help(void)
 		"        Highlight results.\r\n"
 		"   -highlight-color <color>\r\n"
 		"        Highlight color 0x00-0xff.\r\n"
+		"\r\n"
+		"   -viewport-offset <offset>\r\n"
+		"        Show results starting from offset.\r\n"
+		"   -viewport-count <num>\r\n"
+		"        Limit the number of results shown to <num>.\r\n"
 		"\r\n"
 		"   -csv\r\n"
 		"   -efu\r\n"
@@ -5841,7 +5989,8 @@ static void _es_help(void)
 		"   -size-format <format>\r\n"
 		"        0=auto, 1=Bytes, 2=KB, 3=MB.\r\n"
 		"   -date-format <format>\r\n"
-		"        0=auto, 1=ISO-8601, 2=FILETIME, 3=ISO-8601(UTC), 4=User Locale\r\n"
+		"        0=auto, 1=ISO-8601, 2=FILETIME, 3=ISO-8601(UTC), 4=User Locale,\r\n"
+		"        5=ISO-8601 (full resolution), 6=ISO-8601(UTC) (full resolution)\r\n"
 		"\r\n"
 		"   -filename-color <color>\r\n"
 		"   -name-color <color>\r\n"
@@ -6560,6 +6709,40 @@ static int _es_main(void)
 					goto next_argv;
 				}
 
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"redirect-stdout"))
+				{
+					_es_expect_command_argv(&argv_wcbuf);
+					
+					_es_export_file = os_create_file(argv_wcbuf.buf);
+					if (_es_export_file != INVALID_HANDLE_VALUE)
+					{
+						SetStdHandle(STD_OUTPUT_HANDLE,_es_export_file);
+					}
+					else
+					{
+						es_fatal(ES_ERROR_CREATE_FILE);
+					}
+
+					goto next_argv;
+				}
+	
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"redirect-stderr"))
+				{
+					_es_expect_command_argv(&argv_wcbuf);
+					
+					_es_export_file = os_create_file(argv_wcbuf.buf);
+					if (_es_export_file != INVALID_HANDLE_VALUE)
+					{
+						SetStdHandle(STD_ERROR_HANDLE,_es_export_file);
+					}
+					else
+					{
+						es_fatal(ES_ERROR_CREATE_FILE);
+					}
+
+					goto next_argv;
+				}
+
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"cp")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"code-page")))
 				{
 					_es_expect_command_argv_int(&argv_wcbuf);
@@ -6727,7 +6910,7 @@ static int _es_main(void)
 				{
 					_es_expect_command_argv_int(&argv_wcbuf);
 
-					column_width_set(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME,wchar_string_to_int(argv_wcbuf.buf));
+					column_width_set(EVERYTHING3_PROPERTY_ID_FULL_PATH,wchar_string_to_int(argv_wcbuf.buf));
 
 					goto next_argv;
 				}
@@ -6938,6 +7121,7 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"date-format"))
 				{
+					// TODO match iso-8601
 					_es_expect_command_argv_int(&argv_wcbuf);
 
 					_es_date_format = wchar_string_to_int(argv_wcbuf.buf);
@@ -6978,6 +7162,13 @@ static int _es_main(void)
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-help-on-no-args"))
 				{
 					_es_help_on_no_args = 0;
+
+					goto next_argv;
+				}
+				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"empty-search-help"))
+				{
+					_es_empty_search_help = 1;
 
 					goto next_argv;
 				}
@@ -7564,7 +7755,7 @@ static int _es_main(void)
 					goto next_argv;
 				}
 				
-				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"n")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"max-results")))
+				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"max-results")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"viewport-count")))
 				{
 					_es_expect_command_argv_int(&argv_wcbuf);
 					
@@ -7573,11 +7764,20 @@ static int _es_main(void)
 					goto next_argv;
 				}
 				
-				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"o")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"offset")))
+				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"o")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"offset")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"viewport-offset")))
 				{
 					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_offset = safe_size_from_uint64(wchar_string_to_uint64(argv_wcbuf.buf));
+
+					goto next_argv;
+				}
+				
+				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"n")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"count")))
+				{
+					_es_expect_command_argv_int(&argv_wcbuf);
+					
+					_es_count = wchar_string_to_uint64(argv_wcbuf.buf);
 
 					goto next_argv;
 				}
@@ -8229,6 +8429,25 @@ next_argv:
 		}
 	}
 	
+	// apply filters
+	if (_es_count != ES_UINT64_MAX)
+	{
+		utf8_buf_t count_cbuf;
+		
+		utf8_buf_init(&count_cbuf);
+
+		// include the offset in the count, so we can do things like -offset 5 -n 1 
+		// to request 6 items, but only show one.
+		//
+		// don't be smart, just let the user specify the viewport, even though this will 
+		// break older viewport calls.
+		utf8_buf_printf(&count_cbuf,"count:%I64u",_es_count);
+		
+		_es_append_filter(&filter_wcbuf,count_cbuf.buf);
+
+		utf8_buf_kill(&count_cbuf);
+	}
+	
 	// save settings.
 	if (_es_save)
 	{
@@ -8347,7 +8566,7 @@ next_argv:
 		{
 			// reset columns and force Filename.
 			column_clear_all();
-			column_add(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME);
+			column_add(EVERYTHING3_PROPERTY_ID_FULL_PATH);
 		}
 		
 		if (_es_export_type == _ES_EXPORT_TYPE_TXT)
@@ -8530,11 +8749,11 @@ next_argv:
 					column_add(EVERYTHING3_PROPERTY_ID_FILE_ID); // change-id
 					column_add(EVERYTHING3_PROPERTY_ID_DATE_CHANGED); // timestamp
 					column_add(EVERYTHING3_PROPERTY_ID_TYPE); // action
-					column_add(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME); // old filename
-					column_add(EVERYTHING3_PROPERTY_ID_FILE_LIST_PATH_AND_NAME); // new filename
+					column_add(EVERYTHING3_PROPERTY_ID_FULL_PATH); // old filename
+					column_add(EVERYTHING3_PROPERTY_ID_FILE_LIST_FULL_PATH); // new filename
 					
-					column_move_order_to_start(EVERYTHING3_PROPERTY_ID_FILE_LIST_PATH_AND_NAME);
-					column_move_order_to_start(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME);
+					column_move_order_to_start(EVERYTHING3_PROPERTY_ID_FILE_LIST_FULL_PATH);
+					column_move_order_to_start(EVERYTHING3_PROPERTY_ID_FULL_PATH);
 					column_move_order_to_start(EVERYTHING3_PROPERTY_ID_TYPE);
 					column_move_order_to_start(EVERYTHING3_PROPERTY_ID_DATE_INDEXED);
 					column_move_order_to_start(EVERYTHING3_PROPERTY_ID_DATE_CHANGED);
@@ -8612,7 +8831,7 @@ next_argv:
 						flags |= IPC3_READ_JOURNAL_FLAG_OLD_PARENT_DATE_MODIFIED;
 					}
 						
-					if (column_find(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME))
+					if (column_find(EVERYTHING3_PROPERTY_ID_FULL_PATH))
 					{
 						flags |= IPC3_READ_JOURNAL_FLAG_OLD_PATH | IPC3_READ_JOURNAL_FLAG_OLD_NAME;
 					}
@@ -8647,7 +8866,7 @@ next_argv:
 						flags |= IPC3_READ_JOURNAL_FLAG_NEW_PARENT_DATE_MODIFIED;
 					}
 						
-					if (column_find(EVERYTHING3_PROPERTY_ID_FILE_LIST_PATH_AND_NAME))
+					if (column_find(EVERYTHING3_PROPERTY_ID_FILE_LIST_FULL_PATH))
 					{
 						flags |= IPC3_READ_JOURNAL_FLAG_NEW_PATH | IPC3_READ_JOURNAL_FLAG_NEW_NAME;
 					}
@@ -8857,7 +9076,7 @@ retry_read_journal:
 		// empty search?
 		// if max results is set, treat the search as non-empty.
 		// -useful if you want to see the top ten largest files etc..
-		if ((!search_wcbuf.length_in_wchars) && (!filter_wcbuf.length_in_wchars) && (_es_max_results == 0xffffffff) && (!_es_get_result_count) && (!_es_get_total_size))
+		if ((!search_wcbuf.length_in_wchars) && (!filter_wcbuf.length_in_wchars) && (_es_max_results == ES_UINT64_MAX) && (!_es_get_result_count) && (!_es_get_total_size))
 		{
 			if ((_es_empty_search_help) && (_es_output_is_char))
 			{
@@ -8883,7 +9102,7 @@ retry_read_journal:
 		// add filename column
 		if (!_es_no_default_filename_column)
 		{
-			if (!column_find(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME))
+			if (!column_find(EVERYTHING3_PROPERTY_ID_FULL_PATH))
 			{
 				if (!column_find(EVERYTHING3_PROPERTY_ID_NAME))
 				{
@@ -8891,7 +9110,7 @@ retry_read_journal:
 					{
 						column_t *filename_column;
 						
-						filename_column = column_add(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME);
+						filename_column = column_add(EVERYTHING3_PROPERTY_ID_FULL_PATH);
 						
 						if (_es_export_type != _ES_EXPORT_TYPE_NONE)
 						{
@@ -9457,7 +9676,7 @@ void *_es_ipc2_get_column_data(EVERYTHING_IPC_LIST2 *list,SIZE_T index,DWORD pro
 	{
 		DWORD len;
 		
-		if ((property_id == EVERYTHING3_PROPERTY_ID_PATH_AND_NAME) && (!property_highlight))
+		if ((property_id == EVERYTHING3_PROPERTY_ID_FULL_PATH) && (!property_highlight))
 		{
 			return p;
 		}
@@ -9612,7 +9831,7 @@ void *_es_ipc2_get_column_data(EVERYTHING_IPC_LIST2 *list,SIZE_T index,DWORD pro
 	{
 		DWORD len;
 		
-		if ((property_id == EVERYTHING3_PROPERTY_ID_PATH_AND_NAME) && (property_highlight))
+		if ((property_id == EVERYTHING3_PROPERTY_ID_FULL_PATH) && (property_highlight))
 		{
 			return p;
 		}
@@ -9632,7 +9851,7 @@ static void _es_format_size(ES_UINT64 size,int size_format,wchar_buf_t *wcbuf)
 {
 	wchar_buf_empty(wcbuf);
 	
-	if (size != 0xffffffffffffffffI64)
+	if (size != ES_UINT64_MAX)
 	{
 		if (size_format == 0)
 		{
@@ -9804,60 +10023,76 @@ static void _es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf)
 {
 	wchar_buf_empty(wcbuf);
 	
-	if (filetime != 0xffffffffffffffffI64)
+	if (filetime != ES_UINT64_MAX)
 	{
 		switch(_es_date_format)
 		{	
 			default:
 			case 0: // (Use default)
 			case 4: // system format
-			{
-				wchar_t dmybuf[256];
-				int dmyformat;
-				SYSTEMTIME st;
-				int val1;
-				int val2;
-				int val3;
-								
-				dmyformat = 1;
+				{
+					wchar_t dmybuf[256];
+					int dmyformat;
+					SYSTEMTIME st;
+					int val1;
+					int val2;
+					int val3;
+									
+					dmyformat = 1;
 
-				if (GetLocaleInfoW(LOCALE_USER_DEFAULT,LOCALE_IDATE,dmybuf,256))
-				{
-					dmyformat = dmybuf[0] - '0';
+					if (GetLocaleInfoW(LOCALE_USER_DEFAULT,LOCALE_IDATE,dmybuf,256))
+					{
+						dmyformat = dmybuf[0] - '0';
+					}
+					
+					os_filetime_to_localtime(filetime,&st);
+					
+					switch(dmyformat)
+					{
+						case 0: val1 = st.wMonth; val2 = st.wDay; val3 = st.wYear; break; // Month-Day-Year
+						default: val1 = st.wDay; val2 = st.wMonth; val3 = st.wYear; break; // Day-Month-Year
+						case 2: val1 = st.wYear; val2 = st.wMonth; val3 = st.wDay; break; // Year-Month-Day
+					}
+					
+					wchar_buf_printf(wcbuf,"%02d/%02d/%02d %02d:%02d:%02d",val1,val2,val3,st.wHour,st.wMinute,st.wSecond);
 				}
-				
-				os_filetime_to_localtime(filetime,&st);
-				
-				switch(dmyformat)
-				{
-					case 0: val1 = st.wMonth; val2 = st.wDay; val3 = st.wYear; break; // Month-Day-Year
-					default: val1 = st.wDay; val2 = st.wMonth; val3 = st.wYear; break; // Day-Month-Year
-					case 2: val1 = st.wYear; val2 = st.wMonth; val3 = st.wDay; break; // Year-Month-Day
-				}
-				
-				wchar_buf_printf(wcbuf,"%02d/%02d/%02d %02d:%02d:%02d",val1,val2,val3,st.wHour,st.wMinute,st.wSecond);
 				break;
-			}
 				
 			case 1: // ISO-8601
-			{
-				SYSTEMTIME st;
-				os_filetime_to_localtime(filetime,&st);
-				wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02d",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
+				{
+					SYSTEMTIME st;
+					os_filetime_to_localtime(filetime,&st);
+					wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02d",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
+				}
 				break;
-			}
 
 			case 2: // raw filetime
 				wchar_buf_printf(wcbuf,"%I64u",filetime);
 				break;
 				
 			case 3: // ISO-8601 (UTC/Z)
-			{
-				SYSTEMTIME st;
-				FileTimeToSystemTime((FILETIME *)&filetime,&st);
-				wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02dZ",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
+				{
+					SYSTEMTIME st;
+					FileTimeToSystemTime((FILETIME *)&filetime,&st);
+					wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02dZ",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
+				}
+				break;	
+
+			case 5: // ISO-8601 (full resolution)
+				{
+					SYSTEMTIME st;
+					os_filetime_to_localtime(filetime,&st);
+					wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02d.%07d",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,(DWORD)(filetime % 10000000));
+				}
 				break;
-			}
+
+			case 6: // ISO-8601 (UTC/Z) (full resolution)
+				{
+					SYSTEMTIME st;
+					FileTimeToSystemTime((FILETIME *)&filetime,&st);
+					wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02d.%07dZ",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,(DWORD)(filetime % 10000000));
+				}
+				break;
 		}
 	}
 }
@@ -9868,7 +10103,7 @@ static void _es_format_duration(ES_UINT64 duration,wchar_buf_t *wcbuf)
 {
 	wchar_buf_empty(wcbuf);
 	
-	if (duration != 0xffffffffffffffffI64)
+	if (duration != ES_UINT64_MAX)
 	{
 		ES_UINT64 total_seconds;
 		ES_UINT64 days;
@@ -10610,6 +10845,7 @@ static BOOL _es_save_settings_with_filename(const wchar_t *filename)
 		config_write_string(file_handle,"locale_decimal",_es_locale_decimal_wcbuf->buf);
 		config_write_uint64(file_handle,"offset",_es_offset);
 		config_write_uint64(file_handle,"max_results",_es_max_results);
+		config_write_uint64(file_handle,"count",_es_count);
 		config_write_int(file_handle,"header",_es_header);
 		config_write_int(file_handle,"footer",_es_footer);
 		config_write_dword(file_handle,"timeout",es_timeout);
@@ -10846,8 +11082,9 @@ static BOOL _es_load_settings_with_filename(const wchar_t *filename)
 		_es_locale_negnumber = config_read_int(&ini,"locale_negnumber",_es_locale_negnumber);
 		config_read_string(&ini,"locale_thousand",_es_locale_thousand_wcbuf);
 		config_read_string(&ini,"locale_decimal",_es_locale_decimal_wcbuf);
-		_es_offset = safe_size_from_uint64(config_read_uint64(&ini,"offset",_es_offset));
-		_es_max_results = safe_size_from_uint64(config_read_uint64(&ini,"max_results",_es_max_results));
+		_es_offset = config_read_uint64(&ini,"offset",_es_offset);
+		_es_max_results = config_read_uint64(&ini,"max_results",_es_max_results);
+		_es_count = config_read_uint64(&ini,"count",_es_count);
 		_es_header = config_read_int(&ini,"header",_es_header);
 		_es_footer = config_read_int(&ini,"footer",_es_footer);
 		es_timeout = config_read_dword(&ini,"timeout",es_timeout);
@@ -10865,6 +11102,7 @@ static BOOL _es_load_settings_with_filename(const wchar_t *filename)
 		es_pixels_to_characters_div = config_read_int(&ini,"pixels_to_characters_div",es_pixels_to_characters_div);
 
 		// columns
+		// make sure the instance name is saved, otherwise loading system properties will fail.
 		
 		{
 			wchar_buf_t column_list_wcbuf;
@@ -11226,11 +11464,11 @@ static BYTE *_es_copy_uint64(BYTE *buf,ES_UINT64 value)
 
 static BYTE *_es_copy_size_t(BYTE *buf,SIZE_T value)
 {
-#if SIZE_MAX == 0xFFFFFFFFFFFFFFFFUI64
+#if SIZE_MAX == ES_UINT64_MAX
 	
 	return _es_copy_uint64(buf,(ES_UINT64)value);
 	
-#elif SIZE_MAX == 0xFFFFFFFF
+#elif SIZE_MAX == ES_DWORD_MAX
 
 	return _es_copy_dword(buf,(DWORD)value);
 	
@@ -11430,7 +11668,7 @@ static BOOL _es_check_column_param(const wchar_t *argv)
 					column_remove(property_id);
 					
 					// don't auto-add the default filename column if user doesn't want it.
-					if (property_id == EVERYTHING3_PROPERTY_ID_PATH_AND_NAME)
+					if (property_id == EVERYTHING3_PROPERTY_ID_FULL_PATH)
 					{
 						_es_no_default_filename_column = 1;
 					}
@@ -11677,7 +11915,7 @@ static void _es_escape_json_wchar_string(const wchar_t *s,wchar_buf_t *out_wcbuf
 
 // set the sort to the semicolon delimited list of property canonical names.
 // if allow_old_column_ids is true, parse integer column names as old column ids.
-static void _es_set_sort_list(const wchar_t *sort_list,int allow_old_column_ids,int die_on_bad_sort)
+static void _es_set_sort_list(const wchar_t *sort_list,int allow_old_column_ids,int die_on_bad_value)
 {
 	wchar_buf_t item_wcbuf;
 	utf8_buf_t sort_name_cbuf;
@@ -11811,7 +12049,10 @@ static void _es_set_sort_list(const wchar_t *sort_list,int allow_old_column_ids,
 				// set the rest of the properties.
 				// this one will just be missing.
 				// caller can fatal error if they expected valid properties.
-				_es_bad_switch_param("Unknown sort: %S\n",item_wcbuf.buf);
+				if (die_on_bad_value)
+				{
+					_es_bad_switch_param("Unknown sort: %S\n",item_wcbuf.buf);
+				}
 			}
 		}
 	}
@@ -11894,7 +12135,7 @@ static void _es_set_columns(const wchar_t *column_list,int action,int allow_old_
 					
 						switch(property_id)
 						{
-							case EVERYTHING3_PROPERTY_ID_PATH_AND_NAME:
+							case EVERYTHING3_PROPERTY_ID_FULL_PATH:
 								// don't default to adding the filename column if it is not already shown.
 								_es_no_default_filename_column = 1;
 								break;
@@ -11926,7 +12167,10 @@ static void _es_set_columns(const wchar_t *column_list,int action,int allow_old_
 				// set the rest of the properties.
 				// this one will just be missing.
 				// caller can fatal error if they expected valid properties.
-				_es_bad_switch_param("Unknown column: %S\n",item_wcbuf.buf);
+				if (die_on_bad_value)
+				{
+					_es_bad_switch_param("Unknown column: %S\n",item_wcbuf.buf);
+				}
 			}
 		}
 	}
@@ -12025,7 +12269,10 @@ static void _es_set_column_colors(const wchar_t *column_color_list,int action,BO
 				// set the rest of the properties.
 				// this one will just be missing.
 				// caller can fatal error if they expected valid properties.
-				_es_bad_switch_param("Unknown color: %S",item_wcbuf.buf);
+				if (die_on_bad_value)
+				{
+					_es_bad_switch_param("Unknown color: %S",item_wcbuf.buf);
+				}
 			}
 		}
 
@@ -12126,7 +12373,10 @@ static void _es_set_column_widths(const wchar_t *column_width_list,int action,BO
 				// set the rest of the properties.
 				// this one will just be missing.
 				// caller can fatal error if they expected valid properties.
-				_es_bad_switch_param("Unknown width: %S",item_wcbuf.buf);
+				if (die_on_bad_value)
+				{
+					_es_bad_switch_param("Unknown width: %S",item_wcbuf.buf);
+				}
 			}
 		}
 		
@@ -12152,7 +12402,7 @@ static column_t *_es_find_last_standard_efu_column(void)
 		{
 			case EVERYTHING3_PROPERTY_ID_NAME:
 			case EVERYTHING3_PROPERTY_ID_PATH:
-			case EVERYTHING3_PROPERTY_ID_PATH_AND_NAME:
+			case EVERYTHING3_PROPERTY_ID_FULL_PATH:
 			case EVERYTHING3_PROPERTY_ID_SIZE:
 			case EVERYTHING3_PROPERTY_ID_DATE_MODIFIED:
 			case EVERYTHING3_PROPERTY_ID_DATE_CREATED:
@@ -12187,7 +12437,7 @@ static void _es_add_standard_efu_columns(int size,int date_modified,int date_cre
 	int changed;
 	
 	// Filename,Size,Date Modified,Date Created,Attributes
-	path_and_name_column = column_find(EVERYTHING3_PROPERTY_ID_PATH_AND_NAME);
+	path_and_name_column = column_find(EVERYTHING3_PROPERTY_ID_FULL_PATH);
 	size_column = column_find(EVERYTHING3_PROPERTY_ID_SIZE);
 	date_modified_column = column_find(EVERYTHING3_PROPERTY_ID_DATE_MODIFIED);
 	date_created_column = column_find(EVERYTHING3_PROPERTY_ID_DATE_CREATED);
@@ -12839,7 +13089,7 @@ static BOOL _es_read_journal_callback_proc(_es_read_journal_t *param,_ipc3_journ
 	
 	if (_es_watch)
 	{
-		_es_output_noncell_printf("%I64u %I64u\r\n",change->journal_id,change->change_id);
+		_es_output_noncell_printf("%I64u %I64u\r\n",change->journal_id,change->change_id + 1);
 		
 		ExitProcess(0);
 	}
@@ -12936,7 +13186,7 @@ static BOOL _es_read_journal_callback_proc(_es_read_journal_t *param,_ipc3_journ
 				
 				break;
 				
-			case EVERYTHING3_PROPERTY_ID_PATH_AND_NAME:
+			case EVERYTHING3_PROPERTY_ID_FULL_PATH:
 
 				{
 					utf8_buf_t filename_cbuf;
@@ -12989,7 +13239,7 @@ static BOOL _es_read_journal_callback_proc(_es_read_journal_t *param,_ipc3_journ
 				_es_output_cell_filetime_property(change->new_parent_date_modified);
 				break;
 					
-			case EVERYTHING3_PROPERTY_ID_FILE_LIST_PATH_AND_NAME:
+			case EVERYTHING3_PROPERTY_ID_FILE_LIST_FULL_PATH:
 
 				{
 					utf8_buf_t filename_cbuf;

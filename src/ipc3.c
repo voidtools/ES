@@ -30,6 +30,7 @@
 #define _IPC3_STREAM_PIPE_MAX_BUF_SIZE						65536
 #define _IPC3_STREAM_POOL_CHUNK_SIZE						65536
 #define _IPC3_IOCTL_ALLOC_OUT_CHUNK_DATA(chunk)				((BYTE *)(((ipc3_ioctl_alloc_out_chunk_t *)(chunk)) + 1))
+#define _IPC3_CONNECT_BUSY_TIMEOUT							30000
 
 typedef struct ipc3_ioctl_alloc_out_chunk_s
 {
@@ -287,11 +288,11 @@ SIZE_T ipc3_stream_read_size_t(ipc3_stream_t *stream)
 		
 		uint64_value = ipc3_stream_read_uint64(stream);	
 					
-#if SIZE_MAX == 0xFFFFFFFFFFFFFFFFUI64
+#if SIZE_MAX == ES_UINT64_MAX
 
 		ret = uint64_value;
 
-#elif SIZE_MAX == 0xFFFFFFFF
+#elif SIZE_MAX == ES_DWORD_MAX
 
 		if (uint64_value <= SIZE_MAX)
 		{
@@ -356,7 +357,7 @@ SIZE_T ipc3_stream_read_len_vlq(ipc3_stream_t *stream)
 		return safe_size_add(start,dword_value);
 	}
 
-#if SIZE_MAX == 0xFFFFFFFFFFFFFFFFUI64
+#if SIZE_MAX == ES_UINT64_MAX
 
 	{
 		ES_UINT64 uint64_value;
@@ -366,7 +367,7 @@ SIZE_T ipc3_stream_read_len_vlq(ipc3_stream_t *stream)
 
 		uint64_value = ipc3_stream_read_uint64(stream);
 
-		if (uint64_value < 0xFFFFFFFFFFFFFFFFUI64)
+		if (uint64_value < ES_UINT64_MAX)
 		{
 			return safe_size_add(start,uint64_value);
 		}
@@ -375,7 +376,7 @@ SIZE_T ipc3_stream_read_len_vlq(ipc3_stream_t *stream)
 		return ES_UINT64_MAX;
 	}
 	
-#elif SIZE_MAX == 0xffffffffui32
+#elif SIZE_MAX == ES_DWORD_MAX
 		
 	stream->is_error = 1;
 	return ES_DWORD_MAX;
@@ -479,11 +480,13 @@ HANDLE ipc3_connect_pipe()
 	wchar_buf_t pipe_name_wcbuf;
 	wchar_buf_t window_class_wcbuf;
 	HANDLE pipe_handle;
+	DWORD tickstart;
 	
 	wchar_buf_init(&pipe_name_wcbuf);
 	wchar_buf_init(&window_class_wcbuf);
 
 	ipc3_get_pipe_name(&pipe_name_wcbuf);
+	tickstart = GetTickCount();
 		
 retry:
 		
@@ -503,10 +506,23 @@ retry:
 		
 		if (last_error == ERROR_PIPE_BUSY)
 		{
-			// try again..
-			Sleep(10);
+			DWORD elapsed;
 			
-			goto retry;
+			elapsed = GetTickCount() - tickstart;
+			
+			if (elapsed < _IPC3_CONNECT_BUSY_TIMEOUT)
+			{
+				DWORD wait_last_error;
+				
+				if (WaitNamedPipe(pipe_name_wcbuf.buf,_IPC3_CONNECT_BUSY_TIMEOUT - elapsed))
+				{
+					goto retry;
+				}
+
+				wait_last_error = GetLastError();
+				
+				debug_error_printf("Connect pipe %S WaitNamedPipe failed %u\n",pipe_name_wcbuf.buf,wait_last_error);
+			}
 		}
 		
 		SetLastError(ERROR_PIPE_NOT_CONNECTED);
@@ -1501,6 +1517,7 @@ void ipc3_result_list_seek_to_offset_from_index(ipc3_result_list_t *result_list,
 	}
 }
 
+
 // fill in a buffer with a VLQ value and progress the buffer pointer.
 // buf can be NULL to calculate the length.
 BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value)
@@ -1538,8 +1555,8 @@ BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value)
 	{
 		if (buf)
 		{
-			*d++ = (BYTE)(value >> 8);
 			*d++ = (BYTE)(value);
+			*d++ = (BYTE)(value >> 8);
 		}
 		else
 		{
@@ -1565,10 +1582,10 @@ BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value)
 	{
 		if (buf)
 		{
-			*d++ = (BYTE)(value >> 24);
-			*d++ = (BYTE)(value >> 16);
-			*d++ = (BYTE)(value >> 8);
 			*d++ = (BYTE)(value);
+			*d++ = (BYTE)(value >> 8);
+			*d++ = (BYTE)(value >> 16);
+			*d++ = (BYTE)(value >> 24);
 		}
 		else
 		{
@@ -1592,44 +1609,27 @@ BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value)
 		d += 4;
 	}
 	
-	// value cannot be larger than or equal to 0xffffffffffffffff
-#if SIZE_MAX == 0xFFFFFFFFFFFFFFFFUI64
-
 	if (buf)
 	{
-		*d++ = (BYTE)(value >> 56);
-		*d++ = (BYTE)(value >> 48);
-		*d++ = (BYTE)(value >> 40);
-		*d++ = (BYTE)(value >> 32);
-		*d++ = (BYTE)(value >> 24);
-		*d++ = (BYTE)(value >> 16);
-		*d++ = (BYTE)(value >> 8);
 		*d++ = (BYTE)(value);
+		*d++ = (BYTE)(value >> 8);
+		*d++ = (BYTE)(value >> 16);
+		*d++ = (BYTE)(value >> 24);
+		*d++ = (BYTE)(value >> 32);
+		*d++ = (BYTE)(value >> 40);
+		*d++ = (BYTE)(value >> 48);
+		*d++ = (BYTE)(value >> 56);
 	}
 	else
 	{
 		d += 8;
 	}
 	
+	// value cannot be larger than or equal to 0xffffffffffffffff
+#if SIZE_MAX == ES_UINT64_MAX
 
-#elif SIZE_MAX == 0xFFFFFFFF
+#elif SIZE_MAX == ES_DWORD_MAX
 
-	if (buf)
-	{
-		*d++ = 0x00;
-		*d++ = 0x00;
-		*d++ = 0x00;
-		*d++ = 0x00;
-		*d++ = 0xff;
-		*d++ = 0xff;
-		*d++ = 0xff;
-		*d++ = 0xff;
-	}
-	else
-	{
-		d += 8;
-	}
-	
 #else
 	#error unknown SIZE_MAX
 #endif

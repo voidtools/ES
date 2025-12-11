@@ -460,8 +460,8 @@ static ES_UTF8 *_utf8_buf_get_vprintf(ES_UTF8 *buf,const ES_UTF8 *format,va_list
 				
 				d = _utf8_buf_get_format_number(16,*p+'A'-'P',buf,d,0,'0',8<<(sizeof(SIZE_T)>>3),num);
 				
-#if SIZE_MAX == 0xffffffffffffffffui64
-#elif SIZE_MAX == 0xffffffffui32
+#if SIZE_MAX == ES_UINT64_MAX
+#elif SIZE_MAX == ES_DWORD_MAX
 #else
 #error unknown SIZE_MAX
 #endif

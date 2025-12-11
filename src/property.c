@@ -99,7 +99,7 @@ static const ES_UTF8 *_property_name_array[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT
 	"Company",
 	"Kind",
 	"Name Length",
-	"Path and Name Length",
+	"Full Path Length",
 	"Subject",
 	"Authors",
 	"Date Taken",
@@ -203,7 +203,7 @@ static const ES_UTF8 *_property_name_array[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT
 	"Trademarks",
 	"Display Name",
 	"Name UTF-8 Length in UTF-8 Bytes",
-	"Path and Name Length in UTF-8 Bytes",
+	"Full Path Length in UTF-8 Bytes",
 	"Child Count",
 	"Child Folder Count",
 	"Child File Count",
@@ -254,7 +254,7 @@ static const ES_UTF8 *_property_name_array[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT
 	"Orientation",
 	"End Of File",
 	"Short Name",
-	"Short Path and Name",
+	"Short Full Path",
 	"Encryption Status",
 	"Hard Link Filenames",
 	"Index Type",
@@ -290,7 +290,7 @@ static const ES_UTF8 *_property_name_array[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT
 	"Extension Frequency",
 	"Regular Expression Matches 1-9",
 	"URL",
-	"Filename", // Path and Name
+	"Filename", // Full Path
 	"Parent File ID",
 	"SHA-512",
 	"SHA-384",
@@ -313,10 +313,10 @@ static const ES_UTF8 *_property_name_array[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT
 	"Last 128 Bytes",
 	"Byte Order Mark",
 	"Volume Label",
-	"File List Path and Name",
-	"Display Path and Name",
+	"File List Full Path",
+	"Display Full Path",
 	"Parse Name",
-	"Parse Path and Name",
+	"Parse Full Path",
 	"Stem",
 	"Shell Attributes",
 	"Is Folder",
@@ -448,7 +448,7 @@ static const ES_UTF8 *_property_name_array[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT
 	"Folder Names SHA-256 From Disk",
 	"Folder Names SHA-512 From Disk",
 	"Long Name",
-	"Long Path and Name",
+	"Long Full Path",
 	"Digital Signature Name",
 	"Digital Signature Timestamp",
 	"Audio Track Count",
@@ -470,7 +470,7 @@ static const ES_UTF8 *_property_name_array[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT
 	"-",
 };
 
-// IPC2 sort properties (ES_COLUMN_FILENAME => EVERYTHING3_PROPERTY_ID_PATH_AND_NAME)
+// IPC2 sort properties (ES_COLUMN_FILENAME => EVERYTHING3_PROPERTY_ID_FULL_PATH)
 #define PROPERTY_OLD_COLUMN_MACRO(property_id)	property_id,
 
 static const DWORD _property_old_column_id_to_property_id_array[] = 
@@ -727,7 +727,7 @@ const BYTE es_property_format[EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT] =
 	PROPERTY_FORMAT_GROUPING_NUMBER5,		// EVERYTHING3_PROPERTY_ID_EXTENSION_FREQUENCY,
 	PROPERTY_FORMAT_TEXT32,					// EVERYTHING3_PROPERTY_ID_REGEX_MATCHES,
 	PROPERTY_FORMAT_TEXT64,					// EVERYTHING3_PROPERTY_ID_URL,
-	PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_PATH_AND_NAME,
+	PROPERTY_FORMAT_TEXT47,					// EVERYTHING3_PROPERTY_ID_FULL_PATH,
 	PROPERTY_FORMAT_HEX_NUMBER32,			// EVERYTHING3_PROPERTY_ID_PARENT_FILE_ID,
 	PROPERTY_FORMAT_DATA64, 				// EVERYTHING3_PROPERTY_ID_SHA512,
 	PROPERTY_FORMAT_DATA48, 				// EVERYTHING3_PROPERTY_ID_SHA384,
@@ -978,7 +978,7 @@ static WORD _property_format_to_column_width[PROPERTY_FORMAT_COUNT] =
 	32, // PROPERTY_FORMAT_FORMATTED_TEXT32, // formatted 32 characters
 	3, // PROPERTY_FORMAT_YESNO, // Yes/No
 	4, // PROPERTY_FORMAT_PERCENT, // 100%
-	5, // PROPERTY_FORMAT_ASPECT_RATIO, // 16:9 / 9.999
+	7, // PROPERTY_FORMAT_ASPECT_RATIO, // 16:9 / 9.999:1
 };
 
 // right aligned columns
@@ -1052,7 +1052,7 @@ static BYTE _property_format_to_right_align[PROPERTY_FORMAT_COUNT] =
 	0, // PROPERTY_FORMAT_FORMATTED_TEXT32, // formatted 32 characters
 	0, // PROPERTY_FORMAT_YESNO, // Yes/No
 	1, // PROPERTY_FORMAT_PERCENT, // 100%
-	1, // PROPERTY_FORMAT_ASPECT_RATIO, // 16:9 / 9.999
+	1, // PROPERTY_FORMAT_ASPECT_RATIO, // 16:9 / 9.999:1
 };
 
 // default column widths.
@@ -1126,7 +1126,7 @@ static BYTE _property_format_to_default_sort_ascending[PROPERTY_FORMAT_COUNT] =
 	1, // PROPERTY_FORMAT_FORMATTED_TEXT32, // formatted 32 characters
 	1, // PROPERTY_FORMAT_YESNO, // Yes/No
 	0, // PROPERTY_FORMAT_PERCENT, // 100%
-	0, // PROPERTY_FORMAT_ASPECT_RATIO, // 16:9 / 9.999
+	0, // PROPERTY_FORMAT_ASPECT_RATIO, // 16:9 / 9.999:1
 };
 
 // returns a PROPERTY_FORMAT_* type.
@@ -1202,7 +1202,7 @@ void property_get_localized_name(DWORD property_id,wchar_buf_t *out_wcbuf)
 	DEBUG_ASSERT((sizeof(_property_name_array) / sizeof(ES_UTF8*)) == EVERYTHING3_PROPERTY_ID_BUILTIN_COUNT);
 
 	// try localized name..
-	// localizing EVERYTHING3_PROPERTY_ID_PATH_AND_NAME as "Path and Name" is horrible.
+	// localizing EVERYTHING3_PROPERTY_ID_FULL_PATH as "Path and Name" is horrible.
 	// don't localize for now. 
 	
 	switch(property_id)
@@ -1532,8 +1532,8 @@ void property_load_read_journal_names(void)
 	_property_name_array[EVERYTHING3_PROPERTY_ID_TYPE] = "Action";
 	_property_name_array[EVERYTHING3_PROPERTY_ID_DATE_INDEXED] = "Source Date Changed";
 	_property_name_array[EVERYTHING3_PROPERTY_ID_DATE_RECENTLY_CHANGED] = "Parent Date Modified";
-	_property_name_array[EVERYTHING3_PROPERTY_ID_PATH_AND_NAME] = "Filename";
+	_property_name_array[EVERYTHING3_PROPERTY_ID_FULL_PATH] = "Filename";
 	_property_name_array[EVERYTHING3_PROPERTY_ID_DATE_RUN] = "New Parent Date Modified";
-	_property_name_array[EVERYTHING3_PROPERTY_ID_FILE_LIST_PATH_AND_NAME] = "New Filename";
+	_property_name_array[EVERYTHING3_PROPERTY_ID_FILE_LIST_FULL_PATH] = "New Filename";
 }
 
