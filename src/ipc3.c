@@ -1611,14 +1611,14 @@ BYTE *ipc3_copy_len_vlq(BYTE *buf,SIZE_T value)
 	
 	if (buf)
 	{
-		*d++ = (BYTE)(value);
-		*d++ = (BYTE)(value >> 8);
-		*d++ = (BYTE)(value >> 16);
-		*d++ = (BYTE)(value >> 24);
-		*d++ = (BYTE)(value >> 32);
-		*d++ = (BYTE)(value >> 40);
-		*d++ = (BYTE)(value >> 48);
-		*d++ = (BYTE)(value >> 56);
+		*d++ = (BYTE)((ES_UINT64)value);
+		*d++ = (BYTE)(((ES_UINT64)value) >> 8);
+		*d++ = (BYTE)(((ES_UINT64)value) >> 16);
+		*d++ = (BYTE)(((ES_UINT64)value) >> 24);
+		*d++ = (BYTE)(((ES_UINT64)value) >> 32);
+		*d++ = (BYTE)(((ES_UINT64)value) >> 40);
+		*d++ = (BYTE)(((ES_UINT64)value) >> 48);
+		*d++ = (BYTE)(((ES_UINT64)value) >> 56);
 	}
 	else
 	{

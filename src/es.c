@@ -8805,7 +8805,7 @@ next_argv:
 					DWORD flags;
 					_es_read_journal_t read_journal;
 					
-					read_journal.run = _es_max_results;
+					read_journal.run = safe_size_from_uint64(_es_max_results);
 					read_journal.numitems = 0;
 					read_journal.state = 0;
 					
