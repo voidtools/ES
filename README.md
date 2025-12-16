@@ -161,10 +161,11 @@ Display Options
 <br/>
 <dt>-csv<br/>
 -efu<br/>
--txt<br/>
+-json<br/>
 -m3u<br/>
 -m3u8<br/>
--tsv</dt>
+-tsv<br/>
+-txt</dt>
 <dd>Change display format.</dd>
 <br/>
 <dt>-size-format &lt;format&gt;</dt>
@@ -221,10 +222,11 @@ Export Options
 <dl>
 <dt>-export-csv &lt;out.csv&gt;<br/>
 -export-efu &lt;out.efu&gt;<br/>
--export-txt &lt;out.txt&gt;<br/>
+-export-json &lt;out.json&gt;<br/>
 -export-m3u &lt;out.m3u&gt;<br/>
 -export-m3u8 &lt;out.m3u8&gt;<br/>
--export-tsv &lt;out.txt&gt;</dt>
+-export-tsv &lt;out.txt&gt;<br/>
+-export-txt &lt;out.txt&gt;</dt>
 <dd>Export to a file using the specified layout.</dd>
 <dt>-no-header</dt>
 <dd>Do not output a column header for CSV, EFU and TSV files.</dd>
