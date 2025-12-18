@@ -1,3 +1,7 @@
+Thursday 18 December 2025: Version 1.1.0.36
+	fixed an issue with -no-digit-grouping not being applied.
+	added GetDateFormat/GetTimeFormat for locale date/time formatting.
+	
 Thursday 11 December 2025: Version 1.1.0.35
 	fixed an issue with -offset not working with ipc3.
 	fixed an issue with exporting hex values as JSON.
@@ -9,7 +13,7 @@ Thursday 11 December 2025: Version 1.1.0.35
 	improved loading of columns from es.ini
 	improved handling of errors when loading es.ini
 	improved -n by applying a count: filter.
-	added -redirect-stdout out.txt and redirect-stderr error.txt
+	added -redirect-stdout out.txt and -redirect-stderr error.txt
 	added date/time formatting to date-modified-date and date-modified-time properties.
 
 Saturday 11 October 2025: Version 1.1.0.34
