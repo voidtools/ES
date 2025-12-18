@@ -127,6 +127,9 @@
 // *vlq is using the wrong byte order.
 // *fixed a crash when exporting to json
 // *watch will now return the correct change id. (+1)
+// 1.1.0.36
+// *Added GetDateFormat/GetTimeFormat for locale date/time formatting.
+// *fixed an issue with -no-digit-grouping not being applied.
 
 #include "es.h"
 
@@ -2158,10 +2161,25 @@ static void _es_format_time(DWORD value,wchar_buf_t *wcbuf)
 		{	
 			default:
 			case 0: // (Use default)
-			case 1: // ISO-8601
-			case 4: // system format
 			case 3: // ISO-8601 (UTC/Z)
+			case 4: // system format
 			case 6: // ISO-8601 (UTC/Z) (full resolution)
+			
+				{
+					SYSTEMTIME st;
+					
+					os_zero_memory(&st,sizeof(SYSTEMTIME));
+					
+					st.wHour = (WORD)(value / 3600000);
+					st.wMinute = (WORD)((value % 3600000) / 60000);
+					st.wSecond = (WORD)((value % 60000) / 1000);
+
+					wchar_buf_grow_size(wcbuf,256);
+					GetTimeFormat(LOCALE_USER_DEFAULT,0,&st,NULL,wcbuf->buf,256);
+				}
+				break;
+			
+			case 1: // ISO-8601
 			case 5: // ISO-8601 (full resolution)
 				{
 					DWORD hours;
@@ -2260,38 +2278,20 @@ static void _es_format_date(DWORD value,wchar_buf_t *wcbuf)
 		{	
 			default:
 			case 0: // (Use default)
-			case 4: // system format
 			case 3: // ISO-8601 (UTC/Z)
+			case 4: // system format
 			case 6: // ISO-8601 (UTC/Z) (full resolution)
 				{
-					wchar_t dmybuf[256];
-					int dmyformat;
-					DWORD val1;
-					DWORD val2;
-					DWORD val3;
-					DWORD year;
-					DWORD month;
-					DWORD day;
+					SYSTEMTIME st;
 					
-					dmyformat = 1;
-
-					if (GetLocaleInfoW(LOCALE_USER_DEFAULT,LOCALE_IDATE,dmybuf,256))
-					{
-						dmyformat = dmybuf[0] - '0';
-					}
-						
-					year = value / (32*13);
-					month = (value / 32) % 13;
-					day = value % 32;
+					os_zero_memory(&st,sizeof(SYSTEMTIME));
 					
-					switch(dmyformat)
-					{
-						case 0: val1 = month; val2 = day; val3 = year; break; // Month-Day-Year
-						default: val1 = day; val2 = month; val3 = year; break; // Day-Month-Year
-						case 2: val1 = year; val2 = month; val3 = day; break; // Year-Month-Day
-					}
+					st.wYear = (WORD)(value / (32*13));
+					st.wMonth = (WORD)((value / 32) % 13);
+					st.wDay = (WORD)(value % 32);
 					
-					wchar_buf_printf(wcbuf,"%02u/%02u/%02u",val1,val2,val3);
+					wchar_buf_grow_size(wcbuf,256);
+					GetDateFormat(LOCALE_USER_DEFAULT,DATE_SHORTDATE,&st,NULL,wcbuf->buf,256);
 				}
 				break;
 				
@@ -10031,38 +10031,29 @@ static void _es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf)
 			case 0: // (Use default)
 			case 4: // system format
 				{
-					wchar_t dmybuf[256];
-					int dmyformat;
 					SYSTEMTIME st;
-					int val1;
-					int val2;
-					int val3;
-									
-					dmyformat = 1;
-
-					if (GetLocaleInfoW(LOCALE_USER_DEFAULT,LOCALE_IDATE,dmybuf,256))
+					
+					if (os_filetime_to_localtime(filetime,&st))
 					{
-						dmyformat = dmybuf[0] - '0';
+						wchar_t datebuf[256];
+						wchar_t timebuf[256];
+						
+						GetDateFormat(LOCALE_USER_DEFAULT,DATE_SHORTDATE,&st,NULL,datebuf,256);
+						GetTimeFormat(LOCALE_USER_DEFAULT,0,&st,NULL,timebuf,256);
+						
+						wchar_buf_printf(wcbuf,"%S %S",datebuf,timebuf);
 					}
-					
-					os_filetime_to_localtime(filetime,&st);
-					
-					switch(dmyformat)
-					{
-						case 0: val1 = st.wMonth; val2 = st.wDay; val3 = st.wYear; break; // Month-Day-Year
-						default: val1 = st.wDay; val2 = st.wMonth; val3 = st.wYear; break; // Day-Month-Year
-						case 2: val1 = st.wYear; val2 = st.wMonth; val3 = st.wDay; break; // Year-Month-Day
-					}
-					
-					wchar_buf_printf(wcbuf,"%02d/%02d/%02d %02d:%02d:%02d",val1,val2,val3,st.wHour,st.wMinute,st.wSecond);
 				}
+				
 				break;
 				
 			case 1: // ISO-8601
 				{
 					SYSTEMTIME st;
-					os_filetime_to_localtime(filetime,&st);
-					wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02d",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
+					if (os_filetime_to_localtime(filetime,&st))
+					{
+						wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02d",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
+					}
 				}
 				break;
 
@@ -10081,8 +10072,10 @@ static void _es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf)
 			case 5: // ISO-8601 (full resolution)
 				{
 					SYSTEMTIME st;
-					os_filetime_to_localtime(filetime,&st);
-					wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02d.%07d",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,(DWORD)(filetime % 10000000));
+					if (os_filetime_to_localtime(filetime,&st))
+					{
+						wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02d.%07d",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,(DWORD)(filetime % 10000000));
+					}
 				}
 				break;
 
@@ -10184,7 +10177,7 @@ static void _es_format_number(ES_UINT64 number,int allow_digit_grouping,wchar_bu
 			
 			nfmt.NumDigits = 0;
 			nfmt.LeadingZero = _es_locale_lzero;
-			nfmt.Grouping = _es_locale_grouping;
+			nfmt.Grouping = _es_digit_grouping ? _es_locale_grouping : 0;
 			nfmt.lpDecimalSep = _es_locale_decimal_wcbuf->buf;
 			nfmt.lpThousandSep = _es_locale_thousand_wcbuf->buf;
 			nfmt.NegativeOrder = _es_locale_negnumber;
@@ -10310,7 +10303,7 @@ static void _es_format_fixed_q1k(ES_UINT64 number,int use_locale,int allow_digit
 
 			nfmt.NumDigits = decimal_places;
 			nfmt.LeadingZero = _es_locale_lzero;
-			nfmt.Grouping = allow_digit_grouping ? _es_locale_grouping : 0;
+			nfmt.Grouping = ((_es_digit_grouping) && (allow_digit_grouping)) ? _es_locale_grouping : 0;
 			nfmt.lpDecimalSep = _es_locale_decimal_wcbuf->buf;
 			nfmt.lpThousandSep = _es_locale_thousand_wcbuf->buf;
 			nfmt.NegativeOrder = _es_locale_negnumber;
@@ -10434,7 +10427,7 @@ static void _es_format_fixed_q1m(ES_UINT64 number,int use_locale,int allow_digit
 
 			nfmt.NumDigits = decimal_places;
 			nfmt.LeadingZero = _es_locale_lzero;
-			nfmt.Grouping = allow_digit_grouping ? _es_locale_grouping : 0;
+			nfmt.Grouping = ((_es_digit_grouping) && (allow_digit_grouping)) ? _es_locale_grouping : 0;
 			nfmt.lpDecimalSep = _es_locale_decimal_wcbuf->buf;
 			nfmt.lpThousandSep = _es_locale_thousand_wcbuf->buf;
 			nfmt.NegativeOrder = _es_locale_negnumber;
