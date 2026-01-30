@@ -28,6 +28,8 @@
 // https://www.voidtools.com/forum/viewtopic.php?t=5762
 //
 // TODO:
+// [HIGH] consider checking the calling process for powershell 7 and using --argv by default.
+// [HIGH] config setting for es_argv_mode
 // [HIGH] json should only print the trailing , at the start of a non-first line and the terminating ] should always be added when using read journal mode.
 // [HIGH] c# cmdlet for powershell.
 // [HIGH] separate old-name and new-name filters when reading the journal.
@@ -130,6 +132,8 @@
 // 1.1.0.36
 // *Added GetDateFormat/GetTimeFormat for locale date/time formatting.
 // *fixed an issue with -no-digit-grouping not being applied.
+// 1.1.0.37
+// *added -argv mode, which uses CommandLineToArgv, which Powershell 7 uses with $PSNativeCommandArgumentPassing="windows" (the default mode) -https://www.voidtools.com/forum/viewtopic.php?p=79354#p79354
 
 #include "es.h"
 
@@ -410,6 +414,7 @@ static char _es_from_now = FALSE; // resume journal from this change-id
 static char _es_to_now = FALSE; // end journal on last change.
 static DWORD _es_action_filter = 0xffffffff; // all filters.
 static char _es_watch = FALSE; // watch for a change and trigger (exit) when filter matches.
+static char _es_argv_mode = 0; // 0=as-is, 1=CommandLineToArgvW
 
 wchar_buf_t *es_instance_name_wcbuf = NULL;
 DWORD es_timeout = 0;
@@ -5438,7 +5443,7 @@ static void	_es_output_ipc3_results(ipc3_result_list_t *result_list,SIZE_T index
 			}
 			
 			// read remaining pipe data.
-			// we shouldn't any remaining data.
+			// we shouldn't have any remaining data.
 			// this should really be an error.
 			while(property_request_run)
 			{
@@ -7134,6 +7139,20 @@ static int _es_main(void)
 					_es_expect_command_argv_int(&argv_wcbuf);
 					
 					_es_aspect_ratio_format = wchar_string_to_int(argv_wcbuf.buf);
+
+					goto next_argv;
+				}
+				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"argv"))
+				{
+					_es_argv_mode = 1;
+
+					goto next_argv;
+				}
+				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-argv"))
+				{
+					_es_argv_mode = 0;
 
 					goto next_argv;
 				}
@@ -10064,8 +10083,10 @@ static void _es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf)
 			case 3: // ISO-8601 (UTC/Z)
 				{
 					SYSTEMTIME st;
-					FileTimeToSystemTime((FILETIME *)&filetime,&st);
-					wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02dZ",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
+					if (FileTimeToSystemTime((FILETIME *)&filetime,&st))
+					{
+						wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02dZ",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
+					}
 				}
 				break;	
 
@@ -10082,8 +10103,10 @@ static void _es_format_filetime(ES_UINT64 filetime,wchar_buf_t *wcbuf)
 			case 6: // ISO-8601 (UTC/Z) (full resolution)
 				{
 					SYSTEMTIME st;
-					FileTimeToSystemTime((FILETIME *)&filetime,&st);
-					wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02d.%07dZ",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,(DWORD)(filetime % 10000000));
+					if (FileTimeToSystemTime((FILETIME *)&filetime,&st))
+					{
+						wchar_buf_printf(wcbuf,"%04d-%02d-%02dT%02d:%02d:%02d.%07dZ",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,(DWORD)(filetime % 10000000));
+					}
 				}
 				break;
 		}
@@ -10514,63 +10537,130 @@ static void _es_get_argv(wchar_buf_t *wcbuf)
 		start = p;
 		
 		inquote = 0;
-		
-		while(*p)
+
+		if (_es_argv_mode)
 		{
-			if ((!inquote) && (unicode_is_ascii_ws(*p)))
+			while(*p)
 			{
-				break;
-			}
-			else
-			if ((!was_quote) && (*p == '=') && (*start == '-'))
-			{
-				was_eq = 1;
-				
-				p++;
-				break;
-			}
-			else
-			if ((*p == '"') && (p[1] == '"') && (p[2] == '"'))
-			{
-				if (pass)
+				if ((!inquote) && (unicode_is_ascii_ws(*p)))
 				{
-					*d++ = '&';
-					*d++ = 'q';
-					*d++ = 'u';
-					*d++ = 'o';
-					*d++ = 't';
-					*d++ = ':';
+					break;
+				}
+				else
+				if ((!was_quote) && (*p == '=') && (*start == '-'))
+				{
+					was_eq = 1;
+					
+					p++;
+					break;
+				}
+				else
+				if ((inquote) && (*p == '\\') && (p[1] == '"'))
+				{
+					if (pass)
+					{
+						*d++ = '"';
+					}
+					else
+					{
+						d += 1;
+					}
+					
+					p += 2;
+				}
+				else
+				if ((inquote) && (*p == '\\') && (p[1] == '\\'))
+				{
+					if (pass)
+					{
+						*d++ = '\\';
+					}
+					else
+					{
+						d += 1;
+					}
+					
+					p += 2;
+				}
+				else
+				if (*p == '"')
+				{
+					p++;
+					
+					inquote = !inquote;
+					was_quote = 1;
 				}
 				else
 				{
-					d += 6;
-				}
-				
-				p += 3;
-			}
-			else
-			if (*p == '"')
-			{
-				if (pass)
-				{
-					*d = '"';
-				}
-				
-				d++;
-				p++;
-				
-				inquote = !inquote;
-				was_quote = 1;
-			}
-			else
-			{
-				if (pass) 
-				{
-					*d = *p;
-				}
+					if (pass) 
+					{
+						*d = *p;
+					}
 
-				d++;
-				p++;
+					d++;
+					p++;
+				}
+			}
+		}
+		else
+		{
+			while(*p)
+			{
+				if ((!inquote) && (unicode_is_ascii_ws(*p)))
+				{
+					break;
+				}
+				else
+				if ((!was_quote) && (*p == '=') && (*start == '-'))
+				{
+					was_eq = 1;
+					
+					p++;
+					break;
+				}
+				else
+				if ((*p == '"') && (p[1] == '"') && (p[2] == '"'))
+				{
+					if (pass)
+					{
+						*d++ = '&';
+						*d++ = 'q';
+						*d++ = 'u';
+						*d++ = 'o';
+						*d++ = 't';
+						*d++ = ':';
+					}
+					else
+					{
+						d += 6;
+					}
+					
+					p += 3;
+				}
+				else
+				if (*p == '"')
+				{
+					if (pass)
+					{
+						*d = '"';
+					}
+					
+					d++;
+					p++;
+					
+					inquote = !inquote;
+					was_quote = 1;
+				}
+				else
+				{
+					if (pass) 
+					{
+						*d = *p;
+					}
+
+					d++;
+					p++;
+				}
 			}
 		}
 	
