@@ -1391,7 +1391,7 @@ void ipc3_result_list_seek_to_offset_from_index(ipc3_result_list_t *result_list,
 		property_request_p = property_request_array;
 		
 		// read remaining pipe data.
-		// we shouldn't any remaining data.
+		// we shouldn't have any remaining data.
 		// this should really be an error.
 		while(property_request_run)
 		{

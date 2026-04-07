@@ -28,12 +28,11 @@
 // https://www.voidtools.com/forum/viewtopic.php?t=5762
 //
 // TODO:
-// [HIGH] consider checking the calling process for powershell 7 and using --argv by default.
-// [HIGH] config setting for es_argv_mode
 // [HIGH] json should only print the trailing , at the start of a non-first line and the terminating ] should always be added when using read journal mode.
 // [HIGH] c# cmdlet for powershell.
 // [HIGH] separate old-name and new-name filters when reading the journal.
 // [HIGH] es -createfilelist -need filename filters -need semicolon delimited list parser.
+// consider checking the calling process for powershell 7 and using --argv by default.
 // es server that is active while the console window is opened and handles all requests, so multiple calls from the same console window share the same connection and cache.
 // ansi escapes -option to escape colors so they are piped to other commands like find.
 // custom labels, eg: extension => ext, could also do something for localization.
@@ -133,7 +132,10 @@
 // *Added GetDateFormat/GetTimeFormat for locale date/time formatting.
 // *fixed an issue with -no-digit-grouping not being applied.
 // 1.1.0.37
-// *added -argv mode, which uses CommandLineToArgv, which Powershell 7 uses with $PSNativeCommandArgumentPassing="windows" (the default mode) -https://www.voidtools.com/forum/viewtopic.php?p=79354#p79354
+// *added -argv mode, which uses CommandLineToArgv, which Powershell 7 uses with $PSNativeCommandArgumentPassing="windows" (the default mode) -https://www.voidtools.com/forum/viewtopic.php?p=79354#p79354 -config setting for es_argv_mode
+// -utf8-bom is now applied when redirecting output.
+// -no-result-error will now work with IPC3.
+// -csv not using human readable dates.
 
 #include "es.h"
 
@@ -414,7 +416,7 @@ static char _es_from_now = FALSE; // resume journal from this change-id
 static char _es_to_now = FALSE; // end journal on last change.
 static DWORD _es_action_filter = 0xffffffff; // all filters.
 static char _es_watch = FALSE; // watch for a change and trigger (exit) when filter matches.
-static char _es_argv_mode = 0; // 0=as-is, 1=CommandLineToArgvW
+static char _es_argv_mode = 0; // 0=(use-default), 1=ES-syntax, 2=CommandLineToArgvW (breaks trailing \" )
 
 wchar_buf_t *es_instance_name_wcbuf = NULL;
 DWORD es_timeout = 0;
@@ -993,6 +995,14 @@ static BOOL _es_ipc3_query(void)
 				// setup our initial result list from the stream.
 				// don't read any items yet.
 				ipc3_result_list_init(&result_list,(ipc3_stream_t *)&pipe_stream);
+				
+				if (_es_no_result_error)
+				{
+					if (result_list.folder_result_count + result_list.file_result_count == 0)
+					{
+						_es_ret = ES_ERROR_NO_RESULTS;
+					}
+				}
 				
 				if (_es_get_result_count)
 				{
@@ -2135,7 +2145,7 @@ static void _es_output_cell_filetime_property(ES_UINT64 value)
 		_es_output_cell_printf(0,"");
 	}
 	else
-	if ((_es_export_type == _ES_EXPORT_TYPE_NONE) || (_es_date_format))
+	if ((_es_export_type == _ES_EXPORT_TYPE_NONE) || (_es_export_type == _ES_EXPORT_TYPE_CSV) || (_es_export_type == _ES_EXPORT_TYPE_TSV) || (_es_date_format))
 	{
 		wchar_buf_t wcbuf;
 
@@ -7145,12 +7155,19 @@ static int _es_main(void)
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"argv"))
 				{
-					_es_argv_mode = 1;
+					_es_argv_mode = 2;
 
 					goto next_argv;
 				}
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-argv"))
+				{
+					_es_argv_mode = 1;
+
+					goto next_argv;
+				}
+				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"default-argv"))
 				{
 					_es_argv_mode = 0;
 
@@ -8504,7 +8521,7 @@ next_argv:
 	// export BOM
 	if (_es_utf8_bom)
 	{
-		if (_es_export_file != INVALID_HANDLE_VALUE)
+		if ((_es_export_file != INVALID_HANDLE_VALUE) || (!_es_output_is_char))
 		{
 			BYTE bom[3];
 			DWORD numwritten;
@@ -8514,7 +8531,7 @@ next_argv:
 			bom[1] = 0xBB;
 			bom[2] = 0xBF;
 			
-			WriteFile(_es_export_file,bom,3,&numwritten,0);
+			WriteFile(_es_export_file != INVALID_HANDLE_VALUE ? _es_export_file : _es_output_handle,bom,3,&numwritten,0);
 		}
 	}
 
@@ -10538,7 +10555,7 @@ static void _es_get_argv(wchar_buf_t *wcbuf)
 		
 		inquote = 0;
 
-		if (_es_argv_mode)
+		if (_es_argv_mode == 2)
 		{
 			while(*p)
 			{
@@ -10944,6 +10961,7 @@ static BOOL _es_save_settings_with_filename(const wchar_t *filename)
 		config_write_int(file_handle,"newline_type",_es_newline_type);
 		config_write_int(file_handle,"pixels_to_characters_mul",es_pixels_to_characters_mul);
 		config_write_int(file_handle,"pixels_to_characters_div",es_pixels_to_characters_div);
+		config_write_int(file_handle,"argv_mode",_es_argv_mode);
 		
 		// columns
 		
@@ -11183,6 +11201,7 @@ static BOOL _es_load_settings_with_filename(const wchar_t *filename)
 		_es_newline_type = config_read_int(&ini,"newline_type",_es_newline_type);
 		es_pixels_to_characters_mul = config_read_int(&ini,"pixels_to_characters_mul",es_pixels_to_characters_mul);
 		es_pixels_to_characters_div = config_read_int(&ini,"pixels_to_characters_div",es_pixels_to_characters_div);
+		_es_argv_mode = config_read_int(&ini,"argv_mode",_es_argv_mode);
 
 		// columns
 		// make sure the instance name is saved, otherwise loading system properties will fail.
