@@ -1,3 +1,9 @@
+Tuesday 7 April 2026: Version 1.1.0.37
+	fixed an issue with -no-result-error when using ipc3.
+	fixed an issue with formatting dates with csv/tsv.
+	improved -utf8-bom when redirecting output.
+	added -argv option to use CommandLineToArgvW.
+
 Thursday 18 December 2025: Version 1.1.0.36
 	fixed an issue with -no-digit-grouping not being applied.
 	added GetDateFormat/GetTimeFormat for locale date/time formatting.
