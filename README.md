@@ -249,8 +249,8 @@ General Options
 <dt>-ipc1, -ipc2</dt>
 <dd>Use IPC version 1 or 2.</dd>
 <dt>-argv</dt>
-<dd>Use CommandLineToArgvW to parse the command line.</dd>
-<dd>Use with Powershell 7 or later.</dd>
+<dd>Use CommandLineToArgvW to parse the command line.<br/>
+Use with Powershell 7 or later.</dd>
 <dt>-pause, -more</dt>
 <dd>Pause after each page of output.</dd>
 <dt>-hide-empty-search-results</dt>
