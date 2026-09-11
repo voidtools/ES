@@ -1977,7 +1977,7 @@ BOOL ipc3_read_journal(ES_UINT64 journal_id,ES_UINT64 change_id,DWORD flags,void
 						}
 						
 						// date modified
-						if (flags & IPC3_READ_JOURNAL_FLAG_DATE_CREATED)
+						if (flags & IPC3_READ_JOURNAL_FLAG_DATE_MODIFIED)
 						{
 							change.date_modified = ipc3_stream_read_uint64((ipc3_stream_t *)&pipe_stream);
 						}
