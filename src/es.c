@@ -30,8 +30,8 @@
 // TODO:
 // [HIGH] json should only print the trailing , at the start of a non-first line and the terminating ] should always be added when using read journal mode.
 // [HIGH] c# cmdlet for powershell.
-// [HIGH] separate old-name and new-name filters when reading the journal.
 // [HIGH] es -createfilelist -need filename filters -need semicolon delimited list parser.
+// a Unix Timestamp date format
 // consider checking the calling process for powershell 7 and using --argv by default.
 // es server that is active while the console window is opened and handles all requests, so multiple calls from the same console window share the same connection and cache.
 // ansi escapes -option to escape colors so they are piped to other commands like find.
@@ -133,9 +133,15 @@
 // *fixed an issue with -no-digit-grouping not being applied.
 // 1.1.0.37
 // *added -argv mode, which uses CommandLineToArgv, which Powershell 7 uses with $PSNativeCommandArgumentPassing="windows" (the default mode) -https://www.voidtools.com/forum/viewtopic.php?p=79354#p79354 -config setting for es_argv_mode
-// -utf8-bom is now applied when redirecting output.
-// -no-result-error will now work with IPC3.
-// -csv not using human readable dates.
+// *-utf8-bom is now applied when redirecting output.
+// *-no-result-error will now work with IPC3.
+// *-csv not using human readable dates.
+// 1.1.0.38
+// *fixed an issue with showing date created and date modified in read journal mode.
+// *added -sort-mix and -no-sort-mix will sets the filter sort-mix: and no-sort-mix:
+// *don't convert to wchar if we are exporting to UTF-8
+// *-j [filename-filter] now searchs both the before filename and the after filename, added -added-filename-only/-removed-filename-only to control.
+// *improved export performance.
 
 #include "es.h"
 
@@ -260,8 +266,10 @@ static void _es_format_duration(ES_UINT64 filetime,wchar_buf_t *wcbuf);
 static void _es_format_attributes(DWORD attributes,wchar_buf_t *wcbuf);
 static const wchar_t *_es_parse_command_line_option_name(const wchar_t *argv,const ES_UTF8 *s);
 static BOOL _es_flush_export_buffer(void);
+static void _es_export_csv_utf8_string_n(const ES_UTF8 *s,SIZE_T slen);
 static void _es_output_cell_csv_wchar_string(const wchar_t *s,int is_highlighted);
-static void _es_output_cell_csv_wchar_string_with_optional_quotes(int is_always_double_quote,int separator_ch,const wchar_t *s,int is_highlighted);
+static void _es_output_cell_csv_with_optional_quotes_wchar_string(int is_always_double_quote,int separator_ch,const wchar_t *s,int is_highlighted);
+static void _es_export_csv_with_optional_quotes_utf8_string_n(int is_always_double_quote,int separator_ch,const ES_UTF8 *s,SIZE_T slen);
 static void _es_get_command_argv(wchar_buf_t *wcbuf);
 static void _es_expect_command_argv(wchar_buf_t *wcbuf);
 static void _es_expect_command_argv_int(wchar_buf_t *wcbuf);
@@ -278,7 +286,8 @@ static BOOL _es_check_sorts(const wchar_t *argv);
 static void _es_wait_for_db_loaded(void);
 static void _es_wait_for_db_not_busy(void);
 static BOOL _es_is_literal_switch(const wchar_t *s);
-static BOOL _es_should_quote(int separator_ch,const wchar_t *s);
+static BOOL _es_should_quote_wchar_string(int separator_ch,const wchar_t *s);
+static BOOL _es_should_quote_utf8_string_n(int separator_ch,const ES_UTF8 *s,SIZE_T slen);
 static BOOL _es_is_unbalanced_quotes(const wchar_t *s);
 static BYTE *_es_copy_dword(BYTE *buf,DWORD value);
 static BYTE *_es_copy_uint64(BYTE *buf,ES_UINT64 value);
@@ -417,6 +426,8 @@ static char _es_to_now = FALSE; // end journal on last change.
 static DWORD _es_action_filter = 0xffffffff; // all filters.
 static char _es_watch = FALSE; // watch for a change and trigger (exit) when filter matches.
 static char _es_argv_mode = 0; // 0=(use-default), 1=ES-syntax, 2=CommandLineToArgvW (breaks trailing \" )
+static char _es_added_filename_only = 0; // match only created/renamed-new-filename/move-new-filename files
+static char _es_removed_filename_only = 0; // match only deleted/renamed-old-filename/move-old-filename files
 
 wchar_buf_t *es_instance_name_wcbuf = NULL;
 DWORD es_timeout = 0;
@@ -1769,18 +1780,26 @@ static void _es_output_cell_wchar_string(const wchar_t *text,int is_highlighted)
 // write out a UTF-8 string to an entire cell.
 static void _es_output_cell_utf8_string(const ES_UTF8 *text,int is_highlighted)
 {
-	wchar_buf_t wcbuf;
-
-	wchar_buf_init(&wcbuf);
-
-	wchar_buf_copy_utf8_string(&wcbuf,text);
-	
-	if (wcbuf.length_in_wchars <= INT_MAX)
+	if (_es_export_file != INVALID_HANDLE_VALUE)
 	{
-		_es_output_cell_wchar_string(wcbuf.buf,is_highlighted);
+		// write out UTF-8 directly...
+		_es_export_write_data(text,utf8_string_get_length_in_bytes(text));
 	}
+	else
+	{
+		wchar_buf_t wcbuf;
 
-	wchar_buf_kill(&wcbuf);
+		wchar_buf_init(&wcbuf);
+
+		wchar_buf_copy_utf8_string(&wcbuf,text);
+		
+		if (wcbuf.length_in_wchars <= INT_MAX)
+		{
+			_es_output_cell_wchar_string(wcbuf.buf,is_highlighted);
+		}
+
+		wchar_buf_kill(&wcbuf);
+	}
 }
 
 // write out a CSV wchar string to an entire cell.
@@ -1822,8 +1841,61 @@ static void _es_output_cell_csv_wchar_string(const wchar_t *s,int is_highlighted
 	wchar_buf_kill(&wcbuf);
 }
 
+// export CSV UTF-8 string
+static void _es_export_csv_utf8_string_n(const ES_UTF8 *s,SIZE_T slen)
+{
+	const ES_UTF8 *p;
+	SIZE_T run;
+	
+	_es_export_write_data("\"",1);
+	
+	p = s;
+	run = slen;
+	
+	while(run)
+	{
+		const ES_UTF8 *start;
+		SIZE_T writelen;
+		int is_quote;
+		
+		start = p;
+		is_quote = 0;
+		
+		for(;;)
+		{
+			if (!run)
+			{
+				writelen = p - start;
+				break;
+			}
+			
+			if (*p == '"')
+			{
+				writelen = p - start;
+				p += 1;
+				run--;
+				is_quote = 1;
+				break;
+			}
+			
+			p++;
+			run--;
+		}
+		
+		_es_export_write_data(start,writelen);
+		
+		// did we find a quote?
+		if (is_quote)
+		{
+			_es_export_write_data("\"\"",2);
+		}
+	}
+
+	_es_export_write_data("\"",1);
+}
+
 // should a TSV/CSV string value be quoted.
-static BOOL _es_should_quote(int separator_ch,const wchar_t *s)
+static BOOL _es_should_quote_wchar_string(int separator_ch,const wchar_t *s)
 {
 	const wchar_t *p;
 	
@@ -1842,14 +1914,36 @@ static BOOL _es_should_quote(int separator_ch,const wchar_t *s)
 	return FALSE;
 }
 
+static BOOL _es_should_quote_utf8_string_n(int separator_ch,const ES_UTF8 *s,SIZE_T slen)
+{
+	const ES_UTF8 *p;
+	SIZE_T run;
+	
+	p = s;
+	run = slen;
+	
+	while(run)
+	{
+		if ((*p == separator_ch) || (*p == '"') || (*p == '\r') || (*p == '\n'))
+		{
+			return TRUE;
+		}
+		
+		p++;
+		run--;
+	}
+	
+	return FALSE;
+}
+
 // write out a CSV wchar string to an entire cell.
 // same as _es_output_cell_csv_wchar_string.
 // but this version will only use double quotes if the text contains a separator or double quotes.
-static void _es_output_cell_csv_wchar_string_with_optional_quotes(int is_always_double_quote,int separator_ch,const wchar_t *s,int is_highlighted)
+static void _es_output_cell_csv_with_optional_quotes_wchar_string(int is_always_double_quote,int separator_ch,const wchar_t *s,int is_highlighted)
 {
 	if (!is_always_double_quote)
 	{
-		if (!_es_should_quote(separator_ch,s))
+		if (!_es_should_quote_wchar_string(separator_ch,s))
 		{
 			// no quotes required..
 			_es_output_cell_wchar_string(s,is_highlighted);
@@ -1860,6 +1954,25 @@ static void _es_output_cell_csv_wchar_string_with_optional_quotes(int is_always_
 
 	// write with quotes..
 	_es_output_cell_csv_wchar_string(s,is_highlighted);
+}
+
+// same as _es_output_cell_csv_wchar_string.
+// but this version will only use double quotes if the text contains a separator or double quotes.
+static void _es_export_csv_with_optional_quotes_utf8_string_n(int is_always_double_quote,int separator_ch,const ES_UTF8 *s,SIZE_T slen)
+{
+	if (!is_always_double_quote)
+	{
+		if (!_es_should_quote_utf8_string_n(separator_ch,s,slen))
+		{
+			// no quotes required..
+			_es_export_write_data(s,slen);
+			
+			return;
+		}
+	}
+
+	// write with quotes..
+	_es_export_csv_utf8_string_n(s,slen);
 }
 
 // flush any unwritten data in the export buffer to disk.
@@ -1898,7 +2011,7 @@ static void _es_output_cell_text_property_wchar_string(const wchar_t *value)
 {
 	if ((_es_export_type == _ES_EXPORT_TYPE_CSV) || (_es_export_type == _ES_EXPORT_TYPE_TSV))
 	{
-		_es_output_cell_csv_wchar_string_with_optional_quotes((_es_export_type == _ES_EXPORT_TYPE_CSV) ? _es_csv_double_quote : _es_double_quote,(_es_export_type == _ES_EXPORT_TYPE_CSV) ? ',' : '\t',value,0);
+		_es_output_cell_csv_with_optional_quotes_wchar_string((_es_export_type == _ES_EXPORT_TYPE_CSV) ? _es_csv_double_quote : _es_double_quote,(_es_export_type == _ES_EXPORT_TYPE_CSV) ? ',' : '\t',value,0);
 	}
 	else
 	if (_es_export_type == _ES_EXPORT_TYPE_EFU)
@@ -1945,37 +2058,73 @@ static void _es_output_cell_text_property_wchar_string(const wchar_t *value)
 	}
 }							
 
-static void _es_output_cell_text_property_utf8_string_n(const ES_UTF8 *value,SIZE_T length_in_bytes)
-{
-	wchar_buf_t wcbuf;
-
-	wchar_buf_init(&wcbuf);
-
-	wchar_buf_copy_utf8_string_n(&wcbuf,value,length_in_bytes);
-
-	_es_output_cell_text_property_wchar_string(wcbuf.buf);
-
-	wchar_buf_kill(&wcbuf);
-}							
-
 static void _es_output_cell_text_property_utf8_string(const ES_UTF8 *value)
 {
-	wchar_buf_t wcbuf;
+	_es_output_cell_text_property_utf8_string_n(value,utf8_string_get_length_in_bytes(value));
+}							
 
-	wchar_buf_init(&wcbuf);
+// TODO: don't convert to wchar if we are exporting to UTF-8
+static void _es_output_cell_text_property_utf8_string_n(const ES_UTF8 *value,SIZE_T length_in_bytes)
+{
+	// if we are exporting as UTF-8, just write directly to the output.
+	if (_es_export_file != INVALID_HANDLE_VALUE)
+	{
+		if ((_es_export_type == _ES_EXPORT_TYPE_CSV) || (_es_export_type == _ES_EXPORT_TYPE_TSV))
+		{
+			_es_export_csv_with_optional_quotes_utf8_string_n((_es_export_type == _ES_EXPORT_TYPE_CSV) ? _es_csv_double_quote : _es_double_quote,(_es_export_type == _ES_EXPORT_TYPE_CSV) ? ',' : '\t',value,length_in_bytes);
+			
+			return;
+		}
+		else
+		if (_es_export_type == _ES_EXPORT_TYPE_EFU)
+		{
+			// always double quote.
+			_es_export_csv_utf8_string_n(value,length_in_bytes);
 
-	wchar_buf_copy_utf8_string(&wcbuf,value);
+			return;
+		}
+		if (_es_export_type == _ES_EXPORT_TYPE_JSON)
+		{
+			// let _es_output_cell_text_property_wchar_string deal with this..
+		}
+		else
+		{
+			if (_es_double_quote)
+			{
+				_es_export_write_data("\"",1);
+				_es_export_write_data(value,length_in_bytes);
+				_es_export_write_data("\"",1);
+				
+				return;
+			}
+			else
+			{
+				_es_export_write_data(value,length_in_bytes);
 
-	_es_output_cell_text_property_wchar_string(wcbuf.buf);
+				return;
+			}
+		}
+	}
 
-	wchar_buf_kill(&wcbuf);
+	// convert to wchar and output the cell.
+	{
+		wchar_buf_t wcbuf;
+
+		wchar_buf_init(&wcbuf);
+
+		wchar_buf_copy_utf8_string_n(&wcbuf,value,length_in_bytes);
+
+		_es_output_cell_text_property_wchar_string(wcbuf.buf);
+
+		wchar_buf_kill(&wcbuf);
+	}
 }							
 
 static void _es_output_cell_highlighted_text_property_wchar_string(const wchar_t *value)
 {
 	if ((_es_export_type == _ES_EXPORT_TYPE_CSV) || (_es_export_type == _ES_EXPORT_TYPE_TSV))
 	{
-		_es_output_cell_csv_wchar_string_with_optional_quotes((_es_export_type == _ES_EXPORT_TYPE_CSV) ? _es_csv_double_quote : _es_double_quote,(_es_export_type == _ES_EXPORT_TYPE_CSV) ? ',' : '\t',value,1);
+		_es_output_cell_csv_with_optional_quotes_wchar_string((_es_export_type == _ES_EXPORT_TYPE_CSV) ? _es_csv_double_quote : _es_double_quote,(_es_export_type == _ES_EXPORT_TYPE_CSV) ? ',' : '\t',value,1);
 	}
 	else
 	if (_es_export_type == _ES_EXPORT_TYPE_EFU)
@@ -3776,15 +3925,28 @@ static void _es_output_noncell_wchar_string_n(const wchar_t *text,SIZE_T length_
 
 static void _es_output_noncell_utf8_string(const ES_UTF8 *text)
 {
-	wchar_buf_t wcbuf;
+	// if we are exporting and want to export as UTF8, just 
+	// write raw UTF-8 without converting to wchar and back to UTF-8.
+	if ((_es_export_file != INVALID_HANDLE_VALUE) && (_es_export_type != _ES_EXPORT_TYPE_M3U))
+	{
+		SIZE_T len;
+		
+		len = utf8_string_get_length_in_bytes(text);
+		
+		_es_export_write_data(text,len);
+	}
+	else
+	{
+		wchar_buf_t wcbuf;
 
-	wchar_buf_init(&wcbuf);
+		wchar_buf_init(&wcbuf);
 
-	wchar_buf_copy_utf8_string(&wcbuf,text);
+		wchar_buf_copy_utf8_string(&wcbuf,text);
 
-	_es_output_noncell_wchar_string(wcbuf.buf);
+		_es_output_noncell_wchar_string(wcbuf.buf);
 
-	wchar_buf_kill(&wcbuf);
+		wchar_buf_kill(&wcbuf);
+	}
 }
 
 static void _es_output_noncell_printf(const ES_UTF8 *format,...)
@@ -5829,11 +5991,20 @@ static void _es_help(void)
 	// Help from NotNull
 	_es_output_noncell_utf8_string(
 		"ES " VERSION_TEXT "\r\n"
-		"ES is a command line interface to search Everything from a command prompt.\r\n"
-		"ES uses the Everything search syntax.\r\n"
+		"ES is the command-line interface for searching Everything from a command prompt.\r\n"
 		"\r\n"
-		"Usage: es.exe [options] search text\r\n"
-		"Example: ES  Everything ext:exe;ini \r\n"
+		"Usage\r\n"
+		"es.exe [options] search text\r\n"
+		"\r\n"
+		"options\r\n"
+		"   Optional flags to change search behavior, sorting, or output formatting.\r\n"
+		"\r\n"
+		"search text\r\n"
+		"   Search query using the Everything search syntax."
+		"\r\n"
+		"\r\n"
+		"For example:\r\n"
+		"es.exe -highlight Everything ext:exe;ini\r\n"
 		"\r\n"
 		"\r\n"
 		"Search options\r\n"
@@ -5911,12 +6082,13 @@ static void _es_help(void)
 		"\r\n"
 		"\r\n"
 		"Journal options\r\n"
-		"   -j, -journal [filename filter]\r\n"
+		"   -j [filename-filter], -journal [filename-filter]\r\n"
 		"        Show index journal changes.\r\n"
 		"        Any journal option below also shows journal changes.\r\n"
-		"        Wildcards are supported in the filename filter.\r\n"
-		"        The whole final case-insensitive filename is matched.\r\n"
-		"        Use a path separator to match full paths and names.\r\n"
+		"        Wildcards are supported in the filename-filter.\r\n"
+		"        Match the whole case-insensitive filename.\r\n"
+		"        Both the filename before and after the change are searched.\r\n"
+		"        Use a path separator to match full path.\r\n"
 		"   -get-journal-id\r\n"
 		"        Return the current journal ID.\r\n"
 		"   -get-journal-pos\r\n"
@@ -5925,13 +6097,19 @@ static void _es_help(void)
 		"        Show only changes with the specified actions:\r\n"
 		"        folder-create;folder-delete;folder-rename;folder-move;folder-modify;\r\n"
 		"        file-create;file-delete;file-rename;file-move;file-modify\r\n"
+		"   -added-filename-only\r\n"
+		"        Only match journal changes where the filename matches the\r\n"
+		"        search after the change but did not match before the change.\r\n"
+		"   -removed-filename-only\r\n"
+		"        Only match journal changes where the filename matched the\r\n"
+		"        search before the change but does not match after the change.\r\n"
 		"   -watch\r\n"
 		"        Return when a match is found and display the journal position.\r\n"
 		"\r\n"
 		"   -from-journal-pos <journal-id> <change-id>\r\n"
 		"   -from-journal-id <journal-id>\r\n"
 		"   -from-change-id <change-id>\r\n"
-		"        Show changes from the specified journal-id and change-id.\r\n"
+		"        Show changes from the specified journal ID and change ID.\r\n"
 		"   -from-date <date>\r\n"
 		"        Show changes starting from the specified ISO-8601 date.\r\n"
 		"   -from-yesterday\r\n"
@@ -5944,18 +6122,18 @@ static void _es_help(void)
 		"   -to-journal-pos <journal-id> <change-id>\r\n"
 		"   -to-journal-id <journal-id>\r\n"
 		"   -to-change-id <change-id>\r\n"
-		"        Show changes until the specified journal-id and change-id (exclusive).\r\n"
+		"        Show changes up to the specified journal ID and change ID (exclusive).\r\n"
 		"   -to-date <date>\r\n"
-		"        Show changes until the specified ISO-8601 date (exclusive).\r\n"
+		"        Show changes up to the specified ISO-8601 date (exclusive).\r\n"
 		"   -to-today\r\n"
-		"        Show changes until the start of today (exclusive).\r\n"
+		"        Show changes up to the start of today (exclusive).\r\n"
 		"   -to-tomorrow\r\n"
-		"        Show changes until the start of tomorrow (exclusive).\r\n"
+		"        Show changes up to the start of tomorrow (exclusive).\r\n"
 		"   -to-now\r\n"
-		"        Show changes until the current time (exclusive).\r\n"
+		"        Show changes up to the current time (exclusive).\r\n"
 		"\r\n"
 		"   -after-journal-pos <journal-id> <change-id>\r\n"
-		"        Show changes after the specified journal-id and change-id.\r\n"
+		"        Show changes after the specified journal ID and change ID.\r\n"
 		"   -changed-today\r\n"
 		"        Show changes from the start of today until the start of tomorrow.\r\n"
 		"        Same as -from-today -to-tomorrow\r\n"
@@ -5983,7 +6161,7 @@ static void _es_help(void)
 		"        Show the specified column.\r\n"
 		"\r\n"
 		"   -highlight\r\n"
-		"        Highlight results.\r\n"
+		"        Highlight matching text in results.\r\n"
 		"   -highlight-color <color>\r\n"
 		"        Highlight color 0x00-0xff.\r\n"
 		"\r\n"
@@ -5999,7 +6177,7 @@ static void _es_help(void)
 		"   -m3u8\r\n"
 		"   -tsv\r\n"
 		"   -txt\r\n"
-		"        Change display format.\r\n"
+		"        Change the output format.\r\n"
 		"\r\n"
 		"   -size-format <format>\r\n"
 		"        0=auto, 1=Bytes, 2=KB, 3=MB.\r\n"
@@ -6040,7 +6218,7 @@ static void _es_help(void)
 		"        Set the column width 0-65535.\r\n"
 		"\r\n"
 		"   -no-digit-grouping\r\n"
-		"        Don't group numbers with commas.\r\n"
+		"        Disable digit grouping (commas) for numbers.\r\n"
 		"   -double-quote\r\n"
 		"        Wrap paths and filenames with double quotes.\r\n"
 		"\r\n"
@@ -6067,14 +6245,14 @@ static void _es_help(void)
 		"        Display this help.\r\n"
 		"\r\n"
 		"   -instance <name>\r\n"
-		"        Connect to the unique Everything instance name.\r\n"
+		"        Connect to the specified unique Everything instance.\r\n"
 		"   -ipc1, -ipc2, -ipc3\r\n"
 		"        Use IPC version 1, 2 or 3.\r\n"
 		"   -pause, -more\r\n"
 		"        Pause after each page of output.\r\n"
 		"   -timeout <milliseconds>\r\n"
-		"        Timeout after the specified number of milliseconds to wait for\r\n"
-		"        the Everything database to load before sending a query.\r\n"
+		"        Wait up to the specified number of milliseconds for the\r\n"
+		"        Everything database to load before sending a query.\r\n"
 		"\r\n"
 		"   -set-run-count <filename> <count>\r\n"
 		"        Set the run count for the specified filename.\r\n"
@@ -6088,7 +6266,7 @@ static void _es_help(void)
 		"   -get-total-size\r\n"
 		"        Display the total result size for the specified search.\r\n"
 		"   -get-folder-size <filename>\r\n"
-		"        Display the total folder size for the specified filename.\r\n"
+		"        Display the total folder size for the specified folder.\r\n"
 		"\r\n"
 		"   -save-settings\r\n"
 		"        Save settings to %APPDATA%\\voidtools\\es\\es.ini\r\n"
@@ -6096,12 +6274,12 @@ static void _es_help(void)
 		"        Delete %APPDATA%\\voidtools\\es\\es.ini\r\n"
 		"\r\n"
 		"   -version\r\n"
-		"        Display ES major.minor.revision.build version and exit.\r\n"
+		"        Display the ES major.minor.revision.build version and exit.\r\n"
 		"   -get-everything-version\r\n"
-		"        Display Everything major.minor.revision.build version and exit.\r\n"
+		"        Display the Everything major.minor.revision.build version and exit.\r\n"
 		"   -exit\r\n"
 		"        Exit Everything.\r\n"
-		"        Returns after Everything process closes.\r\n"
+		"        Returns after the Everything process closes.\r\n"
 		"   -save-db\r\n"
 		"        Save the Everything database to disk.\r\n"
 		"        Returns after saving completes.\r\n"
@@ -7863,6 +8041,22 @@ static int _es_main(void)
 
 					goto next_argv;
 				}
+			
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"sort-mix"))
+				{	
+					// add folder:
+					_es_append_filter(&filter_wcbuf,"sort-mix:");
+
+					goto next_argv;
+				}
+				
+				if (_es_check_option_utf8_string(argv_wcbuf.buf,"no-sort-mix"))
+				{	
+					// add folder:
+					_es_append_filter(&filter_wcbuf,"no-sort-mix:");
+
+					goto next_argv;
+				}
 				
 				if (_es_check_option_utf8_string(argv_wcbuf.buf,"get-result-count"))
 				{
@@ -7925,6 +8119,36 @@ static int _es_main(void)
 				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"j")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"journal")))
 				{
 					_es_mode = _ES_MODE_READ_JOURNAL;
+					
+					goto next_argv;
+				}
+				
+				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"added-filename-only")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"added-filenames-only")))
+				{
+					_es_added_filename_only = 1;
+					_es_removed_filename_only = 0;
+					
+					goto next_argv;
+				}
+				
+				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"no-added-filename-only")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"no-added-filenames-only")))
+				{
+					_es_added_filename_only = 0;
+					
+					goto next_argv;
+				}
+				
+				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"removed-filename-only")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"removed-filenames-only")))
+				{
+					_es_removed_filename_only = 1;
+					_es_added_filename_only = 0;
+					
+					goto next_argv;
+				}
+				
+				if ((_es_check_option_utf8_string(argv_wcbuf.buf,"no-removed-filename-only")) || (_es_check_option_utf8_string(argv_wcbuf.buf,"no-removed-filenames-only")))
+				{
+					_es_removed_filename_only = 0;
 					
 					goto next_argv;
 				}
@@ -13154,30 +13378,100 @@ static BOOL _es_read_journal_callback_proc(_es_read_journal_t *param,_ipc3_journ
 		BOOL cmpret;
 		utf8_buf_t filename_cbuf;
 		wchar_buf_t filename_wcbuf;
-
+		BOOL match_old_filename;
+		BOOL match_new_filename;
+		
 		utf8_buf_init(&filename_cbuf);
 		wchar_buf_init(&filename_wcbuf);
 
-//	debug_printf("OLD NAME '%S'\n",filename_wcbuf.buf);			
+		// match both.
+		match_old_filename = TRUE;
+		match_new_filename = TRUE;
+		cmpret = FALSE;
 
-		if ((change->new_path_len) || (change->new_name_len))
+		if (_es_added_filename_only)
 		{
-			// check the new name only.
-			// we don't care about the existing filename.
+			switch (change->type)
+			{
+				default:
+					// don't match and continue.
+					match_new_filename = FALSE;
+					match_old_filename = FALSE;
+					break;
+					
+				case IPC3_JOURNAL_ITEM_TYPE_FOLDER_CREATE:
+				case IPC3_JOURNAL_ITEM_TYPE_FILE_CREATE:
+					// fall through
+					break;
+					
+				case IPC3_JOURNAL_ITEM_TYPE_FOLDER_RENAME:
+				case IPC3_JOURNAL_ITEM_TYPE_FOLDER_MOVE:
+				case IPC3_JOURNAL_ITEM_TYPE_FILE_RENAME:
+				case IPC3_JOURNAL_ITEM_TYPE_FILE_MOVE:
+					match_old_filename = FALSE;
+					break;
+
+			}
+		}
+		
+		if (_es_removed_filename_only)
+		{
+			switch (change->type)
+			{
+				default:
+					// don't match and continue.
+					match_new_filename = FALSE;
+					match_old_filename = FALSE;
+					break;
+									
+				case IPC3_JOURNAL_ITEM_TYPE_FOLDER_DELETE:
+				case IPC3_JOURNAL_ITEM_TYPE_FILE_DELETE:
+					// fall through
+					break;
+					
+				case IPC3_JOURNAL_ITEM_TYPE_FOLDER_RENAME:
+				case IPC3_JOURNAL_ITEM_TYPE_FOLDER_MOVE:
+				case IPC3_JOURNAL_ITEM_TYPE_FILE_RENAME:
+				case IPC3_JOURNAL_ITEM_TYPE_FILE_MOVE:
+					match_new_filename = FALSE;
+					break;
+			}
+		}
+
+//	debug_printf("OLD NAME '%S'\n",filename_wcbuf.buf);	
+
+		if ((match_new_filename) && ((change->new_path_len) || (change->new_name_len)))
+		{
+			// check the new name
 			utf8_buf_path_cat_filename(change->new_path_len ? change->new_path : change->old_path,change->new_name_len ? change->new_name : change->old_name,&filename_cbuf);
 			wchar_buf_copy_lowercase_utf8_string(&filename_wcbuf,filename_cbuf.buf);
 			
 //	debug_printf("NEW NAME '%S'\n",filename_wcbuf.buf);			
 			
 			cmpret = wchar_string_wildcard_exec(filename_wcbuf.buf,_es_search_wcbuf->buf);
+			
+			// because we match deleted files, we should also match the old name.
+			// if new name doesn't match, try the old name.
+			if (cmpret)
+			{
+				goto got_filename_match;
+			}
 		}
-		else
+
+		if (match_old_filename)
 		{
 			utf8_buf_path_cat_filename(change->old_path,change->old_name,&filename_cbuf);
 			wchar_buf_copy_lowercase_utf8_string(&filename_wcbuf,filename_cbuf.buf);
 		
 			cmpret = wchar_string_wildcard_exec(filename_wcbuf.buf,_es_search_wcbuf->buf);
+			
+			if (cmpret)
+			{
+				goto got_filename_match;
+			}
 		}
+		
+got_filename_match:		
 		
 		wchar_buf_kill(&filename_wcbuf);
 		utf8_buf_kill(&filename_cbuf);

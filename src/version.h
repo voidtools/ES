@@ -1,9 +1,9 @@
 
-#define VERSION_YEAR			2025
+#define VERSION_YEAR			2026
 #define VERSION_MAJOR 			1
 #define VERSION_MINOR 			1
 #define VERSION_REVISION		0
-#define VERSION_BUILD			37
+#define VERSION_BUILD			38
 #define VERSION_TYPE			""
 
 #define _VERSION_TEXT_STR2(x)	#x
