@@ -228,9 +228,9 @@ Requires Everything 1.5
 <dd>Show index journal changes.<br/>
 Any journal option below also shows journal changes.<br/>
 Wildcards are supported in the filename-filter.<br/>
-The entire final filename is matched case-insensitively.<br/>
+Match the whole case-insensitive filename.<br/>
+Both the filename before and after the change are searched.<br/>
 Use a path separator (\) to match the full path.</dd>
-<br/>
 <dt>-get-journal-id</dt>
 <dd>Return the current journal ID.</dd>
 <dt>-get-journal-pos</dt>
@@ -249,6 +249,12 @@ file-delete<br/>
 file-rename<br/>
 file-move<br/>
 file-modify</dd>
+<dt>-added-filename-only</dt>
+<dd>Only match journal changes where the filename matches the<br/>
+search after the change but did not match before the change.</dd>
+<dt>-removed-filename-only</dt>
+<dd>Only match journal changes where the filename matched the<br/>
+search before the change but does not match after the change.</dd>
 <dt>-watch</dt>
 <dd>Return when a matching journal change is found and display the journal position.</dd>
 <dt>-from-journal-pos &lt;journal-id&gt; &lt;change-id&gt;<br/>
