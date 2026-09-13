@@ -27,7 +27,7 @@ https://www.voidtools.com/downloads#cli
 
 
 
-![image](https://github.com/user-attachments/assets/0fcbe74a-c24c-4065-8a14-85757d525212)
+<img width="622" height="380" alt="image" src="https://github.com/user-attachments/assets/e0207e80-0f20-4651-9cb9-2050320f2c48" />
 <br/><br/><br/>
 
 
@@ -157,7 +157,7 @@ Display Options
 <dd>Highlight results.</dd>
 <dt>-highlight-color &lt;color&gt;</dt>
 <dd>Highlight color 0x00-0xFF:<br/>
-<img src="https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f"></dd>
+<img width="640" height="272" alt="image" src="https://github.com/user-attachments/assets/7f0ad14a-223d-4254-a5ac-08e731c4b42e" /></dd>
 <br/>
 <dt>-csv<br/>
 -efu<br/>
@@ -187,7 +187,7 @@ Display Options
 -date-run-color &lt;color&gt;<br/>
 -date-recently-changed-color &lt;color&gt;, -rc-color &lt;color&gt;</dt>
 <dd>Set the column color 0x00-0xFF:<br/>
-<img src="https://github.com/user-attachments/assets/6f8b5573-152a-48fd-b340-8042aa54284f"></dd>
+<img width="640" height="272" alt="image" src="https://github.com/user-attachments/assets/7f0ad14a-223d-4254-a5ac-08e731c4b42e" /></dd>
 <br/>
 <dt>-filename-width &lt;width&gt;<br/>
 -name-width &lt;width&gt;<br/>
