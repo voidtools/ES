@@ -1,3 +1,10 @@
+Sunday 13 September 2026: Version 1.1.0.38
+	fixed an issue with showing date created and date modified in read journal mode.
+	improved journal filename filtering. -j [filename-filter] now searchs both the before filename and the after filename.
+	improved export performance.
+	added -sort-mix and -no-sort-mix options to mix files and folders together.
+	added -added-filename-only/-removed-filename-only journal filename filter options.
+
 Tuesday 7 April 2026: Version 1.1.0.37
 	fixed an issue with -no-result-error when using ipc3.
 	fixed an issue with formatting dates with csv/tsv.
