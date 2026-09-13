@@ -250,11 +250,9 @@ file-rename<br/>
 file-move<br/>
 file-modify</dd>
 <dt>-added-filename-only</dt>
-<dd>Only match journal changes where the filename matches the<br/>
-search after the change but did not match before the change.</dd>
+<dd>Match filenames created, renamed, or moved after the change.</dd>
 <dt>-removed-filename-only</dt>
-<dd>Only match journal changes where the filename matched the<br/>
-search before the change but does not match after the change.</dd>
+<dd>Match filenames deleted, renamed, or moved before the change.</dd>
 <dt>-watch</dt>
 <dd>Return when a matching journal change is found and display the journal position.</dd>
 <dt>-from-journal-pos &lt;journal-id&gt; &lt;change-id&gt;<br/>
