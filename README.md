@@ -7,6 +7,7 @@ The Command Line Interface for Everything.
 [Search Options](#Search-Options)<br/>
 [Sort Options](#Sort-Options)<br/>
 [Display Options](#Display-Options)<br/>
+[Journal Options](#Journal-Options)<br/>
 [Export Options](#Export-Options)<br/>
 [General Options](#General-Options)<br/>
 [Search Syntax](#Search-Syntax)<br/>
@@ -231,7 +232,7 @@ The entire final filename is matched case-insensitively.<br/>
 Use a path separator (\) to match the full path.</dd>
 <br/>
 <dt>-get-journal-id</dt>
-<dd>Return the current journal ID.</dl>dd>
+<dd>Return the current journal ID.</dd>
 <dt>-get-journal-pos</dt>
 <dd>Return the current journal ID and next change ID.</dd>
 <dt>-action-filter &lt;actions&gt;</dt>
