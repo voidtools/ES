@@ -216,6 +216,77 @@ Display Options
 
 
 
+Journal options
+---------------
+
+Requires Everything 1.5
+
+<dl>
+<dt>-journal [filename-filter]<br/>
+-j [filename-filter]</dt>
+<dd>Show index journal changes.<br/>
+Any journal option below also shows journal changes.<br/>
+Wildcards are supported in the filename-filter.<br/>
+The entire final filename is matched case-insensitively.<br/>
+Use a path separator (\) to match the full path.</dd>
+<br/>
+<dt>-get-journal-id</dt>
+<dd>Return the current journal ID.</dl>dd>
+<dt>-get-journal-pos</dt>
+<dd>Return the current journal ID and next change ID.</dd>
+<dt>-action-filter &lt;actions&gt;</dt>
+<dd>Show only changes with the specified actions.<br/>
+Use a semicolon (;) to separate multiple actions.<br/>
+Actions can be one or more of the following:<br/>
+folder-create<br/>
+folder-delete<br/>
+folder-rename<br/>
+folder-move<br/>
+folder-modify<br/>
+file-create<br/>
+file-delete<br/>
+file-rename<br/>
+file-move<br/>
+file-modify</dd>
+<dt>-watch</dt>
+<dd>Return when a matching journal change is found and display the journal position.</dd>
+<dt>-from-journal-pos &lt;journal-id&gt; &lt;change-id&gt;<br/>
+<dt>-from-journal-id &lt;journal-id&gt;<br/>
+<dt>-from-change-id &lt;change-id&gt;</dt>
+<dd>Show changes starting from the specified position.</dd>
+<dt>-from-date &lt;date&gt;</dt>
+<dd>Show changes starting from the specified ISO-8601 date.</dd>
+<dt>-from-yesterday</dt>
+<dd>Show changes starting from the beginning of yesterday.</dd>
+<dt>-from-today</dt>
+<dd>Show changes starting from the beginning of today.</dd>
+<dt>-from-now</dt>
+<dd>Show changes starting from the current time.</dd>
+<dt>-to-journal-pos &lt;journal-id&gt; &lt;change-id&gt;<br/>
+-to-journal-id &lt;journal-id&gt;<br/>
+-to-change-id &lt;change-id&gt;</dt>
+<dd>Show changes up to the specified journal position (exclusive).</dd>
+<dt>-to-date &lt;date&gt;</dt>
+<dd>Show changes up to the specified ISO-8601 date (exclusive).</dd>
+<dt>-to-today</dt>
+<dd>Show changes up to the start of today (exclusive).</dd>
+<dt>-to-tomorrow</dt>
+<dd>Show changes up to the start of tomorrow (exclusive).</dd>
+<dt>-to-now</dt>
+<dd>Show changes up to the current time (exclusive).</dd>
+<dt>-after-journal-pos &lt;journal-id&gt; &lt;change-id&gt;</dt>
+<dd>Show changes after the specified journal ID and change ID.</dd>
+<dt>-changed-today</dt>
+<dd>Show changes from the start of today until the start of tomorrow.<br/>
+Same as -from-today -to-tomorrow</dd>
+<dt>-changed-yesterday</dt>
+<dd>Show changes from the start of yesterday until the start of today.<br/>
+Same as -from-yesterday -to-today</dd>
+</dl>
+<br/><br/><br/>
+
+    
+
 Export Options
 --------------
 
