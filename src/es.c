@@ -143,6 +143,8 @@
 // *-j [filename-filter] now searchs both the before filename and the after filename, added -added-filename-only/-removed-filename-only to control.
 // *improved export performance.
 // *fixed -export-efu out.efu -?   -doesn't show help
+// 1.1.0.39
+// *added support for multiple sessions
 
 #include "es.h"
 

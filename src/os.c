@@ -28,8 +28,9 @@
 #include "es.h"
 #include <shlobj.h> // SHGetSpecialFolderLocation
 
-BOOL (WINAPI *_os_IsDebuggerPresent)(void) = NULL;
+static BOOL (WINAPI *_os_IsDebuggerPresent)(void) = NULL;
 static BOOL (WINAPI *_os_TzSpecificLocalTimeToSystemTime)(LPTIME_ZONE_INFORMATION lpTimeZoneInformation,LPSYSTEMTIME lpLocalTime,LPSYSTEMTIME lpUniversalTime) = NULL;
+static BOOL (WINAPI *_os_ProcessIdToSessionId)(DWORD dwProcessId,DWORD *pSessionId) = NULL;
 
 void os_init(void)
 {
@@ -40,6 +41,7 @@ void os_init(void)
 	{
 		_os_IsDebuggerPresent = (void *)GetProcAddress(kernel32_hmodule,"IsDebuggerPresent");
 		_os_TzSpecificLocalTimeToSystemTime = (void *)GetProcAddress(kernel32_hmodule,"TzSpecificLocalTimeToSystemTime");
+		_os_ProcessIdToSessionId = (void *)GetProcAddress(kernel32_hmodule,"ProcessIdToSessionId");
 	}
 }
 
@@ -735,6 +737,18 @@ BOOL __stdcall _imp__IsDebuggerPresent()
 	{
 		return _os_IsDebuggerPresent();
 	}
+	
+	return FALSE;
+}
+
+BOOL os_ProcessIdToSessionId(DWORD dwProcessId,DWORD *pSessionId)
+{
+	if (_os_ProcessIdToSessionId)
+	{
+		return _os_ProcessIdToSessionId(dwProcessId,pSessionId);
+	}
+	
+	SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
 	
 	return FALSE;
 }

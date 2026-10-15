@@ -350,7 +350,7 @@ HANDLE ipc3_connect_pipe(void);
 BOOL ipc3_ioctl(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size,SIZE_T *out_numread);
 BOOL ipc3_ioctl_expect_output_size(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,void *out_buf,SIZE_T out_size);
 BOOL ipc3_ioctl_alloc_out(HANDLE pipe_handle,int command,const void *in_buf,SIZE_T in_size,utf8_buf_t *out_cbuf);
-void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf);
+void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf,BOOL allow_session);
 void ipc3_stream_pipe_init(ipc3_stream_pipe_t *stream,HANDLE pipe_handle);
 void ipc3_stream_close(ipc3_stream_t *stream);				
 BOOL ipc3_is_property_indexed(HANDLE pipe_handle,DWORD property_id);

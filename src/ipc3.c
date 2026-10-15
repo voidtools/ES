@@ -481,20 +481,25 @@ HANDLE ipc3_connect_pipe()
 	wchar_buf_t window_class_wcbuf;
 	HANDLE pipe_handle;
 	DWORD tickstart;
+	BOOL did_session_name;
 	
 	wchar_buf_init(&pipe_name_wcbuf);
 	wchar_buf_init(&window_class_wcbuf);
 
-	ipc3_get_pipe_name(&pipe_name_wcbuf);
+	// try the pipe name with the session first.
+	ipc3_get_pipe_name(&pipe_name_wcbuf,TRUE);
 	tickstart = GetTickCount();
+	did_session_name = FALSE;
 		
 retry:
-		
+
 	pipe_handle = CreateFile(pipe_name_wcbuf.buf,GENERIC_READ|GENERIC_WRITE,0,0,OPEN_EXISTING,0,0);
 
 	if (pipe_handle != INVALID_HANDLE_VALUE)
 	{
 		// connected
+		
+		// SECURITY: GetNamedPipeServerSessionId cannot be used to get the server session id as it returns the session ID of the first instance, not the instance we connect to!
 	}
 	else
 	{
@@ -504,6 +509,20 @@ retry:
 		
 		debug_error_printf("Connect pipe %S CreateFile failed %u\n",pipe_name_wcbuf.buf,last_error);
 		
+		if (last_error == ERROR_FILE_NOT_FOUND)
+		{
+			if (!did_session_name)
+			{
+				// try the pipe name without the session
+				// if our session doesn't match, the server will boot us.
+				ipc3_get_pipe_name(&pipe_name_wcbuf,FALSE);
+			
+				did_session_name = TRUE;
+				
+				goto retry;
+			}
+		}
+		else
 		if (last_error == ERROR_PIPE_BUSY)
 		{
 			DWORD elapsed;
@@ -785,9 +804,19 @@ BOOL ipc3_ioctl_alloc_out(HANDLE pipe_handle,int command,const void *in_buf,SIZE
 
 // get the pipe name and store it in out_wcbuf.
 // appends the instance name to the pipe name if one is defined.
-void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf)
+void ipc3_get_pipe_name(wchar_buf_t *out_wcbuf,BOOL allow_session)
 {
 	wchar_buf_copy_utf8_string(out_wcbuf,"\\\\.\\PIPE\\Everything IPC");
+
+	if (allow_session)
+	{
+		DWORD session_id;
+		
+		if (os_ProcessIdToSessionId(GetCurrentProcessId(),&session_id))
+		{
+			wchar_buf_cat_printf(out_wcbuf," Session %u",session_id);
+		}
+	}
 
 	if (es_instance_name_wcbuf->length_in_wchars)
 	{

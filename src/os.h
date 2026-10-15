@@ -46,3 +46,4 @@ void os_error_vprintf(const ES_UTF8 *format,va_list argptr);
 void os_error_printf(const ES_UTF8 *format,...);
 ES_UINT64 os_localtime_to_filetime(const SYSTEMTIME *localst);
 BOOL os_filetime_to_localtime(ES_UINT64 ft,SYSTEMTIME *out_localst);
+BOOL os_ProcessIdToSessionId(DWORD dwProcessId,DWORD *pSessionId);
