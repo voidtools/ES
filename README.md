@@ -322,8 +322,8 @@ General Options
 <br/>
 <dt>-instance &lt;name&gt;</dt>
 <dd>Connect to the unique Everything instance name.</dd>
-<dt>-ipc1, -ipc2</dt>
-<dd>Use IPC version 1 or 2.</dd>
+<dt>-ipc1, -ipc2, -ipc3</dt>
+<dd>Use IPC version 1, 2, or 3.</dd>
 <dt>-argv</dt>
 <dd>Use CommandLineToArgvW to parse the command line.<br/>
 Use with Powershell 7 or later.</dd>
