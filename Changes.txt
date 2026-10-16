@@ -1,3 +1,6 @@
+Friday 16 October 2026: Version 1.1.1.39
+	added support for multiple sessions.
+
 Sunday 13 September 2026: Version 1.1.0.38
 	fixed an issue with showing date created and date modified in read journal mode.
 	improved journal filename filtering. -j [filename-filter] now searchs both the before filename and the after filename.
