@@ -28,6 +28,8 @@
 // https://www.voidtools.com/forum/viewtopic.php?t=5762
 //
 // TODO:
+// [HIGH] Client side: do not loop viewport_count times when the stream is exhausted - break when is_error is set. 
+// [HIGH] [SECURITY] check pipe server is in the same session as the client. dont want client connecting to fake server from a different session.
 // [HIGH] json should only print the trailing , at the start of a non-first line and the terminating ] should always be added when using read journal mode.
 // [HIGH] c# cmdlet for powershell.
 // [HIGH] es -createfilelist -need filename filters -need semicolon delimited list parser.
