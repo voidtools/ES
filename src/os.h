@@ -47,3 +47,5 @@ void os_error_printf(const ES_UTF8 *format,...);
 ES_UINT64 os_localtime_to_filetime(const SYSTEMTIME *localst);
 BOOL os_filetime_to_localtime(ES_UINT64 ft,SYSTEMTIME *out_localst);
 BOOL os_ProcessIdToSessionId(DWORD dwProcessId,DWORD *pSessionId);
+BOOL os_GetNamedPipeServerSessionId(HANDLE Pipe,PULONG ServerSessionId);
+BOOL os_is_windows_vista_or_later(void);

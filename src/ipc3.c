@@ -475,6 +475,7 @@ BOOL ipc3_skip_pipe(HANDLE pipe_handle,SIZE_T buf_size)
 // doesn't wait for the pipe server.
 // use the ipc window to handle timeouts.
 // Everything 1.5.0.1400 and later will create the ipc pipe server BEFORE the ipc window.
+// Everything 1.5.0.1424b and later will use "\\.\pipe\Everything IPC Session <session-id>" for the pipe name.
 HANDLE ipc3_connect_pipe()
 {
 	wchar_buf_t pipe_name_wcbuf;
@@ -497,9 +498,61 @@ retry:
 
 	if (pipe_handle != INVALID_HANDLE_VALUE)
 	{
+		DWORD server_session_id;
+		
 		// connected
 		
-		// SECURITY: GetNamedPipeServerSessionId cannot be used to get the server session id as it returns the session ID of the first instance, not the instance we connect to!
+		if (os_is_windows_vista_or_later())
+		{
+			BOOL same_session;
+			
+			same_session = FALSE;
+			
+			// SECURITY: GetNamedPipeServerSessionId returns the session ID of the first instance, not the connected instance!
+			// Everything prevents other users from creating multiple instances.
+			if (os_GetNamedPipeServerSessionId(pipe_handle,&server_session_id))
+			{
+				DWORD current_session_id;
+
+				// printf("server_session_id %u\n",server_session_id);
+				if (os_ProcessIdToSessionId(GetCurrentProcessId(),&current_session_id))
+				{
+					// printf("current_session_id %u\n",current_session_id);
+					
+					if (server_session_id == current_session_id)
+					{
+						// same session.
+						same_session = TRUE;
+					}
+					else
+					{
+						debug_error_printf("server_session_id %u != current_session_id %u\n",server_session_id,current_session_id);
+					}
+				}
+				else
+				{	
+					debug_error_printf("ProcessIdToSessionId current process id failed %u\n",GetLastError());
+				}
+			}
+			else
+			{
+				debug_error_printf("GetNamedPipeServerSessionId failed %u\n",GetLastError());
+			}
+			
+			if (!same_session)
+			{
+				// incorrect session.
+				// or unable to check session.
+				CloseHandle(pipe_handle);
+				
+				pipe_handle = INVALID_HANDLE_VALUE;
+			}
+		}
+		else
+		{
+			// XP or earlier.
+			// just allow the connection.
+		}
 	}
 	else
 	{

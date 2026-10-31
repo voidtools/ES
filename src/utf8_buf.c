@@ -58,7 +58,8 @@ void utf8_buf_empty(utf8_buf_t *cbuf)
 }
 
 // doesn't keep the existing text.
-// doesn't set the text, only sets the length.
+// doesn't set the text, or the length.
+// only updates the size_in_bytes
 void utf8_buf_grow_size(utf8_buf_t *cbuf,SIZE_T size_in_bytes)
 {
 	if (size_in_bytes <= cbuf->size_in_bytes)
@@ -73,6 +74,7 @@ void utf8_buf_grow_size(utf8_buf_t *cbuf,SIZE_T size_in_bytes)
 		cbuf->size_in_bytes = size_in_bytes;
 	}
 }
+
 // doesn't keep the existing text.
 // doesn't set the text, only sets the length.
 BOOL utf8_buf_try_grow_size(utf8_buf_t *cbuf,SIZE_T size_in_bytes)

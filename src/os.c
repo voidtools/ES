@@ -31,6 +31,7 @@
 static BOOL (WINAPI *_os_IsDebuggerPresent)(void) = NULL;
 static BOOL (WINAPI *_os_TzSpecificLocalTimeToSystemTime)(LPTIME_ZONE_INFORMATION lpTimeZoneInformation,LPSYSTEMTIME lpLocalTime,LPSYSTEMTIME lpUniversalTime) = NULL;
 static BOOL (WINAPI *_os_ProcessIdToSessionId)(DWORD dwProcessId,DWORD *pSessionId) = NULL;
+static BOOL (WINAPI *_os_GetNamedPipeServerSessionId)(HANDLE Pipe,PULONG ServerSessionId) = NULL;
 
 void os_init(void)
 {
@@ -42,6 +43,7 @@ void os_init(void)
 		_os_IsDebuggerPresent = (void *)GetProcAddress(kernel32_hmodule,"IsDebuggerPresent");
 		_os_TzSpecificLocalTimeToSystemTime = (void *)GetProcAddress(kernel32_hmodule,"TzSpecificLocalTimeToSystemTime");
 		_os_ProcessIdToSessionId = (void *)GetProcAddress(kernel32_hmodule,"ProcessIdToSessionId");
+		_os_GetNamedPipeServerSessionId = (void *)GetProcAddress(kernel32_hmodule,"GetNamedPipeServerSessionId");
 	}
 }
 
@@ -753,3 +755,32 @@ BOOL os_ProcessIdToSessionId(DWORD dwProcessId,DWORD *pSessionId)
 	return FALSE;
 }
 
+BOOL os_GetNamedPipeServerSessionId(HANDLE Pipe,PULONG ServerSessionId)
+{
+	if (_os_GetNamedPipeServerSessionId)
+	{
+		return _os_GetNamedPipeServerSessionId(Pipe,ServerSessionId);
+	}
+	
+	SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+	
+	return FALSE;
+	
+}
+
+BOOL os_is_windows_vista_or_later(void)
+{
+	OSVERSIONINFOA osvi;
+	
+	osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
+	
+	if (GetVersionExA(&osvi))
+	{
+		if (osvi.dwMajorVersion >= 6)
+		{
+			return TRUE;
+		}
+	}
+	
+	return FALSE;
+}
