@@ -395,6 +395,7 @@ static char _es_get_total_size = 0; // 1 = calculate total result size, only dis
 static char _es_no_result_error = 0; // 1 = set errorlevel if no results found.
 static HANDLE _es_output_handle = 0; // current output console or file handle.
 static UINT _es_cp = 0; // current code page
+static UINT _es_cp_setting = 0; // 0=(use console code page), saved to es.ini as code_page
 static char _es_output_is_char = 0; // default to file, unless we can get the console mode.
 static WORD _es_default_attributes = 0x07; // grey text on black background.
 static void *_es_run_history_data = 0; // run count command
@@ -6261,6 +6262,8 @@ static void _es_help(void)
 		"        Connect to the specified unique Everything instance.\r\n"
 		"   -ipc1, -ipc2, -ipc3\r\n"
 		"        Use IPC version 1, 2 or 3.\r\n"
+		"   -cp <code-page>, -code-page <code-page>\r\n"
+		"        Output text using the specified code page, eg: 65001 for UTF-8.\r\n"
 		"   -pause, -more\r\n"
 		"        Pause after each page of output.\r\n"
 		"   -timeout <milliseconds>\r\n"
@@ -6953,7 +6956,8 @@ static int _es_main(void)
 				{
 					_es_expect_command_argv_int(&argv_wcbuf);
 					
-					_es_cp = wchar_string_to_int(argv_wcbuf.buf);
+					_es_cp_setting = wchar_string_to_int(argv_wcbuf.buf);
+					_es_cp = _es_cp_setting;
 
 					goto next_argv;
 				}
@@ -11199,6 +11203,7 @@ static BOOL _es_save_settings_with_filename(const wchar_t *filename)
 		config_write_int(file_handle,"pixels_to_characters_mul",es_pixels_to_characters_mul);
 		config_write_int(file_handle,"pixels_to_characters_div",es_pixels_to_characters_div);
 		config_write_int(file_handle,"argv_mode",_es_argv_mode);
+		config_write_int(file_handle,"code_page",(int)_es_cp_setting);
 		
 		// columns
 		
@@ -11439,6 +11444,12 @@ static BOOL _es_load_settings_with_filename(const wchar_t *filename)
 		es_pixels_to_characters_mul = config_read_int(&ini,"pixels_to_characters_mul",es_pixels_to_characters_mul);
 		es_pixels_to_characters_div = config_read_int(&ini,"pixels_to_characters_div",es_pixels_to_characters_div);
 		_es_argv_mode = config_read_int(&ini,"argv_mode",_es_argv_mode);
+		_es_cp_setting = (UINT)config_read_int(&ini,"code_page",(int)_es_cp_setting);
+
+		if (_es_cp_setting)
+		{
+			_es_cp = _es_cp_setting;
+		}
 
 		// columns
 		// make sure the instance name is saved, otherwise loading system properties will fail.
