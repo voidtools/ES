@@ -327,6 +327,10 @@ General Options
 <dt>-argv</dt>
 <dd>Use CommandLineToArgvW to parse the command line.<br/>
 Use with Powershell 7 or later.</dd>
+<dt>-cp &lt;code-page&gt;, -code-page &lt;code-page&gt;</dt>
+<dd>Output text using the specified code page, eg: 65001 for UTF-8.<br/>
+Combine with -save-settings to make the code page the default.<br/>
+Use -cp 0 -save-settings to restore the default console code page.</dd>
 <dt>-pause, -more</dt>
 <dd>Pause after each page of output.</dd>
 <dt>-hide-empty-search-results</dt>
