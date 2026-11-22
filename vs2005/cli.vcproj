@@ -43,9 +43,10 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
+				AdditionalOptions="/MP"
 				Optimization="0"
 				AdditionalIncludeDirectories=""
-				PreprocessorDefinitions=""
+				PreprocessorDefinitions="ES_X86"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
@@ -129,8 +130,9 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
+				AdditionalOptions="/MP"
 				Optimization="0"
-				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS"
+				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;ES_X64"
 				MinimalRebuild="true"
 				RuntimeLibrary="1"
 				UsePrecompiledHeader="0"
@@ -215,7 +217,7 @@
 				OmitFramePointers="false"
 				WholeProgramOptimization="false"
 				AdditionalIncludeDirectories=""
-				PreprocessorDefinitions=""
+				PreprocessorDefinitions="ES_X86"
 				StringPooling="true"
 				ExceptionHandling="1"
 				BasicRuntimeChecks="0"
@@ -242,6 +244,7 @@
 				Name="VCLinkerTool"
 				IgnoreImportLibrary="false"
 				LinkLibraryDependencies="true"
+				AdditionalOptions="/NXCOMPAT /SAFESEH /DYNAMICBASE /HIGHENTROPYVA"
 				AdditionalDependencies="unicows.lib"
 				ShowProgress="0"
 				OutputFile="$(OutDir)/es.exe"
@@ -321,7 +324,7 @@
 				OmitFramePointers="false"
 				WholeProgramOptimization="false"
 				AdditionalIncludeDirectories=""
-				PreprocessorDefinitions="WIN32;_WINDOWS"
+				PreprocessorDefinitions="WIN32;_WINDOWS;ES_X64"
 				StringPooling="true"
 				ExceptionHandling="0"
 				RuntimeLibrary="0"
@@ -346,6 +349,7 @@
 				Name="VCLinkerTool"
 				IgnoreImportLibrary="false"
 				LinkLibraryDependencies="true"
+				AdditionalOptions="/NXCOMPAT /DYNAMICBASE /HIGHENTROPYVA"
 				ShowProgress="0"
 				OutputFile="$(OutDir)/es.exe"
 				LinkIncremental="1"
@@ -459,6 +463,14 @@
 			</File>
 			<File
 				RelativePath="..\src\everything_ipc.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\filelist.c"
+				>
+			</File>
+			<File
+				RelativePath="..\src\filelist.h"
 				>
 			</File>
 			<File
