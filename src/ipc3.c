@@ -545,6 +545,8 @@ retry:
 				// or unable to check session.
 				CloseHandle(pipe_handle);
 				
+				SetLastError(ERROR_ACCESS_DENIED);
+				
 				pipe_handle = INVALID_HANDLE_VALUE;
 			}
 		}
